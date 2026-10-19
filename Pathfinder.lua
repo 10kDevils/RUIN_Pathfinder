@@ -1,24 +1,33 @@
--- RUIN Pathfinder
+-- RUIN Pathfinder: the Leveling & Quest Guide
 -- Pick a route; a small tracker shows the current step, points an arrow at
 -- where to go, and ticks steps off as you accept, finish and hand in quests.
--- RUIN members on the same step are counted, and you can follow a leveling
--- partner's route. Route authors record routes in game and share them with
+-- Steps read as a checklist with the brief's marker colors (quest, turn-in,
+-- class quest, trainer, waypoint), and a class track reminds you of trainer
+-- visits. RUIN members on the same step are counted, and you can follow a
+-- leveling partner's route. Route authors record routes in game (the
+-- recorder is how RUIN collects real WoW Forever routes) and share them with
 -- RUIN or as copy-paste strings.
 local ADDON, ns = ...
 local R = RUIN_API
-if not R or (R.apiLevel or 1) < 3 then
-    print("|cffc41e3aRUIN|r Pathfinder needs a newer RUIN Core (0.3.0 or later).")
+if not R or (R.apiLevel or 1) < 4 then
+    print("|cff54b7d9[RUIN]|r Pathfinder needs a newer RUIN Core (0.3.7 or later).")
     return
 end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Pathfinder", { version = "0.3.0" })
+local M = R:RegisterModule("Pathfinder", { version = "0.3.6" })
 
 local SHARE_EVERY, PEER_TTL = 120, 300
-local ACT_LABEL = { accept = "Accept", complete = "Do", turnin = "Turn in", go = "Go", note = "Note" }
-local ACTS = { "go", "note", "accept", "complete", "turnin" }
-local DEFAULTS = { route = nil, step = 1, tracker = true, trackerPos = nil, follow = nil, arrow = true }
+local ACT_LABEL = { accept = "Accept", complete = "Do", turnin = "Turn in", go = "Go", note = "Note",
+                    class = "Class quest", trainer = "Trainer" }
+local ACTS = { "go", "note", "accept", "complete", "turnin", "class", "trainer" }
+-- Marker color for each kind of step, shared with the map legend.
+local ACT_MARKER = { accept = "quest", complete = "quest", turnin = "turnin", go = "waypoint", note = "waypoint",
+                     class = "class", trainer = "trainer" }
+local ACT_GLYPH = { accept = "!", complete = "!", turnin = "?", go = ">", note = "i", class = "!", trainer = "T" }
+local DEFAULTS = { route = nil, step = 1, tracker = true, trackerPos = nil, follow = nil, arrow = true,
+                   trainer = true, lastTrainer = 0, recBadgePos = nil }
 local ACCOUNT_DEFAULTS = { custom = {}, inbox = {}, rec = { on = false, title = "", steps = {} } }
 local MAX_STEPS = 200
 
@@ -55,9 +64,14 @@ local function currentStep()
     return r and r.steps[db.step], r
 end
 
+local function markerHex(act)
+    local c = W.MARKERS[ACT_MARKER[act] or "waypoint"] or W.MARKERS.waypoint
+    return ("|cff%02x%02x%02x"):format(c[1] * 255, c[2] * 255, c[3] * 255)
+end
+
 local function stepText(s)
     if not s then return "" end
-    local label = C.gold .. "[" .. (ACT_LABEL[s.act] or s.act) .. "]|r "
+    local label = markerHex(s.act) .. "[" .. (ACT_LABEL[s.act] or s.act) .. "]|r "
     local quest = s.quest and (C.white .. s.quest .. "|r  ") or ""
     return label .. quest .. C.dim .. (s.text or "") .. "|r"
 end
@@ -71,7 +85,8 @@ local function cleanRoute(r)
         if i > MAX_STEPS then break end
         if type(s) == "table" and ACT_LABEL[s.act] then
             local st = { act = s.act, quest = type(s.quest) == "string" and s.quest:sub(1, 60) or nil,
-                         text = type(s.text) == "string" and s.text:sub(1, 120) or "" }
+                         text = type(s.text) == "string" and s.text:sub(1, 120) or "",
+                         qid = tonumber(s.qid) and math.floor(tonumber(s.qid)) or nil }
             if type(s.at) == "table" and type(s.at.zone) == "string" and tonumber(s.at.x) and tonumber(s.at.y) then
                 st.at = { zone = s.at.zone:sub(1, 40), x = tonumber(s.at.x), y = tonumber(s.at.y) }
             end
@@ -112,34 +127,49 @@ local function questIdByTitle(title)
     end
 end
 
--- Best effort with Questie installed: where a quest in your log is handed in.
+-- With Questie installed (RUIN uses it at runtime; nothing of its data is
+-- copied into RUIN): where a quest starts or is handed in. Steps recorded
+-- since Pathfinder 0.3.6 carry the quest ID; older steps fall back to
+-- finding the quest in your log by title.
 local questieCache = {}
-local function questieTurnin(title)
-    if not QuestieLoader or not title then return nil end
-    if questieCache[title] ~= nil then return questieCache[title] or nil end
-    questieCache[title] = false
-    local qid = questIdByTitle(title)
-    if not qid then return nil end
-    local ok, DB = pcall(QuestieLoader.ImportModule, QuestieLoader, "QuestieDB")
-    local ok2, ZoneDB = pcall(QuestieLoader.ImportModule, QuestieLoader, "ZoneDB")
-    if not (ok and DB and ok2 and ZoneDB) then return nil end
-    local okq, q = pcall(DB.GetQuest, qid)
-    if not okq or type(q) ~= "table" then return nil end
-    local npcId = (type(q.Finisher) == "table" and q.Finisher.Id)
-        or (type(q.finishedBy) == "table" and type(q.finishedBy[1]) == "table" and q.finishedBy[1][1])
-    if not npcId then return nil end
+local function questieNpcSpot(DB, ZoneDB, npcId)
     local okn, npc = pcall(DB.GetNPC, npcId)
     if not okn or type(npc) ~= "table" or type(npc.spawns) ~= "table" then return nil end
     for areaId, spots in pairs(npc.spawns) do
         local okm, map = pcall(ZoneDB.GetUiMapIdByAreaId, ZoneDB, areaId)
         local spot = type(spots) == "table" and spots[1]
         if okm and map and type(spot) == "table" and spot[1] then
-            questieCache[title] = { map = map, x = spot[1] / 100, y = spot[2] / 100 }
-            return questieCache[title]
+            return { map = map, x = spot[1] / 100, y = spot[2] / 100 }
         end
     end
     return nil
 end
+
+-- which: "start" (quest giver) or "finish" (where it's handed in)
+local function questieSpot(qid, which)
+    if not QuestieLoader or not qid then return nil end
+    local key = which .. ":" .. qid
+    if questieCache[key] ~= nil then return questieCache[key] or nil end
+    questieCache[key] = false
+    local ok, DB = pcall(QuestieLoader.ImportModule, QuestieLoader, "QuestieDB")
+    local ok2, ZoneDB = pcall(QuestieLoader.ImportModule, QuestieLoader, "ZoneDB")
+    if not (ok and DB and ok2 and ZoneDB) then return nil end
+    local okq, q = pcall(DB.GetQuest, qid)
+    if not okq or type(q) ~= "table" then return nil end
+    local npcId
+    if which == "finish" then
+        npcId = (type(q.Finisher) == "table" and q.Finisher.Id)
+            or (type(q.finishedBy) == "table" and type(q.finishedBy[1]) == "table" and q.finishedBy[1][1])
+    else
+        npcId = (type(q.Starts) == "table" and type(q.Starts.NPC) == "table" and q.Starts.NPC[1])
+            or (type(q.startedBy) == "table" and type(q.startedBy[1]) == "table" and q.startedBy[1][1])
+    end
+    if not npcId then return nil end
+    local spot = questieNpcSpot(DB, ZoneDB, npcId)
+    questieCache[key] = spot or false
+    return spot
+end
+M.QuestieSpot = questieSpot
 
 -- map, x, y (0-1) for a step, or nil, plus the zone name when it's elsewhere.
 local function stepPos(s)
@@ -149,10 +179,13 @@ local function stepPos(s)
         if map then return map, s.at.x / 100, s.at.y / 100 end
         return nil, nil, nil, s.at.zone
     end
-    if s.act == "turnin" and s.quest then
-        local q = questieTurnin(s.quest)
-        if q then return q.map, q.x, q.y end
+    local q
+    if s.act == "turnin" then
+        q = questieSpot(s.qid or (s.quest and questIdByTitle(s.quest)), "finish")
+    elseif s.act == "accept" or s.act == "class" then
+        q = questieSpot(s.qid, "start")
     end
+    if q then return q.map, q.x, q.y end
     return nil
 end
 
@@ -161,7 +194,7 @@ local function updateStepPin()
     local map, x, y = stepPos(s)
     if map and db.arrow then
         R.Map:SetPin("Pathfinder", "step", { map = map, x = x, y = y, icon = "Interface\\Icons\\INV_Misc_Map_01",
-            color = { 0.31, 0.6, 0.23 }, title = "Pathfinder: " .. (ACT_LABEL[s.act] or s.act) .. (s.quest and (" " .. s.quest) or ""),
+            color = W.MARKERS[ACT_MARKER[s.act] or "waypoint"], title = "Pathfinder: " .. (ACT_LABEL[s.act] or s.act) .. (s.quest and (" " .. s.quest) or ""),
             text = s.text or "" })
     else
         R.Map:RemovePin("Pathfinder", "step")
@@ -252,7 +285,7 @@ local function arrowTick(nav, elapsed)
     arrow:SetRotation(math.atan2(-east, north) - facing)
     if yards < 15 then arrow:SetVertexColor(0.3, 1, 0.3) else arrow:SetVertexColor(1, 0.82, 0.2) end
     arrow:Show()
-    dist:SetText(yards < 15 and (C.good .. "here|r") or ("%d yd"):format(yards))
+    dist:SetText(yards < 15 and (C.good .. "here|r") or ("%d yards"):format(yards))
 end
 
 updateTracker = function()
@@ -362,6 +395,17 @@ end
 ---------------------------------------------------------------------------
 -- Advancing
 ---------------------------------------------------------------------------
+-- "[RUIN] Pathfinder: Waypoint set: The Forgotten Heirloom (252 yards)"
+local function announceWaypoint()
+    local s = currentStep()
+    if not (s and db.arrow) then return end
+    local map, x, y = stepPos(s)
+    if not map then return end
+    local _, _, yards = R.Map:Offset(map, x, y)
+    M:Print(("Waypoint set: %s%s"):format(s.quest or (s.text ~= "" and s.text) or ACT_LABEL[s.act] or "next step",
+        yards and (" (%d yards)"):format(yards) or ""))
+end
+
 function M:Advance(delta)
     local r = currentRoute()
     if not r then return end
@@ -371,7 +415,7 @@ function M:Advance(delta)
     updateTracker()
     updateStepPin()
     refreshPage()
-    if db.step ~= before then flashTracker() end
+    if db.step ~= before then flashTracker(); announceWaypoint() end
 end
 
 function M:StartRoute(id)
@@ -381,6 +425,7 @@ function M:StartRoute(id)
     updateTracker()
     updateStepPin()
     refreshPage()
+    announceWaypoint()
 end
 
 local function sameQuest(step, title)
@@ -441,18 +486,60 @@ local function here()
     return { zone = (info and info.name) or zone, x = math.floor(x * 1000 + 0.5) / 10, y = math.floor(y * 1000 + 0.5) / 10 }
 end
 
-function M:RecordStep(act, quest, text)
+-- A small on-screen badge while the recorder runs, so nobody records by
+-- accident (the brief's "Recording: ON").
+local recBadge
+local function updateRecBadge()
+    if not (adb and db) then return end
+    if not adb.rec.on then
+        if recBadge then recBadge:Hide() end
+        return
+    end
+    if not recBadge then
+        recBadge = W.HudFrame("RUIN_PathfinderRecBadge", "Pathfinder", db, "recBadgePos", { "BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", -220, 160 })
+        recBadge:SetSize(190, 44)
+        recBadge.title = W.Label(recBadge, "", "GameFontNormalSmall")
+        recBadge.title:SetPoint("TOPLEFT", 10, -8)
+        recBadge.sub = W.Label(recBadge, "", "GameFontHighlightSmall")
+        recBadge.sub:SetPoint("TOPLEFT", recBadge.title, "BOTTOMLEFT", 0, -3)
+    end
+    recBadge.title:SetText(C.accent .. "RUIN|r  " .. C.good .. "Recording: ON|r")
+    recBadge.sub:SetText(C.dim .. #adb.rec.steps .. " steps  ·  /path mark <note>|r")
+    recBadge:Show()
+end
+
+-- Steps carry the time they were recorded (kept on this account only), so
+-- route authors can see how long each stretch really took.
+function M:RecordStep(act, quest, text, extra)
     if not adb.rec.on or #adb.rec.steps >= MAX_STEPS then return end
-    adb.rec.steps[#adb.rec.steps + 1] = { act = act, quest = quest, text = text or "", at = here() }
+    local st = { act = act, quest = quest, text = (text or ""):sub(1, 120), at = here(), t = GetServerTime() }
+    if extra then for k, v in pairs(extra) do st[k] = v end end
+    adb.rec.steps[#adb.rec.steps + 1] = st
+    updateRecBadge()
     refreshPage()
 end
 
 function M:SetRecording(on)
     adb.rec.on = on and true or false
     if on then wasComplete = completeQuests() end
-    self:Print(on and "Recording: accept, finish and hand in quests as usual; Pathfinder writes each step down. Add notes on the Recorder page."
+    self:Print(on and "Recording: accept, finish and hand in quests as usual; Pathfinder writes each step down, with level-ups and the gear you get. /path mark <note> adds a note where you stand."
         or "Recording paused.")
+    updateRecBadge()
     refreshPage()
+end
+
+function M:Mark(note)
+    note = R.Util.Trim(note or "")
+    if note == "" then return self:Print("Usage: /path mark <note>  (adds a note step where you stand)") end
+    if not adb.rec.on then self:SetRecording(true) end
+    self:RecordStep("note", nil, note)
+    self:Print("Marked: " .. note)
+end
+
+function M:RecorderStatus()
+    local rec = adb.rec
+    self:Print(("Recorder %s  ·  %d steps%s"):format(rec.on and (C.good .. "ON|r") or (C.dim .. "off|r"), #rec.steps,
+        rec.on and "  ·  /path mark <note> adds a note here, /path record pauses" or "  ·  /path record starts"))
 end
 
 function M:SaveRecording()
@@ -464,6 +551,7 @@ function M:SaveRecording()
                           author = UnitName("player"), steps = rec.steps })
     adb.rec = { on = false, title = "", steps = {} }
     self:Print(("Saved %s (%d steps). Find it on the Routes page."):format(r.title, #r.steps))
+    updateRecBadge()
     refreshPage()
     return r
 end
@@ -485,7 +573,8 @@ local function onAccepted(_, a1, a2)
     local title = questTitle(a2 or a1, a2 and a1 or nil)
     local s = currentStep()
     if s and s.act == "accept" and sameQuest(s, title) then M:Advance(1) end
-    if title then M:RecordStep("accept", title, "") end
+    local qid = tonumber(a2 or a1)
+    if title then M:RecordStep("accept", title, "", qid and { qid = qid } or nil) end
     C_Timer.After(0.5, checkComplete)
 end
 
@@ -494,16 +583,59 @@ local function onTurnedIn(_, questID)
     local s = currentStep()
     if s and s.act == "turnin" and sameQuest(s, title) then M:Advance(1) end
     if title then
-        M:RecordStep("turnin", title, "")
+        M:RecordStep("turnin", title, "", tonumber(questID) and { qid = tonumber(questID) } or nil)
         wasComplete[title] = nil
+    end
+end
+
+---------------------------------------------------------------------------
+-- Class track: trainer reminders. Classic-style classes learn new spells and
+-- ranks every even level; that rule is not yet confirmed on WoW Forever, so
+-- the page labels it unverified.
+---------------------------------------------------------------------------
+local function nextTrainerLevel(level)
+    level = level or UnitLevel("player") or 1
+    return level % 2 == 0 and level + 2 or level + 1
+end
+
+local function onLevelUp(_, level)
+    level = tonumber(level) or UnitLevel("player")
+    if not level then return end
+    if adb.rec.on then M:RecordStep("note", nil, "Reached level " .. level, { level = level }) end
+    if db.trainer and level % 2 == 0 and level > (db.lastTrainer or 0) then
+        db.lastTrainer = level
+        M:Toast(("Level %d: new spells and ranks at your class trainer."):format(level))
+    end
+    refreshPage()
+end
+
+-- While recording, gear you receive becomes a note step with its item ID,
+-- which is how RUIN learns real sources and times for the Gear Path.
+local function onLootRecord(_, text, looter)
+    if not adb.rec.on or type(text) ~= "string" or (issecretvalue and issecretvalue(text)) then return end
+    local me = UnitName("player")
+    if looter and looter ~= "" and (looter:gsub("%-.*$", "")) ~= me then return end
+    -- works with both "|cff..." and the newer "|cnIQ3:" link colors
+    for itemString, name in text:gmatch("|H(item:[^|]+)|h%[(.-)%]|h") do
+        local id = tonumber(itemString:match("^item:(%d+)"))
+        local quality
+        if GetItemInfo and id then quality = select(3, GetItemInfo(id)) end
+        local equip = (C_Item and C_Item.IsEquippableItem and C_Item.IsEquippableItem(itemString))
+            or (IsEquippableItem and IsEquippableItem(itemString))
+        if id and equip and (quality == nil or quality >= 2) then
+            M:RecordStep("note", nil, "Got " .. (name or ("item " .. id)), { item = id })
+        end
     end
 end
 
 ---------------------------------------------------------------------------
 -- Sharing routes: copy-paste strings and sending to RUIN
 ---------------------------------------------------------------------------
+-- Shared and exported routes carry the steps only: recorded times, levels
+-- and item IDs stay on your account.
 local function exportable(r)
-    return { title = r.title, faction = r.faction, author = r.author, steps = r.steps }
+    local clean = cleanRoute(r) or { steps = {} }
+    return { title = r.title, faction = r.faction, author = r.author, steps = clean.steps }
 end
 
 function M:ExportRoute(id)
@@ -554,7 +686,27 @@ end
 -- Page
 ---------------------------------------------------------------------------
 local function routeLabel(r)
-    return r.title .. " (" .. (r.faction or "Any") .. ")"
+    local sample = false
+    for _, b in ipairs(ns.Routes) do if b.id == r.id then sample = true end end
+    return r.title .. " (" .. (r.faction or "Any") .. ")" .. (sample and "  - sample" or "")
+end
+
+local function isBuiltIn(id)
+    for _, r in ipairs(ns.Routes) do if r.id == id then return true end end
+    return false
+end
+
+local LEGEND = {
+    { "quest", "Quest" }, { "turnin", "Turn-in" }, { "dungeon", "Dungeon" }, { "class", "Class quest" },
+    { "trainer", "Trainer" }, { "flight", "Flight path" }, { "waypoint", "Waypoint" }, { "event", "Group event" },
+}
+
+local function diamond(parent, size, color)
+    local t = parent:CreateTexture(nil, "ARTWORK")
+    t:SetSize(size, size)
+    t:SetRotation(math.pi / 4)
+    t:SetColorTexture(color[1], color[2], color[3], 1)
+    return t
 end
 
 local function buildCurrent(page)
@@ -581,17 +733,48 @@ local function buildCurrent(page)
         function(v) db.arrow = v; updateStepPin() end)
     arrowCheck:SetPoint("LEFT", trackCheck, "RIGHT", 64, 0)
 
+    -- Steps as a checklist: a box, the step's marker, the quest and where.
     local h2 = W.Header(page, "Steps")
-    h2:SetPoint("TOPLEFT", 0, -52)
-    ui.list = W.List(page, 20, function(row)
+    h2:SetPoint("TOPLEFT", 0, -54)
+    ui.stepCount = W.Label(page, "", "GameFontHighlightSmall")
+    ui.stepCount:SetPoint("LEFT", h2, "RIGHT", 10, 0)
+    ui.samplePill = W.Pill(page, 104)
+    ui.samplePill:SetPoint("LEFT", ui.stepCount, "RIGHT", 10, 0)
+    ui.samplePill:SetTag("Sample", "Classic sample")
+    ui.list = W.List(page, 32, function(row)
+        row.box = CreateFrame("Frame", nil, row)
+        row.box:SetSize(16, 16)
+        row.box:SetPoint("LEFT", 6, 0)
+        W.Skin(row.box, "bg", 1, "border")
+        row.tick = row.box:CreateTexture(nil, "ARTWORK")
+        row.tick:SetPoint("TOPLEFT", 3, -3)
+        row.tick:SetPoint("BOTTOMRIGHT", -3, 3)
+        row.tick:SetColorTexture(W.PALETTE.good[1], W.PALETTE.good[2], W.PALETTE.good[3], 1)
+        row.marker = W.Label(row, "", "GameFontNormalLarge")
+        row.marker:SetPoint("LEFT", 32, 0)
+        row.marker:SetWidth(14)
         row.text = W.Label(row, "")
-        row.text:SetPoint("LEFT", 4, 0)
-        row.text:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+        row.text:SetPoint("TOPLEFT", 52, -3)
+        row.text:SetPoint("RIGHT", row, "RIGHT", -34, 0)
         row.text:SetWordWrap(false)
+        row.sub = W.Label(row, "", "GameFontHighlightSmall")
+        row.sub:SetPoint("TOPLEFT", row.text, "BOTTOMLEFT", 0, -2)
+        row.sub:SetPoint("RIGHT", row, "RIGHT", -34, 0)
+        row.sub:SetWordWrap(false)
+        row.num = W.Label(row, "", "GameFontHighlightSmall")
+        row.num:SetPoint("RIGHT", -8, 0)
     end, function(row, s, i)
-        local mark = (i < db.step) and (C.dim .. "done ") or (i == db.step and (C.good .. "  >> ") or "       ")
-        local where = s.at and (C.dim .. "  (" .. s.at.x .. ", " .. s.at.y .. ")|r") or ""
-        row.text:SetText(("%s%2d.|r %s%s"):format(mark, i, stepText(s), where))
+        local done, cur = i < db.step, i == db.step
+        row.tick:SetShown(done)
+        W.SetBorder(row.box, cur and "glow" or "border")
+        row.marker:SetText(markerHex(s.act) .. (ACT_GLYPH[s.act] or "-") .. "|r")
+        local title = s.quest or (s.text ~= "" and s.text) or ACT_LABEL[s.act] or s.act
+        row.text:SetText((done and C.dim or (cur and C.white or "|cffd8dee8")) .. title .. "|r")
+        local where = s.at and (s.at.zone .. (" (%.1f, %.1f)"):format(s.at.x, s.at.y)) or ""
+        local detail = (s.quest and s.text ~= "") and s.text or ""
+        row.sub:SetText(markerHex(s.act) .. (ACT_LABEL[s.act] or s.act) .. "|r" .. C.dim
+            .. (where ~= "" and ("  ·  " .. where) or "") .. (detail ~= "" and ("  ·  " .. detail) or "") .. "|r")
+        row.num:SetText(C.dim .. i .. "|r")
         row.tip = function(tip)
             tip:AddLine((ACT_LABEL[s.act] or s.act) .. (s.quest and (": " .. s.quest) or ""), 1, 0.82, 0)
             if s.text and s.text ~= "" then tip:AddLine(s.text, 1, 1, 1, true) end
@@ -599,8 +782,39 @@ local function buildCurrent(page)
         end
     end)
     ui.list:SetEmptyText("Pick a route above and press Start.")
-    ui.list.frame:SetPoint("TOPLEFT", 0, -70)
-    ui.list.frame:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -24, 120)
+    ui.list.frame:SetPoint("TOPLEFT", 0, -74)
+    ui.list.frame:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -214, 120)
+
+    -- Right column: class track and the marker legend.
+    local ct = W.Card(page)
+    ct:SetPoint("TOPRIGHT", page, "TOPRIGHT", 0, -54)
+    ct:SetSize(194, 128)
+    local cth = W.Header(ct, "Class track")
+    cth:SetPoint("TOPLEFT", 10, -8)
+    ui.classLine = W.Label(ct, "", "GameFontHighlight")
+    ui.classLine:SetPoint("TOPLEFT", 10, -30)
+    ui.trainerLine = W.Label(ct, "", "GameFontHighlightSmall")
+    ui.trainerLine:SetPoint("TOPLEFT", 10, -50)
+    ui.trainerLine:SetWidth(176)
+    local verify = W.Pill(ct, 132)
+    verify:SetPoint("TOPLEFT", 10, -68)
+    verify:SetTag("Unverified", "Unverified on Forever")
+    local remind = W.Check(ct, "Remind me", function() return db.trainer end, function(v) db.trainer = v end)
+    remind:SetPoint("TOPLEFT", 6, -92)
+
+    local lg = W.Card(page)
+    lg:SetPoint("TOPRIGHT", ct, "BOTTOMRIGHT", 0, -8)
+    lg:SetPoint("BOTTOM", page, "BOTTOM", 0, 120)
+    lg:SetWidth(194)
+    local lgh = W.Header(lg, "Map markers")
+    lgh:SetPoint("TOPLEFT", 10, -8)
+    for i, e in ipairs(LEGEND) do               -- two columns of four
+        local col, row = (i - 1) % 2, math.floor((i - 1) / 2)
+        local d = diamond(lg, 8, W.MARKERS[e[1]])
+        d:SetPoint("TOPLEFT", 14 + col * 92, -32 - row * 17)
+        local l = W.Label(lg, e[2], "GameFontHighlightSmall")
+        l:SetPoint("LEFT", d, "RIGHT", 7, 0)
+    end
 
     local h3 = W.Header(page, "RUIN on the road")
     h3:SetPoint("BOTTOMLEFT", 0, 100)
@@ -625,6 +839,15 @@ local function buildCurrent(page)
     ui.peers.frame:SetPoint("BOTTOMLEFT", 0, 0)
     ui.peers.frame:SetPoint("RIGHT", page, "RIGHT", -24, 0)
     ui.peers.frame:SetHeight(92)
+end
+
+local function refreshClassTrack()
+    local _, class = UnitClass("player")
+    local names = LOCALIZED_CLASS_NAMES_MALE
+    local cname = (names and class and names[class]) or (class and (class:sub(1, 1) .. class:sub(2):lower())) or "?"
+    local level = UnitLevel("player") or 1
+    ui.classLine:SetText(W.ClassIcon(class, 16) .. " " .. W.ClassName(cname, class) .. C.dim .. "  level " .. level .. "|r")
+    ui.trainerLine:SetText(C.dim .. "Next trainer visit: |r" .. C.white .. "level " .. nextTrainerLevel(level) .. "|r")
 end
 
 local function buildLibrary(page)
@@ -674,7 +897,8 @@ local function buildLibrary(page)
         local r = e.route
         local mine = adb.custom[r.id] ~= nil
         row.text:SetText(("%s%s|r  %s%s · %d steps · %s|r%s"):format(C.white, r.title, C.dim, r.faction or "Any", #r.steps,
-            mine and ("by " .. R.Util.ShortName(r.author or "?")) or "built in", db.route == r.id and ("  " .. C.good .. "current|r") or ""))
+            mine and ("by " .. R.Util.ShortName(r.author or "?")) or "built in", db.route == r.id and ("  " .. C.good .. "current|r") or "")
+            .. (mine and "" or ("  " .. W.TagText("Sample", "Classic sample"))))
         row.add:Hide()
         row.start:Show(); row.export:Show(); row.share:Show()
         row.start:SetScript("OnClick", function() M:StartRoute(r.id); ui.tabs:Select(1) end)
@@ -714,7 +938,7 @@ local function buildRecorder(page)
     discard:SetPoint("LEFT", save, "RIGHT", 4, 0)
 
     ui.noteAct = "note"
-    local act = W.Cycle(card, 80, ACTS, function() return ui.noteAct end, function(v) ui.noteAct = v end)
+    local act = W.Cycle(card, 96, ACTS, function() return ui.noteAct end, function(v) ui.noteAct = v end)
     act:SetPoint("TOPLEFT", 8, -56)
     local note = W.EditBox(card, 300)
     note:SetPoint("LEFT", act, "RIGHT", 10, 0)
@@ -722,7 +946,7 @@ local function buildRecorder(page)
         local text = R.Util.Trim(note:GetText() or "")
         if text == "" then return M:Print("Type what the step says first.") end
         if not adb.rec.on then adb.rec.on = true end
-        local quest = (ui.noteAct == "accept" or ui.noteAct == "complete" or ui.noteAct == "turnin") and text or nil
+        local quest = (ui.noteAct == "accept" or ui.noteAct == "complete" or ui.noteAct == "turnin" or ui.noteAct == "class") and text or nil
         M:RecordStep(ui.noteAct, quest, quest and "" or text)
         note:SetText("")
     end)
@@ -739,10 +963,12 @@ local function buildRecorder(page)
         row.x:SetPoint("RIGHT", 0, 0)
     end, function(row, s, i)
         local where = s.at and (C.dim .. "  " .. s.at.zone .. " " .. s.at.x .. ", " .. s.at.y .. "|r") or ""
-        row.text:SetText(("%2d. %s%s"):format(i, stepText(s), where))
+        local prev = adb.rec.steps[i - 1]
+        local took = (s.t and prev and prev.t) and (C.dim .. "  +" .. W.Duration(s.t - prev.t) .. "|r") or ""
+        row.text:SetText(("%2d. %s%s%s"):format(i, stepText(s), where, took))
         row.x:SetScript("OnClick", function() table.remove(adb.rec.steps, i); refreshPage() end)
     end)
-    ui.recList:SetEmptyText("Press Start recording, then play: quests you accept, finish and hand in become steps. Add go-to and note steps with the box above.")
+    ui.recList:SetEmptyText("Press Start recording, then play: quests you accept, finish and hand in become steps, with level-ups, gear you get and the minutes between steps. Add go-to, note, class quest and trainer steps with the box above, or /path mark <note>.")
     ui.recList.frame:SetPoint("TOPLEFT", 0, -112)
     ui.recList.frame:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -24, 0)
 end
@@ -767,6 +993,9 @@ local function buildPage(panel)
             ui.pick:SetText(pr and routeLabel(pr) or "No routes")
             local r = currentRoute()
             ui.list:SetItems(r and r.steps or {})
+            ui.stepCount:SetText(r and (C.dim .. ("%d/%d done"):format(math.min(db.step - 1, #r.steps), #r.steps) .. "|r") or "")
+            ui.samplePill:SetShown(r ~= nil and isBuiltIn(r.id))
+            refreshClassTrack()
             ui.peers:SetItems(livePeers())
         elseif tab == 2 then
             local items = {}
@@ -803,6 +1032,8 @@ function M:OnEnable()
     self:RegisterEvent("QUEST_TURNED_IN", onTurnedIn)
     self:RegisterEvent("QUEST_LOG_UPDATE", function() checkComplete() end)
     self:RegisterEvent("ZONE_CHANGED_NEW_AREA", function() updateStepPin() end)
+    self:RegisterEvent("PLAYER_LEVEL_UP", onLevelUp)
+    self:RegisterEvent("CHAT_MSG_LOOT", onLootRecord)
 
     R:Subscribe("CHANNELS_CHANGED", function() C_Timer.After(5, share) end)
     C_Timer.NewTicker(10, function()
@@ -812,6 +1043,7 @@ function M:OnEnable()
     end)
     updateTracker()
     updateStepPin()
+    updateRecBadge()
 end
 
 function RUIN_Pathfinder_Open() M:OpenTab() end
@@ -822,11 +1054,19 @@ BINDING_NAME_RUIN_PATHFINDER_OPEN = "Open Pathfinder"
 BINDING_NAME_RUIN_PATHFINDER_NEXT = "Pathfinder: next step"
 BINDING_NAME_RUIN_PATHFINDER_PREV = "Pathfinder: previous step"
 
--- /path next | prev | tracker | arrow | record | save | import | unfollow
+-- /path next | prev | tracker | arrow | record | rec | mark <note> | save | import | unfollow | trainer
 SLASH_RUINPATH1 = "/path"
 SLASH_RUINPATH2 = "/pathfinder"
-SlashCmdList.RUINPATH = function(msg)
-    msg = (msg or ""):lower()
+SlashCmdList.RUINPATH = function(input)
+    input = input or ""
+    local cmd, rest = input:match("^%s*(%S*)%s*(.-)%s*$")
+    if (cmd or ""):lower() == "mark" then return M:Mark(rest) end
+    local msg = input:lower():gsub("^%s+", ""):gsub("%s+$", "")
+    if msg == "rec" or msg == "rec status" or msg == "status" then return M:RecorderStatus() end
+    if msg == "trainer" then
+        db.trainer = not db.trainer
+        return M:Print("Trainer reminders " .. (db.trainer and "on." or "off."))
+    end
     if msg == "next" then M:Advance(1)
     elseif msg == "prev" then M:Advance(-1)
     elseif msg == "tracker" then db.tracker = not db.tracker; updateTracker()

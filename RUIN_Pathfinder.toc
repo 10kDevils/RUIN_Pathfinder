@@ -1,14 +1,15 @@
-## Interface: 16001
-## Title: |cffc41e3aRUIN|r Pathfinder
+## Interface: 16001, 120105
+## Title: |cffe6b862RUIN|r Pathfinder
 ## Notes: Step-by-step questing routes with an on-screen tracker, and who in RUIN is on the same step.
 ## Author: RUIN
-## Version: 0.3.0
+## Version: 0.3.6
 ## Dependencies: RUIN_Core
 ## OptionalDeps: Questie
 ## SavedVariables: RUIN_PathfinderDB
 ## SavedVariablesPerCharacter: RUIN_PathfinderCharDB
 ## IconTexture: Interface\Icons\INV_Misc_Map_01
 ## X-Category: Guild
+## Category: RUIN Gaming Companion App
 
 Routes.lua
 Pathfinder.lua

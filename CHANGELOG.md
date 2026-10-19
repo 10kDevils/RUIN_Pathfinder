@@ -6,6 +6,17 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.3.6 — 2026-10-18
+
+6 changes since 0.3.0 (needs RUIN Core 0.3.7):
+
+1. Steps read as a checklist: a box that ticks, a marker in the suite's colors (quest, turn-in, class quest, trainer, waypoint), the quest and where, and a done count. A map-marker legend sits beside it, and the step's map pin takes its marker color. Built-in routes are labelled as WoW Classic samples.
+2. Class track: your class and the next trainer visit, a reminder when you reach a new even level (the Classic rule, marked unverified for WoW Forever), and two new step kinds for route authors: class quest and trainer.
+3. Recorder for collecting real routes: a "Recording: ON" badge, /path mark <note> to drop a note where you stand, /path rec for status, and level-ups, gear you receive (with item IDs) and the minutes between steps recorded along the way.
+4. "Waypoint set: <quest> (252 yards)" in chat when a step with a place begins, and the tracker shows distance in yards.
+5. New RUIN look (the Pathfinder tab, part of the RUIN Gaming Companion App), and Retail's interface number in the TOC.
+6. Questie, used at runtime: the recorder now saves each quest's ID, and with Questie installed, accept and class quest steps point to the quest giver and turn-in steps to where the quest is handed in, even before the quest is in your log. Nothing from Questie is copied into RUIN. Shared routes carry the quest IDs (not your recorded times).
+
 ## 0.3.0 — 2026-10-18
 
 - Suite release: every RUIN addon moves to 0.3.0 together, bringing everything from the 0.2.x entries below. No further code changes.

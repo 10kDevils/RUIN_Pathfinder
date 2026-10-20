@@ -1,8 +1,8 @@
 ## Interface: 16001, 120105
-## Title: |cffe6b862RUIN|r Pathfinder
+## Title: |cffe6b862RUIN|r Leveling (Pathfinder)
 ## Notes: Step-by-step questing routes with an on-screen tracker, and who in RUIN is on the same step.
 ## Author: RUIN
-## Version: 0.3.6
+## Version: 0.3.7
 ## Dependencies: RUIN_Core
 ## OptionalDeps: Questie
 ## SavedVariables: RUIN_PathfinderDB

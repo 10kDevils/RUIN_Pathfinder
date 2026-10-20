@@ -6,6 +6,12 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.3.9 — 2026-10-19
+
+1 change since 0.3.8 (needs RUIN Core 0.3.12):
+
+1. **Clearer pages, in Pathfinder's color.** Sub-tabs are now *Guide* (the route you're on), *Routes* (your library) and *Record*, so "Route" and "Routes" are no longer easy to mix up. Recording uses plain step names (Go to, Accept quest, Turn in, Class quest...) instead of short codes, and the boxes show hints.
+
 ## 0.3.8 — 2026-10-19
 
 1 change since 0.3.7:

@@ -9,19 +9,21 @@
 -- RUIN or as copy-paste strings.
 local ADDON, ns = ...
 local R = RUIN_API
-if not R or (R.apiLevel or 1) < 4 then
-    print("|cff54b7d9[RUIN]|r Pathfinder needs a newer RUIN Core (0.3.7 or later).")
+if not R or (R.apiLevel or 1) < 6 then
+    print("|cff54b7d9[RUIN]|r Pathfinder needs a newer RUIN Core (0.3.12 or later).")
     return
 end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Pathfinder", { version = "0.3.8" })
+local M = R:RegisterModule("Pathfinder", { version = "0.3.9" })
 
 local SHARE_EVERY, PEER_TTL = 120, 300
 local ACT_LABEL = { accept = "Accept", complete = "Do", turnin = "Turn in", go = "Go", note = "Note",
                     class = "Class quest", trainer = "Trainer" }
 local ACTS = { "go", "note", "accept", "complete", "turnin", "class", "trainer" }
+local ACT_LABELS = { go = "Go to", note = "Note", accept = "Accept quest", complete = "Complete quest",
+                     turnin = "Turn in", class = "Class quest", trainer = "Trainer" }
 -- Marker color for each kind of step, shared with the map legend.
 local ACT_MARKER = { accept = "quest", complete = "quest", turnin = "turnin", go = "waypoint", note = "waypoint",
                      class = "class", trainer = "trainer" }
@@ -710,7 +712,7 @@ local function diamond(parent, size, color)
 end
 
 local function buildCurrent(page)
-    local h = W.Header(page, "Route")
+    local h = W.Header(page, "Choose a route")
     h:SetPoint("TOPLEFT", 0, -2)
     ui.pickLabels = {}
     ui.pick = W.Button(page, "", 270, nil)
@@ -724,6 +726,7 @@ local function buildCurrent(page)
         ui.pickId = routes[idx].id
         refreshPage()
     end)
+    W.MarkChoice(ui.pick)
     local start = W.Button(page, "Start this route", 130, function() if ui.pickId then M:StartRoute(ui.pickId) end end)
     start:SetPoint("LEFT", ui.pick, "RIGHT", 6, 0)
     local trackCheck = W.Check(page, "Tracker", function() return db.tracker end,
@@ -921,10 +924,8 @@ local function buildRecorder(page)
     card:SetHeight(86)
     local h = W.Header(card, "Record a route")
     h:SetPoint("TOPLEFT", 8, -6)
-    local tl = W.Label(card, C.dim .. "Title|r", "GameFontHighlightSmall")
-    tl:SetPoint("TOPLEFT", 10, -28)
-    ui.recTitle = W.EditBox(card, 220, function(t) adb.rec.title = t:sub(1, 40) end)
-    ui.recTitle:SetPoint("LEFT", tl, "RIGHT", 10, 0)
+    ui.recTitle = W.EditBox(card, 240, function(t) adb.rec.title = t:sub(1, 40) end, "Route title")
+    ui.recTitle:SetPoint("TOPLEFT", 10, -28)
     ui.recBtn = W.Button(card, "", 130, function() M:SetRecording(not adb.rec.on) end)
     ui.recBtn:SetPoint("LEFT", ui.recTitle, "RIGHT", 10, 0)
     local save = W.Button(card, "Save route", 100, function() M:SaveRecording() end)
@@ -938,9 +939,12 @@ local function buildRecorder(page)
     discard:SetPoint("LEFT", save, "RIGHT", 4, 0)
 
     ui.noteAct = "note"
-    local act = W.Cycle(card, 96, ACTS, function() return ui.noteAct end, function(v) ui.noteAct = v end)
+    local act = W.Cycle(card, 140, ACTS, function() return ui.noteAct end, function(v) ui.noteAct = v end)
+    act.format = function(v) return ACT_LABELS[v] or v end
+    act.tipTitle = "What kind of step to add"
+    act:Refresh()
     act:SetPoint("TOPLEFT", 8, -56)
-    local note = W.EditBox(card, 300)
+    local note = W.EditBox(card, 260, nil, "What the step says (quest name for quests)")
     note:SetPoint("LEFT", act, "RIGHT", 10, 0)
     local add = W.Button(card, "Add step here", 120, function()
         local text = R.Util.Trim(note:GetText() or "")
@@ -975,7 +979,7 @@ end
 
 local function buildPage(panel)
     ui.panel = panel
-    ui.tabs = W.SubTabs(panel, { "Route", "Routes", "Recorder" }, function() refreshPage() end)
+    ui.tabs = W.SubTabs(panel, { "Guide", "Routes", "Record" }, function() refreshPage() end)
     buildCurrent(ui.tabs.pages[1])
     buildLibrary(ui.tabs.pages[2])
     buildRecorder(ui.tabs.pages[3])
@@ -983,7 +987,7 @@ local function buildPage(panel)
     refreshPage = function()
         if not ui.panel:IsVisible() then return end
         ui.tabs:SetLabel(2, #adb.inbox > 0 and ("Routes " .. C.good .. "(" .. #adb.inbox .. " new)|r") or "Routes")
-        ui.tabs:SetLabel(3, adb.rec.on and ("Recorder " .. C.bad .. "(rec)|r") or "Recorder")
+        ui.tabs:SetLabel(3, adb.rec.on and ("Record " .. C.bad .. "(on)|r") or "Record")
         local tab = ui.tabs.selected
         if tab == 1 then
             if not ui.pickId or not routeById(ui.pickId) then

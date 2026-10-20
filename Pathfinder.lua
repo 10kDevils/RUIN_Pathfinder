@@ -16,7 +16,7 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Pathfinder", { version = "0.3.7" })
+local M = R:RegisterModule("Pathfinder", { version = "0.3.8" })
 
 local SHARE_EVERY, PEER_TTL = 120, 300
 local ACT_LABEL = { accept = "Accept", complete = "Do", turnin = "Turn in", go = "Go", note = "Note",

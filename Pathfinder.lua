@@ -9,14 +9,14 @@
 -- RUIN or as copy-paste strings.
 local ADDON, ns = ...
 local R = RUIN_API
-if not R or (R.apiLevel or 1) < 6 then
-    print("|cff54b7d9[RUIN]|r Pathfinder needs a newer RUIN Core (0.3.12 or later).")
+if not R or (R.apiLevel or 1) < 7 then
+    print("|cff54b7d9[RUIN]|r Pathfinder needs a newer RUIN Core (0.3.14 or later).")
     return
 end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Pathfinder", { version = "0.3.9" })
+local M = R:RegisterModule("Pathfinder", { version = "0.3.12" })
 
 local SHARE_EVERY, PEER_TTL = 120, 300
 local ACT_LABEL = { accept = "Accept", complete = "Do", turnin = "Turn in", go = "Go", note = "Note",
@@ -30,7 +30,9 @@ local ACT_MARKER = { accept = "quest", complete = "quest", turnin = "turnin", go
 local ACT_GLYPH = { accept = "!", complete = "!", turnin = "?", go = ">", note = "i", class = "!", trainer = "T" }
 local DEFAULTS = { route = nil, step = 1, tracker = true, trackerPos = nil, follow = nil, arrow = true,
                    trainer = true, lastTrainer = 0, recBadgePos = nil }
-local ACCOUNT_DEFAULTS = { custom = {}, inbox = {}, rec = { on = false, title = "", steps = {} } }
+local ACCOUNT_DEFAULTS = { custom = {}, inbox = {}, official = {}, rec = { on = false, title = "", steps = {} } }
+-- Officer routes carry this badge wherever they're listed.
+local OFFICER_ICON = "|TInterface\\GroupFrame\\UI-Group-AssistantIcon:14:14|t"
 local MAX_STEPS = 200
 
 local db           -- per character: route, step, tracker
@@ -44,8 +46,16 @@ local warnedMissing = {}
 ---------------------------------------------------------------------------
 -- Routes: built-in, recorded and shared
 ---------------------------------------------------------------------------
-local function allRoutes()
+-- RUIN routes pushed by officers come first, then the built-in ones, then yours.
+local function sortedOfficial()
     local list = {}
+    for _, r in pairs(adb and adb.official or {}) do list[#list + 1] = r end
+    table.sort(list, function(a, b) return a.title < b.title end)
+    return list
+end
+
+local function allRoutes()
+    local list = sortedOfficial()
     for _, r in ipairs(ns.Routes) do list[#list + 1] = r end
     local custom = {}
     for _, r in pairs(adb.custom) do custom[#custom + 1] = r end
@@ -54,10 +64,15 @@ local function allRoutes()
     return list
 end
 
+local function isBuiltInRoute(id)
+    for _, r in ipairs(ns.Routes) do if r.id == id then return true end end
+    return false
+end
+
 local function routeById(id)
     if not id then return nil end
     for _, r in ipairs(ns.Routes) do if r.id == id then return r end end
-    return adb and adb.custom[id]
+    return adb and (adb.custom[id] or adb.official[id])
 end
 
 local function currentRoute() return db.route and routeById(db.route) end
@@ -677,6 +692,105 @@ function M:OnRoute(d, sender)
     refreshPage()
 end
 
+---------------------------------------------------------------------------
+-- Officer routes: an officer publishes a route (theirs, or one a member
+-- shared, which makes it officer-approved) and it lands in every RUIN
+-- member's route list with the officer badge. Only officers' messages are
+-- accepted, and officers re-send them to members who log in later.
+---------------------------------------------------------------------------
+-- Built-in routes travel as a reference (everyone has their steps already).
+local function officialPayload(r)
+    local d = { id = r.id, title = r.title, faction = r.faction, author = r.author,
+                ob = r.official.by, oa = r.official.approved and 1 or nil, ot = r.official.t }
+    if r.builtin then d.bi = r.builtin else d.steps = exportable(r).steps end
+    return d
+end
+
+function M:PublishRoute(id, from)
+    local r = routeById(id)
+    if not r then return end
+    if not R:IsOfficer() then return self:Print("Only officers publish routes to RUIN.") end
+    local me = UnitName("player")
+    local oid = r.official and r.id or ("o" .. tostring(r.id):gsub("^o", ""))
+    local copy = cleanRoute(exportable(r))
+    if not copy then return end
+    copy.id = oid
+    copy.author = r.author or from or me
+    if isBuiltInRoute(r.id) then copy.builtin = r.id end
+    local author = R.Util.ShortName(copy.author or "")
+    -- "approved" when an officer passes on a member's route; otherwise the officer made or chose it
+    local othersRoute = from ~= nil or (adb.custom[r.id] ~= nil and author ~= "" and author ~= "?" and author ~= R.Util.ShortName(me))
+    copy.official = { by = me, t = GetServerTime(), approved = othersRoute }
+    adb.official[oid] = copy
+    if R:IsConnected() then self:Send("OFFICIAL", officialPayload(copy), "ORG", nil, R.PRIORITY.BULK) end
+    self:Print(("%s is now a RUIN route for everyone%s."):format(copy.title, R:IsConnected() and "" or " (sent when you connect)"))
+    refreshPage()
+    return copy
+end
+
+function M:WithdrawRoute(id)
+    local r = adb.official[id]
+    if not r then return end
+    if not R:IsOfficer() then return self:Print("Only officers withdraw RUIN routes.") end
+    adb.official[id] = nil
+    adb.withdrawn = adb.withdrawn or {}
+    adb.withdrawn[id] = GetServerTime()
+    if R:IsConnected() then self:Send("OFFDEL", { id = id, t = GetServerTime() }, "ORG", nil, R.PRIORITY.BULK) end
+    if db.route == id then db.route = nil; updateTracker() end
+    refreshPage()
+end
+
+function M:OnOfficial(d, sender)
+    if type(d) ~= "table" or type(d.id) ~= "string" or not R:IsOfficerName(sender) then return end
+    local base = type(d.bi) == "string" and isBuiltInRoute(d.bi) and routeById(d.bi) or nil
+    local r = cleanRoute(base and { title = d.title or base.title, faction = base.faction, author = base.author, steps = base.steps } or d)
+    if not r then return end
+    if base then r.builtin = d.bi end
+    local t = tonumber(d.ot) or GetServerTime()
+    local cur = adb.official[d.id]
+    if cur and (cur.official.t or 0) >= t then return end
+    if adb.withdrawn and (adb.withdrawn[d.id] or 0) >= t then return end
+    r.id = d.id
+    r.author = type(d.author) == "string" and d.author:sub(1, 40) or nil
+    r.official = { by = type(d.ob) == "string" and d.ob or sender, t = t, approved = d.oa == 1 }
+    adb.official[d.id] = r
+    if not cur then
+        self:Toast(("New RUIN route from %s: %s (%d steps), on the Pathfinder Routes page."):format(
+            W.ClassName(r.official.by), r.title, #r.steps))
+    end
+    refreshPage()
+end
+
+function M:OnOfficialDelete(d, sender)
+    if type(d) ~= "table" or type(d.id) ~= "string" or not R:IsOfficerName(sender) then return end
+    adb.withdrawn = adb.withdrawn or {}
+    adb.withdrawn[d.id] = tonumber(d.t) or GetServerTime()
+    if adb.official[d.id] then
+        adb.official[d.id] = nil
+        if db.route == d.id then db.route = nil; updateTracker() end
+        refreshPage()
+    end
+end
+
+-- Someone logged in: officers re-send the RUIN routes they hold, one at a
+-- time so long routes don't crowd each other out.
+function M:OnAsk()
+    if not R:IsOfficer() then return end
+    local list = sortedOfficial()
+    local delay = 3 + math.random() * 10
+    for _, r in ipairs(list) do
+        C_Timer.After(delay, function() self:Send("OFFICIAL", officialPayload(r), "ORG", nil, R.PRIORITY.BULK) end)
+        delay = delay + (r.builtin and 2 or math.min(60, 5 + #r.steps / 2))
+    end
+end
+
+local function officialTip(r)
+    if not r.official then return nil end
+    return (r.official.approved and ("Approved by " .. R.Util.ShortName(r.official.by) .. " (made by " .. R.Util.ShortName(r.author or "?") .. ")")
+        or ("Made by officer " .. R.Util.ShortName(r.official.by)))
+end
+M.OfficialTip = officialTip
+
 function M:DeleteRoute(id)
     if not adb.custom[id] then return end
     adb.custom[id] = nil
@@ -688,15 +802,16 @@ end
 -- Page
 ---------------------------------------------------------------------------
 local function routeLabel(r)
-    local sample = false
-    for _, b in ipairs(ns.Routes) do if b.id == r.id then sample = true end end
-    return r.title .. " (" .. (r.faction or "Any") .. ")" .. (sample and "  - sample" or "")
+    return (r.official and (OFFICER_ICON .. " ") or "") .. r.title .. " (" .. (r.faction or "Any") .. ")"
 end
 
 local function isBuiltIn(id)
     for _, r in ipairs(ns.Routes) do if r.id == id then return true end end
     return false
 end
+
+-- The two original WoW Classic samples; the other built-in routes are RUIN's.
+local function isSample(id) return id == "vot" or id == "northshire" end
 
 local LEGEND = {
     { "quest", "Quest" }, { "turnin", "Turn-in" }, { "dungeon", "Dungeon" }, { "class", "Class quest" },
@@ -865,9 +980,9 @@ local function buildLibrary(page)
     ui.library = W.List(page, 26, function(row)
         row.text = W.Label(row, "")
         row.text:SetPoint("LEFT", 4, 0)
-        row.text:SetPoint("RIGHT", row, "RIGHT", -282, 0)
+        row.text:SetPoint("RIGHT", row, "RIGHT", -368, 0)
         row.text:SetWordWrap(false)
-        row.del = W.Button(row, "Delete", 60)
+        row.del = W.Button(row, "Delete", 74)
         row.del:SetPoint("RIGHT", 0, 0)
         row.share = W.Button(row, "Share", 56)
         row.share:SetPoint("RIGHT", row.del, "LEFT", -2, 0)
@@ -877,7 +992,10 @@ local function buildLibrary(page)
         row.start:SetPoint("RIGHT", row.export, "LEFT", -2, 0)
         row.add = W.Button(row, "Add", 46)
         row.add:SetPoint("RIGHT", row.start, "LEFT", -2, 0)
+        row.pub = W.Button(row, OFFICER_ICON .. " Publish", 84)
+        row.pub:SetPoint("RIGHT", row.add, "LEFT", -2, 0)
     end, function(row, e)
+        local officer = R:IsOfficer()
         if e.inbox then
             local r = e.inbox.route
             row.text:SetText(("%sShared by %s:|r %s  %s(%d steps)|r"):format(C.gold, R.Util.ShortName(e.inbox.from), r.title, C.dim, #r.steps))
@@ -889,6 +1007,19 @@ local function buildLibrary(page)
                 refreshPage()
             end)
             row.start:Hide(); row.export:Hide(); row.share:Hide()
+            -- officers can approve a member's route for all of RUIN
+            row.pub:SetShown(officer)
+            row.pub:SetText(OFFICER_ICON .. " Approve")
+            row.pub:ClearAllPoints()
+            row.pub:SetPoint("RIGHT", row.add, "LEFT", -2, 0)
+            row.pub:SetScript("OnClick", function()
+                local added = addCustom(R.Util.DeepCopy(r))
+                added.author = added.author or e.inbox.from
+                M:PublishRoute(added.id, e.inbox.from)
+                adb.custom[added.id] = nil
+                for i, x in ipairs(adb.inbox) do if x == e.inbox then table.remove(adb.inbox, i) end end
+                refreshPage()
+            end)
             row.del:Show()
             row.del:SetText("Dismiss")
             row.del:SetScript("OnClick", function()
@@ -899,18 +1030,35 @@ local function buildLibrary(page)
         end
         local r = e.route
         local mine = adb.custom[r.id] ~= nil
-        row.text:SetText(("%s%s|r  %s%s · %d steps · %s|r%s"):format(C.white, r.title, C.dim, r.faction or "Any", #r.steps,
-            mine and ("by " .. R.Util.ShortName(r.author or "?")) or "built in", db.route == r.id and ("  " .. C.good .. "current|r") or "")
-            .. (mine and "" or ("  " .. W.TagText("Sample", "Classic sample"))))
+        local official = r.official ~= nil
+        local who = official and (C.gold .. "RUIN · " .. officialTip(r) .. "|r" .. C.dim)
+            or mine and ("by " .. R.Util.ShortName(r.author or "?")) or "built in"
+        row.text:SetText(("%s%s%s|r  %s%s · %d steps · %s|r%s"):format(official and (OFFICER_ICON .. " ") or "", C.white, r.title,
+            C.dim, r.faction or "Any", #r.steps, who, db.route == r.id and ("  " .. C.good .. "current|r") or "")
+            .. (isSample(r.id) and ("  " .. W.TagText("Sample", "Classic sample")) or ""))
+        row.tip = official and function(tip)
+            tip:AddLine(OFFICER_ICON .. " RUIN route", 1, 0.82, 0)
+            tip:AddLine(officialTip(r), 1, 1, 1, true)
+        end or nil
         row.add:Hide()
+        -- officers publish their routes (or the built-in ones) to everyone, and withdraw RUIN routes
+        row.pub:SetShown(officer and not official)
+        row.pub:SetText(OFFICER_ICON .. " Publish")
+        row.pub:ClearAllPoints()
+        row.pub:SetPoint("RIGHT", row.start, "LEFT", -2, 0)
+        row.pub:SetScript("OnClick", function() M:PublishRoute(r.id) end)
         row.start:Show(); row.export:Show(); row.share:Show()
         row.start:SetScript("OnClick", function() M:StartRoute(r.id); ui.tabs:Select(1) end)
         row.export:SetScript("OnClick", function() M:ExportRoute(r.id) end)
         row.share:SetScript("OnClick", function() M:ShareRoute(r.id) end)
-        row.del:SetText("Delete")
-        row.del:SetShown(mine)
+        row.del:SetText(official and "Withdraw" or "Delete")
+        row.del:SetShown(mine or (official and officer))
         row.del:SetScript("OnClick", function()
-            R:Confirm("Delete route", "Delete " .. r.title .. "? This can't be undone.", function() M:DeleteRoute(r.id) end)
+            if official then
+                R:Confirm("Withdraw RUIN route", "Remove " .. r.title .. " from every RUIN member's route list?", function() M:WithdrawRoute(r.id) end)
+            else
+                R:Confirm("Delete route", "Delete " .. r.title .. "? This can't be undone.", function() M:DeleteRoute(r.id) end)
+            end
         end)
     end)
     ui.library.frame:SetPoint("TOPLEFT", 0, -24)
@@ -998,7 +1146,7 @@ local function buildPage(panel)
             local r = currentRoute()
             ui.list:SetItems(r and r.steps or {})
             ui.stepCount:SetText(r and (C.dim .. ("%d/%d done"):format(math.min(db.step - 1, #r.steps), #r.steps) .. "|r") or "")
-            ui.samplePill:SetShown(r ~= nil and isBuiltIn(r.id))
+            ui.samplePill:SetShown(r ~= nil and isSample(r.id))
             refreshClassTrack()
             ui.peers:SetItems(livePeers())
         elseif tab == 2 then
@@ -1031,6 +1179,9 @@ function M:OnEnable()
 
     self:Listen("STEP", "OnStep")
     self:Listen("ROUTE", "OnRoute")
+    self:Listen("OFFICIAL", "OnOfficial")
+    self:Listen("OFFDEL", "OnOfficialDelete")
+    self:Listen("ASK", "OnAsk")
     self:AddTab("Pathfinder", buildPage)
     self:RegisterEvent("QUEST_ACCEPTED", onAccepted)
     self:RegisterEvent("QUEST_TURNED_IN", onTurnedIn)
@@ -1039,7 +1190,11 @@ function M:OnEnable()
     self:RegisterEvent("PLAYER_LEVEL_UP", onLevelUp)
     self:RegisterEvent("CHAT_MSG_LOOT", onLootRecord)
 
-    R:Subscribe("CHANNELS_CHANGED", function() C_Timer.After(5, share) end)
+    R:Subscribe("CHANNELS_CHANGED", function()
+        C_Timer.After(5, share)
+        -- ask officers for the RUIN routes published while you were away
+        C_Timer.After(9, function() if R:IsConnected() then self:Send("ASK", {}, "ORG") end end)
+    end)
     C_Timer.NewTicker(10, function()
         if db.route and GetTime() - lastShare >= SHARE_EVERY then share() end
         updateTracker()

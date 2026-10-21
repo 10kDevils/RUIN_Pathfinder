@@ -6,6 +6,32 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.3.12 — 2026-10-21
+
+2 changes since 0.3.11 (needs RUIN Core 0.3.14):
+
+1. **Officer routes for the whole org.** Officers can *Publish* any route on the Routes page (their own, an imported one or a built-in one), and it appears in every RUIN member's route list. When a member shares a route, officers see *Approve* next to it, which publishes it as officer-approved. RUIN routes carry an officer badge in the route list and the route picker; hovering shows who made or approved them. Officers can *Withdraw* a RUIN route from everyone. Only officers' routes are accepted, and officers re-send them to members who log in later.
+2. The page's first sub-tab is *Guide* again (0.3.10 and 0.3.11 were built on the older 0.3.0 code, where it read "Route"). This release keeps 0.3.11's new routes and everything from 0.3.6–0.3.9: the class track, recorder, Questie waypoints and the page colors.
+
+## 0.3.11 — 2026-10-20
+
+- Added remaining Alliance leveling routes through ~30:
+  - Loch Modan 10-18 (after Dun Morogh)
+  - Darkshore 11-18 (after Teldrassil; fuller hub + coastal loop)
+  - Redridge 15-22 (expanded Lakeshire circuit)
+  - Duskwood 20-28 (Darkshire + Raven Hill / Sven / Night Watch)
+  - Wetlands 20-30 (Menethil + Greenwarden)
+  - Ashenvale 18-28 (Astranaar + Raene / Zoram)
+- Routes assume entry from the primary zone connection and prompt accepts as you pass hubs and roadside givers.
+- Optimized for sequential outdoor progress with dungeon inserts (Hall of Thanes, later Excavation Site) called out in notes.
+
+## 0.3.10 — 2026-10-20
+
+- Integrated Alliance 1–30 stepped leveling routes built from the WoW Forever quest database (beta 1.60.1) and public Forever guidance.
+- New built-in routes: Elwynn 1-10, Westfall 10-15, Dun Morogh 1-12, Teldrassil 1-12, Zephras Isle 1-12, Hall of Thanes 13-18 (dungeon quest package, group recommended).
+- Original sample routes (Valley of Trials, Northshire sample) retained.
+- Coordinates are best-effort from database pins and Classic baselines; refine in-game with the Recorder and share.
+
 ## 0.3.9 — 2026-10-19
 
 1 change since 0.3.8 (needs RUIN Core 0.3.12):

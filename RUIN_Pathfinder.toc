@@ -1,8 +1,8 @@
 ## Interface: 16001, 120105
 ## Title: |cffe6b862RUIN|r Pathfinder
-## Notes: Step-by-step questing routes with an on-screen tracker, and who in RUIN is on the same step.
+## Notes: Step-by-step questing routes with an on-screen tracker, Questie's quest database when you have it, and which RUIN members share your quests.
 ## Author: RUIN
-## Version: 0.3.12
+## Version: 0.3.13
 ## Dependencies: RUIN_Core
 ## OptionalDeps: Questie
 ## SavedVariables: RUIN_PathfinderDB
@@ -12,4 +12,5 @@
 ## Category: RUIN Gaming Companion App
 
 Routes.lua
+Questie.lua
 Pathfinder.lua

@@ -7,6 +7,10 @@
 -- leveling partner's route. Route authors record routes in game (the
 -- recorder is how RUIN collects real WoW Forever routes) and share them with
 -- RUIN or as copy-paste strings.
+-- With Questie installed, Pathfinder reads its quest database (where quests
+-- start and end, where their targets are, what's available in your zone),
+-- and RUIN members share their quest status with each other: who has the
+-- same quest, who is ready to hand it in, who has done it.
 local ADDON, ns = ...
 local R = RUIN_API
 if not R or (R.apiLevel or 1) < 7 then
@@ -16,9 +20,11 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Pathfinder", { version = "0.3.12" })
+local M = R:RegisterModule("Pathfinder", { version = "0.3.13" })
+local QB = ns.QB
 
 local SHARE_EVERY, PEER_TTL = 120, 300
+local QUEST_SHARE_MIN, QUEST_SHARE_EVERY, QUEST_TTL = 20, 300, 900
 local ACT_LABEL = { accept = "Accept", complete = "Do", turnin = "Turn in", go = "Go", note = "Note",
                     class = "Class quest", trainer = "Trainer" }
 local ACTS = { "go", "note", "accept", "complete", "turnin", "class", "trainer" }
@@ -29,7 +35,7 @@ local ACT_MARKER = { accept = "quest", complete = "quest", turnin = "turnin", go
                      class = "class", trainer = "trainer" }
 local ACT_GLYPH = { accept = "!", complete = "!", turnin = "?", go = ">", note = "i", class = "!", trainer = "T" }
 local DEFAULTS = { route = nil, step = 1, tracker = true, trackerPos = nil, follow = nil, arrow = true,
-                   trainer = true, lastTrainer = 0, recBadgePos = nil }
+                   trainer = true, lastTrainer = 0, recBadgePos = nil, skipDone = true, shareQuests = true }
 local ACCOUNT_DEFAULTS = { custom = {}, inbox = {}, official = {}, rec = { on = false, title = "", steps = {} } }
 -- Officer routes carry this badge wherever they're listed.
 local OFFICER_ICON = "|TInterface\\GroupFrame\\UI-Group-AssistantIcon:14:14|t"
@@ -144,49 +150,11 @@ local function questIdByTitle(title)
     end
 end
 
--- With Questie installed (RUIN uses it at runtime; nothing of its data is
--- copied into RUIN): where a quest starts or is handed in. Steps recorded
--- since Pathfinder 0.3.6 carry the quest ID; older steps fall back to
--- finding the quest in your log by title.
-local questieCache = {}
-local function questieNpcSpot(DB, ZoneDB, npcId)
-    local okn, npc = pcall(DB.GetNPC, npcId)
-    if not okn or type(npc) ~= "table" or type(npc.spawns) ~= "table" then return nil end
-    for areaId, spots in pairs(npc.spawns) do
-        local okm, map = pcall(ZoneDB.GetUiMapIdByAreaId, ZoneDB, areaId)
-        local spot = type(spots) == "table" and spots[1]
-        if okm and map and type(spot) == "table" and spot[1] then
-            return { map = map, x = spot[1] / 100, y = spot[2] / 100 }
-        end
-    end
-    return nil
+-- Where a step happens when the route gives no place: Questie's database
+-- (see Questie.lua) by quest ID, else by finding the quest in your log.
+local function stepQid(s)
+    return s and (s.qid or (s.quest and questIdByTitle(s.quest))) or nil
 end
-
--- which: "start" (quest giver) or "finish" (where it's handed in)
-local function questieSpot(qid, which)
-    if not QuestieLoader or not qid then return nil end
-    local key = which .. ":" .. qid
-    if questieCache[key] ~= nil then return questieCache[key] or nil end
-    questieCache[key] = false
-    local ok, DB = pcall(QuestieLoader.ImportModule, QuestieLoader, "QuestieDB")
-    local ok2, ZoneDB = pcall(QuestieLoader.ImportModule, QuestieLoader, "ZoneDB")
-    if not (ok and DB and ok2 and ZoneDB) then return nil end
-    local okq, q = pcall(DB.GetQuest, qid)
-    if not okq or type(q) ~= "table" then return nil end
-    local npcId
-    if which == "finish" then
-        npcId = (type(q.Finisher) == "table" and q.Finisher.Id)
-            or (type(q.finishedBy) == "table" and type(q.finishedBy[1]) == "table" and q.finishedBy[1][1])
-    else
-        npcId = (type(q.Starts) == "table" and type(q.Starts.NPC) == "table" and q.Starts.NPC[1])
-            or (type(q.startedBy) == "table" and type(q.startedBy[1]) == "table" and q.startedBy[1][1])
-    end
-    if not npcId then return nil end
-    local spot = questieNpcSpot(DB, ZoneDB, npcId)
-    questieCache[key] = spot or false
-    return spot
-end
-M.QuestieSpot = questieSpot
 
 -- map, x, y (0-1) for a step, or nil, plus the zone name when it's elsewhere.
 local function stepPos(s)
@@ -196,12 +164,12 @@ local function stepPos(s)
         if map then return map, s.at.x / 100, s.at.y / 100 end
         return nil, nil, nil, s.at.zone
     end
-    local q
-    if s.act == "turnin" then
-        q = questieSpot(s.qid or (s.quest and questIdByTitle(s.quest)), "finish")
-    elseif s.act == "accept" or s.act == "class" then
-        q = questieSpot(s.qid, "start")
-    end
+    local which = (s.act == "turnin" and "finish") or ((s.act == "accept" or s.act == "class") and "start")
+        or (s.act == "complete" and "objective")
+    local qid = which and stepQid(s)
+    if not qid then return nil end
+    local map, px, py = R.Map:PlayerPos()
+    local q = QB.Spot(qid, which, map, px, py)
     if q then return q.map, q.x, q.y end
     return nil
 end
@@ -252,6 +220,131 @@ end
 local refreshPage = function() end
 local updateTracker, flashTracker
 
+---------------------------------------------------------------------------
+-- Quest status shared with RUIN: the quests in your log (and which are
+-- ready to hand in), and which of your route's quests you've done. Sent when
+-- it changes (at most every 20 seconds) and every 5 minutes; members use it
+-- to see who has the same quest. Turn it off with /path questshare.
+---------------------------------------------------------------------------
+local lastQuestShare, lastQuestSig = -999, nil
+
+local function routeQids(r)
+    local out, seen = {}, {}
+    for _, s in ipairs(r and r.steps or {}) do
+        if s.qid and not seen[s.qid] then seen[s.qid] = true; out[#out + 1] = s.qid end
+    end
+    return out
+end
+
+local function questPayload()
+    local log = {}
+    for i, q in ipairs(QB.Log()) do
+        if i > 25 then break end
+        log[#log + 1] = q.id .. (q.ready and "+" or "")
+    end
+    local done = {}
+    for _, qid in ipairs(routeQids(currentRoute())) do
+        if #done >= 80 then break end
+        if QB.Done(qid) then done[#done + 1] = tostring(qid) end
+    end
+    return { g = R:GetPlayerGUID(), l = table.concat(log, ","), d = table.concat(done, ","),
+             qz = QB.Has() and 1 or nil, lv = UnitLevel and UnitLevel("player") or nil }
+end
+
+local function shareQuests(force)
+    if not (db and db.shareQuests) or not R:IsConnected() then return end
+    local now = GetTime()
+    if not force and now - lastQuestShare < QUEST_SHARE_MIN then return end
+    local d = questPayload()
+    local sig = d.l .. "|" .. d.d
+    if not force and sig == lastQuestSig and now - lastQuestShare < QUEST_SHARE_EVERY then return end
+    lastQuestShare, lastQuestSig = now, sig
+    M:Send("QSTAT", d, "ORG", nil, R.PRIORITY.BULK)
+end
+M.ShareQuests = function(_, force) shareQuests(force) end
+
+-- "123,456+" -> { [123] = "have", [456] = "ready" }
+local function parseIds(text, as)
+    local out, n = {}, 0
+    for item in tostring(text or ""):gmatch("[^,]+") do
+        local id, plus = item:match("^(%d+)(%+?)$")
+        id = tonumber(id)
+        if id then
+            out[id] = (plus == "+") and "ready" or (as or "have")
+            n = n + 1
+            if n >= 120 then break end
+        end
+    end
+    return out
+end
+
+function M:OnQuests(d, sender)
+    if type(d) ~= "table" or type(d.g) ~= "string" or d.g == R:GetPlayerGUID() then return end
+    local p = peers[d.g] or { route = "", step = 0, t = 0 }
+    p.name = sender
+    p.quests = parseIds(d.l)
+    p.done = parseIds(d.d, "done")
+    p.questie = d.qz == 1
+    p.level = tonumber(d.lv)
+    p.qt = GetTime()
+    peers[d.g] = p
+    refreshPage()
+end
+
+-- Who in RUIN has a quest, is ready to hand it in, or has done it (names).
+local function whoHas(qid)
+    local have, ready, done, now = {}, {}, {}, GetTime()
+    qid = tonumber(qid)
+    if not qid then return have, ready, done end
+    for _, p in pairs(peers) do
+        if p.qt and now - p.qt <= QUEST_TTL then
+            local st = p.quests and p.quests[qid]
+            local name = R.Util.ShortName(p.name or "?")
+            if st then
+                have[#have + 1] = name
+                if st == "ready" then ready[#ready + 1] = name end
+            elseif p.done and p.done[qid] then
+                done[#done + 1] = name
+            end
+        end
+    end
+    table.sort(have); table.sort(ready); table.sort(done)
+    return have, ready, done
+end
+M.WhoHas = function(_, qid) return whoHas(qid) end
+
+-- Members who have any of the quests in your log.
+local function commonQuests(p)
+    if not p.quests then return 0 end
+    local n = 0
+    for _, q in ipairs(QB.Log()) do if p.quests[q.id] then n = n + 1 end end
+    return n
+end
+
+local function nameList(list, max)
+    max = max or 4
+    local shown = {}
+    for i = 1, math.min(max, #list) do shown[i] = list[i] end
+    local text = table.concat(shown, ", ")
+    if #list > max then text = text .. (" and %d more"):format(#list - max) end
+    return text
+end
+
+-- Tooltip lines about a quest: Questie's details, then RUIN members.
+local function questTip(tip, qid)
+    local info = QB.Quest(qid)
+    if info then
+        tip:AddLine(("Questie: level %s%s"):format(tostring(info.level or "?"), info.req and (", needs " .. info.req) or ""), 0.55, 0.72, 0.85)
+        if info.starts[1] then tip:AddLine("Starts: " .. info.starts[1], 0.8, 0.8, 0.8) end
+        if info.ends[1] then tip:AddLine("Ends: " .. info.ends[1], 0.8, 0.8, 0.8) end
+        for i = 1, math.min(3, #info.objectives) do tip:AddLine("- " .. info.objectives[i], 0.8, 0.8, 0.8, true) end
+    end
+    local have, ready, done = whoHas(qid)
+    if #have > 0 then tip:AddLine("In RUIN with this quest: " .. nameList(have), 0.4, 0.9, 0.4, true) end
+    if #ready > 0 then tip:AddLine("Ready to hand in: " .. nameList(ready), 0.4, 0.9, 0.4, true) end
+    if #done > 0 then tip:AddLine("Done it: " .. nameList(done), 0.7, 0.7, 0.7, true) end
+end
+
 function M:Follow(guid)
     db.follow = guid
     local p = guid and peers[guid]
@@ -267,7 +360,9 @@ end
 
 function M:OnStep(d, sender)
     if type(d.g) ~= "string" or d.g == R:GetPlayerGUID() then return end
-    peers[d.g] = { name = sender, guild = d.gu, route = d.r, step = tonumber(d.s) or 0, t = GetTime() }
+    local p = peers[d.g] or {}
+    p.name, p.guild, p.route, p.step, p.t = sender, d.gu, d.r, tonumber(d.s) or 0, GetTime()
+    peers[d.g] = p
     if db.follow == d.g and type(d.r) == "string" and d.r ~= "" then
         if routeById(d.r) then
             local moved = db.route ~= d.r or db.step ~= tonumber(d.s)
@@ -423,11 +518,52 @@ local function announceWaypoint()
         yards and (" (%d yards)"):format(yards) or ""))
 end
 
+-- A step for a quest you've already done (or already have) needs nothing
+-- from you. Quests are matched by ID, so steps without one never skip.
+local function stepDone(s)
+    if not (s and s.qid) then return false end
+    if s.act ~= "accept" and s.act ~= "complete" and s.act ~= "turnin" then return false end
+    if QB.Done(s.qid) then return true end
+    local inLog, ready = QB.InLog(s.qid)
+    if s.act == "accept" then return inLog end
+    if s.act == "complete" then return ready end
+    return false
+end
+M.StepDone = function(_, s) return stepDone(s) end
+
+local holdUntil       -- after you step back by hand, nothing skips until you pass that step again
+
+function M:SkipDone()
+    if not (db and db.skipDone) or db.follow then return 0 end
+    local r = currentRoute()
+    if not r then return 0 end
+    local n = 0
+    while db.step <= #r.steps and not (holdUntil and db.step < holdUntil) and stepDone(r.steps[db.step]) and n < MAX_STEPS do
+        db.step, n = db.step + 1, n + 1
+    end
+    if holdUntil and db.step >= holdUntil then holdUntil = nil end
+    if n > 0 then
+        share()
+        updateTracker()
+        updateStepPin()
+        refreshPage()
+        flashTracker()
+    end
+    return n
+end
+
 function M:Advance(delta)
     local r = currentRoute()
     if not r then return end
     local before = db.step
     db.step = math.max(1, math.min(#r.steps + 1, db.step + delta))
+    if delta < 0 then holdUntil = math.max(holdUntil or 0, before) end
+    if delta > 0 then
+        if holdUntil and db.step >= holdUntil then holdUntil = nil end
+        while db.step <= #r.steps and not holdUntil and db.skipDone and not db.follow and stepDone(r.steps[db.step]) do
+            db.step = db.step + 1
+        end
+    end
     share()
     updateTracker()
     updateStepPin()
@@ -438,15 +574,25 @@ end
 function M:StartRoute(id)
     if not routeById(id) then return end
     db.route, db.step = id, 1
+    holdUntil = nil
+    if db.skipDone then
+        local r = routeById(id)
+        while db.step <= #r.steps and stepDone(r.steps[db.step]) do db.step = db.step + 1 end
+    end
     share()
+    shareQuests(true)
     updateTracker()
     updateStepPin()
     refreshPage()
     announceWaypoint()
 end
 
-local function sameQuest(step, title)
-    return step and step.quest and type(title) == "string" and step.quest:lower() == title:lower()
+-- The step's quest: by ID when both sides have one, else by title.
+local function sameQuest(step, title, qid)
+    if not step then return false end
+    qid = tonumber(qid)
+    if step.qid and qid then return step.qid == qid end
+    return step.quest and type(title) == "string" and step.quest:lower() == title:lower()
 end
 
 local function questTitle(questID, logIndex)
@@ -575,7 +721,9 @@ end
 
 local function checkComplete()
     local s = currentStep()
-    if s and s.act == "complete" and s.quest and questComplete(s.quest) then M:Advance(1) end
+    if s and s.act == "complete" and ((s.qid and select(2, QB.InLog(s.qid))) or (s.quest and questComplete(s.quest))) then M:Advance(1) end
+    M:SkipDone()
+    shareQuests()
     if adb.rec.on then
         local now = completeQuests()
         for title in pairs(now) do
@@ -589,16 +737,17 @@ local function onAccepted(_, a1, a2)
     -- Retail-style clients pass questID; Classic-style pass (logIndex, questID).
     local title = questTitle(a2 or a1, a2 and a1 or nil)
     local s = currentStep()
-    if s and s.act == "accept" and sameQuest(s, title) then M:Advance(1) end
     local qid = tonumber(a2 or a1)
+    if s and s.act == "accept" and sameQuest(s, title, qid) then M:Advance(1) end
     if title then M:RecordStep("accept", title, "", qid and { qid = qid } or nil) end
     C_Timer.After(0.5, checkComplete)
 end
 
 local function onTurnedIn(_, questID)
+    C_Timer.After(1, function() shareQuests() end)
     local title = questTitle(questID)
     local s = currentStep()
-    if s and s.act == "turnin" and sameQuest(s, title) then M:Advance(1) end
+    if s and s.act == "turnin" and sameQuest(s, title, questID) then M:Advance(1) end
     if title then
         M:RecordStep("turnin", title, "", tonumber(questID) and { qid = tonumber(questID) } or nil)
         wasComplete[title] = nil
@@ -627,7 +776,7 @@ local function onLevelUp(_, level)
 end
 
 -- While recording, gear you receive becomes a note step with its item ID,
--- which is how RUIN learns real sources and times for the Gear Path.
+-- which is how RUIN learns where gear really comes from.
 local function onLootRecord(_, text, looter)
     if not adb.rec.on or type(text) ~= "string" or (issecretvalue and issecretvalue(text)) then return end
     local me = UnitName("player")
@@ -850,6 +999,10 @@ local function buildCurrent(page)
     local arrowCheck = W.Check(page, "Arrow + pin", function() return db.arrow end,
         function(v) db.arrow = v; updateStepPin() end)
     arrowCheck:SetPoint("LEFT", trackCheck, "RIGHT", 64, 0)
+    local skipCheck = W.Check(page, "Skip done quests", function() return db.skipDone end,
+        function(v) db.skipDone = v; if v then M:SkipDone() end end)
+    skipCheck:SetPoint("LEFT", arrowCheck, "RIGHT", 90, 0)
+    skipCheck.tip = "Steps for quests you've already done, or already have, tick themselves off. Going back with < pauses this until you pass that step again."
 
     -- Steps as a checklist: a box, the step's marker, the quest and where.
     local h2 = W.Header(page, "Steps")
@@ -890,13 +1043,16 @@ local function buildCurrent(page)
         row.text:SetText((done and C.dim or (cur and C.white or "|cffd8dee8")) .. title .. "|r")
         local where = s.at and (s.at.zone .. (" (%.1f, %.1f)"):format(s.at.x, s.at.y)) or ""
         local detail = (s.quest and s.text ~= "") and s.text or ""
-        row.sub:SetText(markerHex(s.act) .. (ACT_LABEL[s.act] or s.act) .. "|r" .. C.dim
+        local have = s.qid and #(whoHas(s.qid)) or 0
+        local org = (have > 0 and not done) and ("  " .. C.good .. have .. " in RUIN|r") or ""
+        row.sub:SetText(markerHex(s.act) .. (ACT_LABEL[s.act] or s.act) .. "|r" .. org .. C.dim
             .. (where ~= "" and ("  ·  " .. where) or "") .. (detail ~= "" and ("  ·  " .. detail) or "") .. "|r")
         row.num:SetText(C.dim .. i .. "|r")
         row.tip = function(tip)
             tip:AddLine((ACT_LABEL[s.act] or s.act) .. (s.quest and (": " .. s.quest) or ""), 1, 0.82, 0)
             if s.text and s.text ~= "" then tip:AddLine(s.text, 1, 1, 1, true) end
             if s.at then tip:AddLine(("%s %.1f, %.1f"):format(s.at.zone, s.at.x, s.at.y), 0.6, 0.8, 0.6) end
+            if s.qid then questTip(tip, s.qid) end
         end
     end)
     ui.list:SetEmptyText("Pick a route above and press Start.")
@@ -946,8 +1102,10 @@ local function buildCurrent(page)
     end, function(row, p)
         local r = routeById(p.route)
         local same = p.route == db.route
-        row.text:SetText(("%s  %s%s|r  %sstep %d|r%s"):format(W.ClassName(p.name), same and C.good or C.white,
+        local common = commonQuests(p)
+        row.text:SetText(("%s  %s%s|r  %sstep %d|r%s%s"):format(W.ClassName(p.name), same and C.good or C.white,
             r and r.title or (C.dim .. "a route you don't have|r"), C.dim, p.step or 0,
+            common > 0 and ("  " .. C.good .. common .. (common == 1 and " quest" or " quests") .. " in common|r") or "",
             db.follow == p.guid and ("  " .. C.gold .. "following|r") or ""))
         local following = db.follow == p.guid
         row.btn:SetText(following and "Unfollow" or "Follow")
@@ -968,6 +1126,183 @@ local function refreshClassTrack()
     ui.trainerLine:SetText(C.dim .. "Next trainer visit: |r" .. C.white .. "level " .. nextTrainerLevel(level) .. "|r")
 end
 
+---------------------------------------------------------------------------
+-- Quests page: your quest log with Questie's details, and who in RUIN has
+-- the same quests (invite them, or put the quest on your map).
+---------------------------------------------------------------------------
+-- A route of the quests Questie lists for your zone and level.
+function M:DraftFromQuestie()
+    local map, x, y = R.Map:PlayerPos()
+    if not map then return self:Print("Couldn't tell which zone you're in.") end
+    local r, why = QB.DraftRoute(map, UnitLevel("player"), x, y)
+    if not r then return self:Print("No draft: " .. tostring(why)) end
+    local clean = cleanRoute(r)
+    if not clean then return self:Print("No draft: no usable steps.") end
+    clean.author = "Questie draft"
+    addCustom(clean)
+    self:Print(("Drafted %s (%d steps) from Questie. It's on the Routes page; start it, or record a better one."):format(clean.title, #clean.steps))
+    refreshPage()
+    return clean
+end
+
+local function questRows()
+    local list = QB.Log()
+    for _, q in ipairs(list) do
+        local have, ready, done = whoHas(q.id)
+        q.have, q.readyN, q.doneN = have, #ready, #done
+        local info = QB.Quest(q.id)
+        q.level = q.level or (info and info.level)
+    end
+    table.sort(list, function(a, b)
+        if (#a.have > 0) ~= (#b.have > 0) then return #a.have > 0 end
+        return (a.level or 0) < (b.level or 0)
+    end)
+    return list
+end
+
+local function buildQuests(page)
+    local h = W.Header(page, "Your quests")
+    h:SetPoint("TOPLEFT", 0, -2)
+    ui.qInfo = W.Label(page, "", "GameFontHighlightSmall")
+    ui.qInfo:SetPoint("LEFT", h, "RIGHT", 10, 0)
+    ui.qShare = W.Check(page, "Share with RUIN", function() return db.shareQuests end, function(v)
+        db.shareQuests = v
+        if v then shareQuests(true) end
+    end)
+    ui.qShare.tip = "Tell RUIN members which quests you have and which of your route's quests you've done, so you can find each other."
+    ui.qShare:SetPoint("TOPRIGHT", page, "TOPRIGHT", -112, 0)
+
+    ui.qList = W.List(page, 34, function(row)
+        row.text = W.Label(row, "")
+        row.text:SetPoint("TOPLEFT", 6, -3)
+        row.text:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+        row.text:SetWordWrap(false)
+        row.sub = W.Label(row, "", "GameFontHighlightSmall")
+        row.sub:SetPoint("TOPLEFT", row.text, "BOTTOMLEFT", 0, -2)
+        row.sub:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+        row.sub:SetWordWrap(false)
+        row:SetScript("OnMouseUp", function(self) if self.q then ui.qSel = self.q.id; refreshPage() end end)
+    end, function(row, q)
+        row.q = q
+        local on = ui.qSel == q.id
+        row.text:SetText(("%s[%s]|r %s%s|r%s"):format(C.dim, tostring(q.level or "?"), on and C.gold or C.white, q.title,
+            q.ready and ("  " .. C.good .. "ready to hand in|r") or ""))
+        local bits = {}
+        if #q.have > 0 then bits[#bits + 1] = C.good .. #q.have .. " in RUIN have it|r" end
+        if q.readyN > 0 then bits[#bits + 1] = C.good .. q.readyN .. " ready|r" end
+        if q.doneN > 0 then bits[#bits + 1] = C.dim .. q.doneN .. " done it|r" end
+        row.sub:SetText(#bits > 0 and table.concat(bits, C.dim .. "  ·  |r") or (C.dim .. "Nobody else in RUIN has this one right now.|r"))
+        row.tip = function(tip) tip:AddLine(q.title, 1, 0.82, 0); questTip(tip, q.id) end
+    end)
+    ui.qList:SetEmptyText("Your quest log is empty. Accept a quest and it shows here, with who in RUIN has it too.")
+    ui.qList.frame:SetPoint("TOPLEFT", 0, -24)
+    ui.qList.frame:SetPoint("BOTTOMLEFT", page, "BOTTOMLEFT", 0, 0)
+    ui.qList.frame:SetWidth(330)
+
+    -- detail card
+    local card = W.Card(page)
+    card:SetPoint("TOPLEFT", 352, -24)
+    card:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -4, 72)
+    ui.qName = W.Label(card, "", "GameFontNormalLarge")
+    ui.qName:SetPoint("TOPLEFT", 12, -10)
+    ui.qName:SetPoint("RIGHT", card, "RIGHT", -12, 0)
+    ui.qName:SetWordWrap(false)
+    ui.qBody = W.Label(card, "", "GameFontHighlightSmall")
+    ui.qBody:SetPoint("TOPLEFT", 12, -36)
+    ui.qBody:SetPoint("RIGHT", card, "RIGHT", -12, 0)
+    ui.qBody:SetJustifyV("TOP")
+    ui.qBody:SetWordWrap(true)
+    ui.qMap = W.Button(card, "Show on map", 110, function()
+        local q = ui.qSel
+        if not q then return end
+        local _, ready = QB.InLog(q)
+        local map, x, y = R.Map:PlayerPos()
+        local spot = QB.Spot(q, ready and "finish" or "objective", map, x, y) or QB.Spot(q, "finish", map, x, y)
+        if not spot then return M:Print("Questie doesn't have a place for this quest.") end
+        R.Map:SetPin("Pathfinder", "quest", { map = spot.map, x = spot.x, y = spot.y, icon = "Interface\\Icons\\INV_Misc_Map_01",
+            color = W.MARKERS[ready and "turnin" or "quest"], title = "Pathfinder: " .. (C_QuestLog and C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(q) or "quest"),
+            text = ready and ("Hand in: " .. (spot.name or "")) or (spot.name or "") })
+        M:Print("Marked on your map: " .. (spot.name or "the quest") .. ".")
+    end)
+    ui.qMap:SetPoint("BOTTOMLEFT", 12, 12)
+    ui.qInvite = W.Button(card, "Invite them", 104, function()
+        local have = whoHas(ui.qSel)
+        local invite = (C_PartyInfo and C_PartyInfo.InviteUnit) or InviteUnit
+        if not invite or #have == 0 then return end
+        local me = UnitName("player")
+        for _, p in pairs(peers) do
+            local st = p.qt and p.quests and p.quests[ui.qSel]
+            if st and R.Util.ShortName(p.name or "") ~= me and GetTime() - p.qt <= QUEST_TTL then pcall(invite, p.name) end
+        end
+        M:Print("Invited " .. nameList(have, 6) .. ".")
+    end)
+    ui.qInvite:SetPoint("LEFT", ui.qMap, "RIGHT", 6, 0)
+    ui.qInvite.tip = "Invite the RUIN members who have this quest to your group."
+
+    -- Questie footer
+    local foot = W.Card(page)
+    foot:SetPoint("BOTTOMLEFT", 352, 0)
+    foot:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -4, 0)
+    foot:SetHeight(64)
+    ui.qzHead = W.Label(foot, "", "GameFontNormal")
+    ui.qzHead:SetPoint("TOPLEFT", 12, -9)
+    ui.qzText = W.Label(foot, "", "GameFontHighlightSmall")
+    ui.qzText:SetPoint("TOPLEFT", 12, -27)
+    ui.qzText:SetPoint("RIGHT", foot, "RIGHT", -150, 0)
+    ui.qzText:SetWordWrap(true)
+    ui.qDraft = W.Button(foot, "Draft a route here", 134, function() M:DraftFromQuestie() end)
+    ui.qDraft:SetPoint("RIGHT", foot, "RIGHT", -10, 0)
+end
+
+local function refreshQuests()
+    local rows = questRows()
+    local found = false
+    for _, q in ipairs(rows) do if q.id == ui.qSel then found = true end end
+    if not found then ui.qSel = rows[1] and rows[1].id or nil end
+    ui.qList:SetItems(rows)
+    ui.qShare:Refresh()
+    local members, now = 0, GetTime()
+    for _, p in pairs(peers) do if p.qt and now - p.qt <= QUEST_TTL then members = members + 1 end end
+    ui.qInfo:SetText(C.dim .. ("%d in your log  ·  %d RUIN member%s sharing quests"):format(#rows, members, members == 1 and "" or "s") .. "|r")
+    local qid = ui.qSel
+    local sel
+    for _, q in ipairs(rows) do if q.id == qid then sel = q end end
+    if not sel then
+        ui.qName:SetText(C.dim .. "No quest picked.|r")
+        ui.qBody:SetText("")
+        ui.qMap:SetEnabled(false); ui.qInvite:SetEnabled(false)
+    else
+        ui.qName:SetText(sel.title)
+        local lines = {}
+        local info = QB.Quest(qid)
+        if info then
+            lines[#lines + 1] = C.dim .. "Level |r" .. tostring(info.level or "?") .. (info.req and (C.dim .. ", needs |r" .. info.req) or "")
+            if info.starts[1] then lines[#lines + 1] = C.dim .. "Starts: |r" .. info.starts[1] end
+            if info.ends[1] then lines[#lines + 1] = C.dim .. "Hand in: |r" .. info.ends[1] end
+            for i = 1, math.min(4, #info.objectives) do lines[#lines + 1] = "- " .. info.objectives[i] end
+        else
+            lines[#lines + 1] = C.dim .. (QB.Has() and "Questie has no entry for this quest." or "Install Questie to see where this quest starts, ends and where its targets are.") .. "|r"
+        end
+        lines[#lines + 1] = " "
+        local have, ready, done = whoHas(qid)
+        lines[#lines + 1] = C.gold .. "In RUIN|r"
+        lines[#lines + 1] = #have > 0 and (C.good .. "Have it: |r" .. nameList(have, 8)) or (C.dim .. "Nobody else has it right now.|r")
+        if #ready > 0 then lines[#lines + 1] = C.good .. "Ready to hand in: |r" .. nameList(ready, 8) end
+        if #done > 0 then lines[#lines + 1] = C.dim .. "Done it: |r" .. nameList(done, 8) end
+        ui.qBody:SetText(table.concat(lines, "\n"))
+        ui.qMap:SetEnabled(QB.Has())
+        ui.qInvite:SetEnabled(#have > 0)
+    end
+    if QB.Has() then
+        ui.qzHead:SetText(C.good .. "Questie found|r")
+        ui.qzText:SetText(C.dim .. "Givers, hand-ins and targets come from Questie. Draft a route of this zone's quests for your level.|r")
+    else
+        ui.qzHead:SetText(C.dim .. "Questie not installed|r")
+        ui.qzText:SetText(C.dim .. "Routes and sharing work without it. With Questie, every step gets a place and you can draft routes.|r")
+    end
+    ui.qDraft:SetEnabled(QB.Has())
+end
+
 local function buildLibrary(page)
     local h = W.Header(page, "Your routes")
     h:SetPoint("TOPLEFT", 0, -2)
@@ -977,6 +1312,9 @@ local function buildLibrary(page)
         end)
     end)
     imp:SetPoint("TOPRIGHT", page, "TOPRIGHT", 0, 2)
+    ui.draftBtn = W.Button(page, "Draft from Questie", 140, function() M:DraftFromQuestie() end)
+    ui.draftBtn:SetPoint("RIGHT", imp, "LEFT", -6, 0)
+    ui.draftBtn.tip = "Make a route of the quests Questie lists for your zone and level."
     ui.library = W.List(page, 26, function(row)
         row.text = W.Label(row, "")
         row.text:SetPoint("LEFT", 4, 0)
@@ -1127,15 +1465,16 @@ end
 
 local function buildPage(panel)
     ui.panel = panel
-    ui.tabs = W.SubTabs(panel, { "Guide", "Routes", "Record" }, function() refreshPage() end)
+    ui.tabs = W.SubTabs(panel, { "Guide", "Quests", "Routes", "Record" }, function() refreshPage() end)
     buildCurrent(ui.tabs.pages[1])
-    buildLibrary(ui.tabs.pages[2])
-    buildRecorder(ui.tabs.pages[3])
+    buildQuests(ui.tabs.pages[2])
+    buildLibrary(ui.tabs.pages[3])
+    buildRecorder(ui.tabs.pages[4])
 
     refreshPage = function()
         if not ui.panel:IsVisible() then return end
-        ui.tabs:SetLabel(2, #adb.inbox > 0 and ("Routes " .. C.good .. "(" .. #adb.inbox .. " new)|r") or "Routes")
-        ui.tabs:SetLabel(3, adb.rec.on and ("Record " .. C.bad .. "(on)|r") or "Record")
+        ui.tabs:SetLabel(3, #adb.inbox > 0 and ("Routes " .. C.good .. "(" .. #adb.inbox .. " new)|r") or "Routes")
+        ui.tabs:SetLabel(4, adb.rec.on and ("Record " .. C.bad .. "(on)|r") or "Record")
         local tab = ui.tabs.selected
         if tab == 1 then
             if not ui.pickId or not routeById(ui.pickId) then
@@ -1150,11 +1489,14 @@ local function buildPage(panel)
             refreshClassTrack()
             ui.peers:SetItems(livePeers())
         elseif tab == 2 then
+            refreshQuests()
+        elseif tab == 3 then
+            ui.draftBtn:SetShown(QB.Has())
             local items = {}
             for _, e in ipairs(adb.inbox) do items[#items + 1] = { inbox = e } end
             for _, r in ipairs(allRoutes()) do items[#items + 1] = { route = r } end
             ui.library:SetItems(items)
-        elseif tab == 3 then
+        elseif tab == 4 then
             ui.recBtn:SetText(adb.rec.on and "Pause recording" or "Start recording")
             if not ui.recTitle:HasFocus() then ui.recTitle:SetText(adb.rec.title or "") end
             ui.recStatus:SetText(adb.rec.on and (C.bad .. "Recording|r " .. C.dim .. "· " .. #adb.rec.steps .. " steps so far|r")
@@ -1182,6 +1524,7 @@ function M:OnEnable()
     self:Listen("OFFICIAL", "OnOfficial")
     self:Listen("OFFDEL", "OnOfficialDelete")
     self:Listen("ASK", "OnAsk")
+    self:Listen("QSTAT", "OnQuests")
     self:AddTab("Pathfinder", buildPage)
     self:RegisterEvent("QUEST_ACCEPTED", onAccepted)
     self:RegisterEvent("QUEST_TURNED_IN", onTurnedIn)
@@ -1192,11 +1535,13 @@ function M:OnEnable()
 
     R:Subscribe("CHANNELS_CHANGED", function()
         C_Timer.After(5, share)
+        C_Timer.After(12, function() shareQuests(true) end)
         -- ask officers for the RUIN routes published while you were away
         C_Timer.After(9, function() if R:IsConnected() then self:Send("ASK", {}, "ORG") end end)
     end)
     C_Timer.NewTicker(10, function()
         if db.route and GetTime() - lastShare >= SHARE_EVERY then share() end
+        shareQuests()
         updateTracker()
         refreshPage()
     end)
@@ -1214,6 +1559,7 @@ BINDING_NAME_RUIN_PATHFINDER_NEXT = "Pathfinder: next step"
 BINDING_NAME_RUIN_PATHFINDER_PREV = "Pathfinder: previous step"
 
 -- /path next | prev | tracker | arrow | record | rec | mark <note> | save | import | unfollow | trainer
+--       | quests | draft | skip | questshare
 SLASH_RUINPATH1 = "/path"
 SLASH_RUINPATH2 = "/pathfinder"
 SlashCmdList.RUINPATH = function(input)
@@ -1225,6 +1571,18 @@ SlashCmdList.RUINPATH = function(input)
     if msg == "trainer" then
         db.trainer = not db.trainer
         return M:Print("Trainer reminders " .. (db.trainer and "on." or "off."))
+    end
+    if msg == "quests" then M:OpenTab(); if ui.tabs then ui.tabs:Select(2) end; return end
+    if msg == "draft" then return M:DraftFromQuestie() end
+    if msg == "skip" then
+        db.skipDone = not db.skipDone
+        if db.skipDone then M:SkipDone() end
+        return M:Print("Skipping quests you've done " .. (db.skipDone and "on." or "off."))
+    end
+    if msg == "questshare" then
+        db.shareQuests = not db.shareQuests
+        if db.shareQuests then shareQuests(true) end
+        return M:Print("Sharing your quests with RUIN " .. (db.shareQuests and "on." or "off."))
     end
     if msg == "next" then M:Advance(1)
     elseif msg == "prev" then M:Advance(-1)

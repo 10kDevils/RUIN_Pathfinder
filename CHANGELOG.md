@@ -6,6 +6,21 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.3.13 — 2026-10-21
+
+3 changes since 0.3.12 (needs RUIN Core 0.3.14):
+
+1. **Routes checked against the WoW Forever quest database.** Every quest step now carries its quest ID, so steps tick off by ID. Fixes from the database:
+   - Elwynn: *Rest and Relaxation* starts with Falkhaan Isenstrider in Northshire and is handed in to Innkeeper Farley; *A Fishy Peril* comes from Remy "Two Times"; the Lost Guards chain now runs through the half-eaten body, *Discover Rolf's Fate* and *Report to Thomas*; the route ends with the *Report to Gryan Stoutmantle* breadcrumb. Added *Young Lovers*.
+   - Westfall: rebuilt along the road in from Elwynn (*Westfall Stew* is a delivery from Verna Furlbrow to Salma Saldean, then the second Stew), with *Red Leather Bandanas* and the second *People's Militia*.
+   - Dun Morogh: *Senir's Observations* and *Coldridge Valley Mail Delivery* are two quests each; added *Supplies to Tannok* and *Bitter Rivals*.
+   - Teldrassil: the second *Iverron's Antidote*, *The Road to Darnassus*, and Tarindrella's spot. Darkshore: *Bashal'Aran* (first part) and *How Big a Threat?* part two.
+   - Redridge: Forever redrew the map, so Lakeshire's people sit about 5 points further west; *Encroaching Gnolls* comes from Guard Parker on the way in and leads to *Assessing the Threat* (its accept was missing).
+   - Duskwood: *Wolves at Our Heels* is Lars's at Sven's camp, and *Sven's Revenge* ends at the mound of dirt. Loch Modan, Duskwood and Ashenvale givers moved to where they stand; *The Ashenvale Hunt* (Horde only) is gone; Hall of Thanes picks up *An Ancient Grudge* inside.
+   - "Do" steps whose spot was wrong lost it; with Questie installed the arrow finds the targets.
+2. **Questie integration.** With Questie installed, Pathfinder reads its quest database while you play (nothing of Questie's is copied): where a quest starts and ends, the nearest spot of its targets, its level and objectives. Steps without a place get one; step tooltips show Questie's details; steps for quests you've already done (or already have) tick themselves off (*Skip done quests* on the Guide, `/path skip`; stepping back with < pauses it); and *Draft from Questie* (Routes, Quests, or `/path draft`) makes a route of your zone's quests for your level.
+3. **Quests shared with RUIN.** A new *Quests* sub-tab lists your quest log with Questie's details and who in RUIN has the same quest, is ready to hand it in, or has done it; *Show on map* and *Invite them* help you team up. Members share which quests they have (and which of their route's quests they've done) when it changes and every 5 minutes; the Guide marks steps others are on ("2 in RUIN") and *RUIN on the road* counts quests in common. *Share with RUIN* on the Quests page (or `/path questshare`) turns it off.
+
 ## 0.3.12 — 2026-10-21
 
 2 changes since 0.3.11 (needs RUIN Core 0.3.14):

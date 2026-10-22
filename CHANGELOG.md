@@ -6,6 +6,12 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.3.14 — 2026-10-22
+
+1 change since 0.3.13:
+
+1. Gear the recorder writes down is named ("Got Cruel Barb") even when the game hasn't sent the item's name yet.
+
 ## 0.3.13 — 2026-10-21
 
 3 changes since 0.3.12 (needs RUIN Core 0.3.14):

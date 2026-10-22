@@ -20,7 +20,7 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Pathfinder", { version = "0.3.13" })
+local M = R:RegisterModule("Pathfinder", { version = "0.3.14" })
 local QB = ns.QB
 
 local SHARE_EVERY, PEER_TTL = 120, 300
@@ -789,7 +789,7 @@ local function onLootRecord(_, text, looter)
         local equip = (C_Item and C_Item.IsEquippableItem and C_Item.IsEquippableItem(itemString))
             or (IsEquippableItem and IsEquippableItem(itemString))
         if id and equip and (quality == nil or quality >= 2) then
-            M:RecordStep("note", nil, "Got " .. (name or ("item " .. id)), { item = id })
+            M:RecordStep("note", nil, "Got " .. (name or (R.Items and R.Items.Info(id)) or "an item"), { item = id })
         end
     end
 end

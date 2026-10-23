@@ -20,7 +20,7 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Pathfinder", { version = "0.3.14" })
+local M = R:RegisterModule("Pathfinder", { version = "0.4.0" })
 local QB = ns.QB
 
 local SHARE_EVERY, PEER_TTL = 120, 300

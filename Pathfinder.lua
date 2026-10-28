@@ -278,8 +278,17 @@ local function parseIds(text, as)
     return out
 end
 
+-- A member's record (keyed by GUID) is theirs alone: the GUID must be the
+-- sender's (for guildmates the roster says), and nobody replaces another's.
+local function ownRecord(d, sender)
+    if R.GUIDMatches and not R:GUIDMatches(sender, d.g) then return false end
+    local p = peers[d.g]
+    return not (p and p.name and R.SameName and not R:SameName(p.name, sender))
+end
+
 function M:OnQuests(d, sender)
     if type(d) ~= "table" or type(d.g) ~= "string" or d.g == R:GetPlayerGUID() then return end
+    if not ownRecord(d, sender) then return end
     local p = peers[d.g] or { route = "", step = 0, t = 0 }
     p.name = sender
     p.quests = parseIds(d.l)
@@ -360,6 +369,7 @@ end
 
 function M:OnStep(d, sender)
     if type(d.g) ~= "string" or d.g == R:GetPlayerGUID() then return end
+    if not ownRecord(d, sender) then return end
     local p = peers[d.g] or {}
     p.name, p.guild, p.route, p.step, p.t = sender, d.gu, d.r, tonumber(d.s) or 0, GetTime()
     peers[d.g] = p
@@ -896,6 +906,7 @@ function M:OnOfficial(d, sender)
     if not r then return end
     if base then r.builtin = d.bi end
     local t = tonumber(d.ot) or GetServerTime()
+    if R.SaneTime and not R:SaneTime(t) then return end            -- never in the future
     local cur = adb.official[d.id]
     if cur and (cur.official.t or 0) >= t then return end
     if adb.withdrawn and (adb.withdrawn[d.id] or 0) >= t then return end
@@ -913,7 +924,7 @@ end
 function M:OnOfficialDelete(d, sender)
     if type(d) ~= "table" or type(d.id) ~= "string" or not R:IsOfficerName(sender) then return end
     adb.withdrawn = adb.withdrawn or {}
-    adb.withdrawn[d.id] = tonumber(d.t) or GetServerTime()
+    adb.withdrawn[d.id] = (R.SaneTime and R:SaneTime(d.t)) or GetServerTime()
     if adb.official[d.id] then
         adb.official[d.id] = nil
         if db.route == d.id then db.route = nil; updateTracker() end

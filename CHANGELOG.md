@@ -6,6 +6,12 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.4.1 — 2026-10-28
+
+Security update (works best with RUIN Core 0.4.5). 1 change since 0.4.0:
+
+1. Only verified officers can publish or withdraw RUIN routes (a player's own RUIN claiming to be an officer no longer counts), route progress and quest lists are their sender's own (nobody can move the route of someone you follow), and times in the future are refused.
+
 ## 0.4.0 — 2026-10-23 · Beta 1
 
 The RUIN Gaming Companion App enters beta: every addon is now 0.4.0. Nothing changed since 0.3.14 apart from the version number. Report what you find under Settings → Feedback.

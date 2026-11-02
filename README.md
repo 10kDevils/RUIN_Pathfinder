@@ -2,7 +2,7 @@
 
 Questing routes, one step at a time, with a waypoint arrow, Questie's quest database when you have it, which RUIN members share your quests, and routes written and shared by RUIN's own route authors.
 
-Part of the **RUIN Gaming Companion App**. Requires **RUIN Core** (0.3.14 or later). Works with **Questie** when installed: Pathfinder reads Questie's quest database while you play (nothing of Questie's is copied into RUIN) for where quests start and end, where their targets are, their level and objectives, and the quests available in your zone. Route steps carry quest IDs, so this works for every built-in, recorded and shared route.
+Part of the **RUIN Gaming Companion App**. Requires **RUIN Core** (0.3.14 or later). Works with the standalone **QuestieDB** addon (contract 4, e.g. the copy that ships with Ruinous Forever Planner) or with **Questie** when installed; QuestieDB is preferred: Pathfinder reads Questie's quest database while you play (nothing of Questie's is copied into RUIN) for where quests start and end, where their targets are, their level and objectives, and the quests available in your zone. Route steps carry quest IDs, so this works for every built-in, recorded and shared route.
 
 ## The experience
 - **Where it lives:** the Pathfinder tab in the RUIN window (Guide, Quests, Routes, Record), the on-screen tracker, a pin on the map, `/path`, and key bindings for next and previous step.

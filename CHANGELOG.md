@@ -4,7 +4,7 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## Unreleased
 
-(nothing yet)
+1. **Reads QuestieDB.** When the standalone QuestieDB addon is installed (contract 4, for example the copy that ships with Ruinous Forever Planner), Pathfinder uses it for quest givers, hand-ins, objective places, quest levels and drafted routes, without needing Questie itself. Questie's own database is still used when QuestieDB isn't there. The Quests page says which one it reads.
 
 ## 0.4.1 — 2026-10-28
 

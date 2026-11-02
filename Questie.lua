@@ -1,5 +1,7 @@
 -- RUIN Pathfinder: Questie bridge
--- When Questie is installed, Pathfinder reads its quest database at run time
+-- When the standalone QuestieDB addon (contract 4, e.g. the one that ships
+-- with Ruinous Forever Planner) is installed, Pathfinder reads it; otherwise,
+-- when Questie is installed, Pathfinder reads Questie's quest database at run time
 -- (nothing of Questie's data is copied into RUIN): where a quest starts, where
 -- it is handed in, where its targets are, its level and objectives, which
 -- quests you have finished, and which quests are available in your zone.
@@ -22,16 +24,100 @@ ns.QB = QB
 local cache = { quest = {}, spot = {}, miss = {} }
 local modules
 
+-- QuestieDB (the standalone database addon, contract 4) when it's installed:
+-- the same shape as Questie's own modules, so everything below reads either.
+local function readMap(text)
+    if type(text) == "table" then return text end
+    if type(text) ~= "string" then return nil end
+    local load = loadstring or load
+    local okc, chunk = pcall(load, text)
+    if not okc or type(chunk) ~= "function" then return nil end
+    local okr, t = pcall(chunk)
+    return okr and type(t) == "table" and t or nil
+end
+
+local function zoneMaps(lib)
+    local support = type(lib.Support) == "table" and type(lib.Support.Get) == "function" and lib.Support.Get("ZoneDB")
+    local private = type(support) == "table" and support.private or {}
+    local function merged(baseKey, overrideKey)
+        local out = {}
+        for k, v in pairs(readMap(private[baseKey]) or {}) do out[k] = v end
+        for k, v in pairs(readMap(private[overrideKey]) or {}) do out[k] = v end
+        return out
+    end
+    return merged("areaIdToUiMapId", "areaIdToUiMapIdOverride"), merged("uiMapIdToAreaId", "uiMapIdToAreaIdOverride")
+end
+
+local OBJECTIVE_KINDS = { "monster", "object", "item" }     -- QuestieDB's positional objective groups 1-3
+
+local function fromQuestieDB()
+    local lib = rawget(_G, "LibQuestieDB")
+    if type(lib) ~= "table" or type(lib.RequireContract) ~= "function" then return nil end
+    local okc, compatible = pcall(lib.RequireContract, 4)
+    if not okc or not compatible then return nil end
+    local Q, N, O, I = lib.Quest, lib.Npc, lib.Object, lib.Item
+    if type(Q) ~= "table" or type(Q.Get) ~= "function" or type(Q.Exists) ~= "function" then return nil end
+    local toMap, toArea = zoneMaps(lib)
+    local function exists(E, id) return type(E) == "table" and type(id) == "number" and E.Exists(id) end
+    local DB = {}
+    function DB.GetQuest(id)
+        if not exists(Q, id) then return nil end
+        local starts, ends = Q.Get(id, "startedBy") or {}, Q.Get(id, "finishedBy") or {}
+        local data = {}
+        local objectives = Q.Get(id, "objectives")
+        for group, kind in ipairs(OBJECTIVE_KINDS) do
+            local list = type(objectives) == "table" and objectives[group]
+            for _, o in ipairs(type(list) == "table" and list or {}) do
+                if type(o) == "table" and tonumber(o[1]) then data[#data + 1] = { Type = kind, Id = tonumber(o[1]), Text = type(o[2]) == "string" and o[2] or nil } end
+            end
+        end
+        return { name = Q.Get(id, "name"), level = Q.Get(id, "questLevel"), requiredLevel = Q.Get(id, "requiredLevel"),
+                 Starts = { NPC = starts[1], GameObject = starts[2] }, Finisher = { NPC = ends[1], GameObject = ends[2] },
+                 ObjectiveData = data, objectivesText = Q.Get(id, "objectivesText"), zoneOrSort = Q.Get(id, "zoneOrSort") }
+    end
+    function DB:GetNPC(id) if exists(N, id) then return { name = N.Get(id, "name"), spawns = N.Get(id, "spawns") } end end
+    function DB:GetObject(id) if exists(O, id) then return { name = O.Get(id, "name"), spawns = O.Get(id, "spawns") } end end
+    function DB:GetItem(id) if exists(I, id) then return { name = I.Get(id, "name"), npcDrops = I.Get(id, "npcDrops"), objectDrops = I.Get(id, "objectDrops") } end end
+    DB.QuestPointers = type(Q.GetAllIds) == "function" and Q.GetAllIds(true) or nil
+    function DB.QueryQuestSingle(id, field) if exists(Q, id) then return Q.Get(id, field) end end
+    -- Class and race masks (bit n-1 for class or race ID n); other requirements are the game's to judge.
+    function DB.IsDoable(id)
+        if not exists(Q, id) then return false end
+        local function allowed(mask, unitFn)
+            mask = tonumber(mask)
+            if not mask or mask == 0 or not unitFn then return true end
+            local _, _, n = unitFn("player")
+            n = tonumber(n)
+            if not n then return true end
+            return math.floor(mask / 2 ^ (n - 1)) % 2 == 1
+        end
+        return allowed(Q.Get(id, "requiredClasses"), UnitClass) and allowed(Q.Get(id, "requiredRaces"), UnitRace)
+    end
+    local Zone = {}
+    function Zone:GetUiMapIdByAreaId(areaId) return toMap[areaId] end
+    function Zone:GetAreaIdByUiMapId(uiMap) return toArea[uiMap] end
+    return { DB = DB, Zone = Zone, source = "QuestieDB" }
+end
+
 local function db()
     if modules ~= nil then return modules or nil end
+    -- The standalone QuestieDB addon first, then Questie's own database.
+    local ok, fromLib = pcall(fromQuestieDB)
+    if ok and fromLib then modules = fromLib; return modules end
     if type(QuestieLoader) ~= "table" or type(QuestieLoader.ImportModule) ~= "function" then return nil end
-    local ok, DB = pcall(QuestieLoader.ImportModule, QuestieLoader, "QuestieDB")
+    local ok1, DB = pcall(QuestieLoader.ImportModule, QuestieLoader, "QuestieDB")
     local ok2, ZoneDB = pcall(QuestieLoader.ImportModule, QuestieLoader, "ZoneDB")
-    if not (ok and type(DB) == "table" and type(DB.GetQuest) == "function" and ok2 and type(ZoneDB) == "table") then
+    if not (ok1 and type(DB) == "table" and type(DB.GetQuest) == "function" and ok2 and type(ZoneDB) == "table") then
         return nil                                -- not ready yet; try again on the next call
     end
-    modules = { DB = DB, Zone = ZoneDB }
+    modules = { DB = DB, Zone = ZoneDB, source = "Questie" }
     return modules
+end
+
+-- "QuestieDB" or "Questie" (whichever Pathfinder reads), or nil.
+function QB.Source()
+    local m = db()
+    return m and m.source or nil
 end
 
 -- Is Questie installed and its database ready?

@@ -343,7 +343,7 @@ end
 local function questTip(tip, qid)
     local info = QB.Quest(qid)
     if info then
-        tip:AddLine(("Questie: level %s%s"):format(tostring(info.level or "?"), info.req and (", needs " .. info.req) or ""), 0.55, 0.72, 0.85)
+        tip:AddLine(((QB.Source() or "Questie") .. ": level %s%s"):format(tostring(info.level or "?"), info.req and (", needs " .. info.req) or ""), 0.55, 0.72, 0.85)
         if info.starts[1] then tip:AddLine("Starts: " .. info.starts[1], 0.8, 0.8, 0.8) end
         if info.ends[1] then tip:AddLine("Ends: " .. info.ends[1], 0.8, 0.8, 0.8) end
         for i = 1, math.min(3, #info.objectives) do tip:AddLine("- " .. info.objectives[i], 0.8, 0.8, 0.8, true) end
@@ -1305,11 +1305,11 @@ local function refreshQuests()
         ui.qInvite:SetEnabled(#have > 0)
     end
     if QB.Has() then
-        ui.qzHead:SetText(C.good .. "Questie found|r")
-        ui.qzText:SetText(C.dim .. "Givers, hand-ins and targets come from Questie. Draft a route of this zone's quests for your level.|r")
+        ui.qzHead:SetText(C.good .. (QB.Source() or "Questie") .. " found|r")
+        ui.qzText:SetText(C.dim .. "Givers, hand-ins and targets come from " .. (QB.Source() or "Questie") .. ". Draft a route of this zone's quests for your level.|r")
     else
         ui.qzHead:SetText(C.dim .. "Questie not installed|r")
-        ui.qzText:SetText(C.dim .. "Routes and sharing work without it. With Questie, every step gets a place and you can draft routes.|r")
+        ui.qzText:SetText(C.dim .. "Routes and sharing work without it. With Questie or QuestieDB, every step gets a place and you can draft routes.|r")
     end
     ui.qDraft:SetEnabled(QB.Has())
 end

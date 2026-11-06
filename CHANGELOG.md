@@ -6,6 +6,18 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.5.1 — 2026-11-05
+
+Routes updated from the WoW Forever launch snapshot (2026-11-05, build 1.60.1.70790; ForeverChanges and ForeverDB):
+- Elwynn 1-10: the new level-1 quests Wabbit Pelts and Waskily Wabbits! (accept, do and turn in in Northshire), and a note for the new Paladin and Warrior class letters.
+- Zephras Isle 1-12: Welcome! is Zephras Isle's own quest (92454, was 5805), and the new Coming of Age quest.
+- Teldrassil 1-12: a note for the new night elf quest The Goddess Provides.
+- Hall of Thanes: levels 13-18 and the bosses in order, with what to watch for.
+- Westfall: Ruins of Lordaeron (15-20, Tirisfal) as an optional detour.
+- Wetlands: Excavation Site is levels 24-31, about 7 Alliance quests worth about 39,300 XP; the Relic Guardian's Titan Relic starts a chain.
+- Wetlands, Duskwood and Ashenvale: at 28+, City of Dalaran (28-33, Alterac Mountains) and its Alliance attunement from Emissary Jacques in Southshore.
+- The Routes page shows how many quests WoW Forever has in a route's zone, and their levels, when you hover the route.
+
 ## 0.5.0 — 2026-11-02
 
 RUIN 0.5.0: every addon in the suite moves to 0.5.0 together. No changes to Pathfinder since 0.4.2.

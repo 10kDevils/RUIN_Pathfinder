@@ -20,7 +20,7 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Pathfinder", { version = "0.5.0" })
+local M = R:RegisterModule("Pathfinder", { version = "0.5.1" })
 local QB = ns.QB
 
 local SHARE_EVERY, PEER_TTL = 120, 300
@@ -1385,9 +1385,17 @@ local function buildLibrary(page)
         row.text:SetText(("%s%s%s|r  %s%s · %d steps · %s|r%s"):format(official and (OFFICER_ICON .. " ") or "", C.white, r.title,
             C.dim, r.faction or "Any", #r.steps, who, db.route == r.id and ("  " .. C.good .. "current|r") or "")
             .. (isSample(r.id) and ("  " .. W.TagText("Sample", "Classic sample")) or ""))
-        row.tip = official and function(tip)
-            tip:AddLine(OFFICER_ICON .. " RUIN route", 1, 0.82, 0)
-            tip:AddLine(officialTip(r), 1, 1, 1, true)
+        -- how many quests WoW Forever has in the route's zone (ForeverDB, launch)
+        local zq = r.zone and ns.ZoneQuests and ns.ZoneQuests[r.zone]
+        row.tip = (official or zq) and function(tip)
+            if official then
+                tip:AddLine(OFFICER_ICON .. " RUIN route", 1, 0.82, 0)
+                tip:AddLine(officialTip(r), 1, 1, 1, true)
+            end
+            if zq then
+                tip:AddLine(("%s: %d quests in WoW Forever, levels %s"):format(r.zone, zq[1], zq[2]), 0.8, 0.85, 0.95)
+                tip:AddLine("Quest count from ForeverDB at launch (Nov 5, 2026).", 0.6, 0.6, 0.6, true)
+            end
         end or nil
         row.add:Hide()
         -- officers publish their routes (or the built-in ones) to everyone, and withdraw RUIN routes

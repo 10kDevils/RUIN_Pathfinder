@@ -13,7 +13,9 @@
 -- Alliance 1-30 routes checked against the WoW Forever quest database (beta
 -- 1.60.1, merged from Wowhead Forever, wowforeverquests.com, foreverchanges.pro
 -- and wowforever.ninja), cross-checked with QuestieDB's Forever data (nothing of
--- Questie's is copied here). Givers and turn-ins sit where the Forever database
+-- Questie's is copied here). Updated from the launch snapshot of 2026-11-05
+-- (build 1.60.1.70790: ForeverChanges, ForeverDB): the new level-1 quests,
+-- Excavation Site and City of Dalaran pointers, zone quest counts. Givers and turn-ins sit where the Forever database
 -- puts them; Redridge uses Forever's redrawn map. "Do" steps without a place get
 -- one from Questie in game. Record refinements in game (Pathfinder > Record).
 local ADDON, ns = ...
@@ -35,21 +37,37 @@ local ASHENVALE = "Ashenvale"
 local STORMWIND = "Stormwind City"
 local DARNASSUS = "Darnassus"
 
+-- How many quests WoW Forever has in each Alliance zone, and their levels
+-- (ForeverDB, 2026-11-05). Shown on the Routes page for routes with a zone.
+ns.ZoneQuests = {
+    [ELWYNN] = { 74, "2-10" }, [DUNMOR] = { 83, "4-30" }, [TELDRAS] = { 71, "4-12" }, [ZEPHRAS] = { 92, "3-12" },
+    [LOCH] = { 43, "10-20" }, [WESTFALL] = { 37, "10-44" }, [DARKSH] = { 73, "12-21" }, [REDRIDGE] = { 39, "14-26" },
+    [ASHENVALE] = { 75, "20-32" }, [WETLANDS] = { 63, "22-31" }, [DUSKWOOD] = { 78, "24-35" }, [STORMWIND] = { 79, "22-60" },
+    [IRONFORGE] = { 90, "30-60" }, [DARNASSUS] = { 21, "11-60" },
+}
+
 ns.Routes = {
 
     {
-        id = "elwynn_1_10", title = "Elwynn 1-10", faction = "Alliance", author = "RUIN+DB",
+        id = "elwynn_1_10", title = "Elwynn 1-10", faction = "Alliance", author = "RUIN+DB", zone = ELWYNN,
         steps = {
             { act = "accept",   quest = "A Threat Within", qid = 783, text = "Deputy Willem outside Northshire Abbey.", at = at(ELWYNN, 48.2, 42.9) },
             { act = "turnin",   quest = "A Threat Within", qid = 783, text = "Marshal McBride inside the Abbey.", at = at(ELWYNN, 48.9, 41.6) },
             { act = "accept",   quest = "Kobold Camp Cleanup", qid = 7, text = "Marshal McBride.", at = at(ELWYNN, 48.9, 41.6) },
+            { act = "accept",   quest = "Wabbit Pelts", qid = 7962, text = "New in WoW Forever (level 1). Questie shows the giver in Northshire." },
+            { act = "accept",   quest = "Waskily Wabbits!", qid = 7961, text = "New in WoW Forever (level 1), same giver." },
             { act = "accept",   quest = "Eagan Peltskinner", qid = 5261, text = "Deputy Willem outside.", at = at(ELWYNN, 48.2, 42.9) },
             { act = "turnin",   quest = "Eagan Peltskinner", qid = 5261, text = "Eagan behind the Abbey.", at = at(ELWYNN, 48.9, 40.2) },
             { act = "accept",   quest = "Wolves Across the Border", qid = 33, text = "Eagan Peltskinner.", at = at(ELWYNN, 48.9, 40.2) },
             { act = "complete", quest = "Wolves Across the Border", qid = 33, text = "Kill wolves in the woods near the Abbey.", at = at(ELWYNN, 46.4, 38.7) },
             { act = "complete", quest = "Kobold Camp Cleanup", qid = 7, text = "Kobold Vermin north-west of the Abbey.", at = at(ELWYNN, 47.6, 34.7) },
+            { act = "complete", quest = "Wabbit Pelts", qid = 7962, text = "Rabbits around Northshire. Questie marks where." },
+            { act = "complete", quest = "Waskily Wabbits!", qid = 7961, text = "Rabbits around Northshire, together with Wabbit Pelts." },
             { act = "turnin",   quest = "Wolves Across the Border", qid = 33, text = "Eagan Peltskinner.", at = at(ELWYNN, 48.9, 40.2) },
             { act = "turnin",   quest = "Kobold Camp Cleanup", qid = 7, text = "Marshal McBride.", at = at(ELWYNN, 48.9, 41.6) },
+            { act = "turnin",   quest = "Wabbit Pelts", qid = 7962, text = "Back to the giver." },
+            { act = "turnin",   quest = "Waskily Wabbits!", qid = 7961, text = "Back to the giver." },
+            { act = "note",     text = "New level-1 class letters in WoW Forever: Paladins get A Difficult Path, Warriors A Scribbled Letter. Take yours when it's offered; skip this note otherwise." },
             { act = "accept",   quest = "Investigate Echo Ridge", qid = 15, text = "Marshal McBride.", at = at(ELWYNN, 48.9, 41.6) },
             { act = "accept",   quest = "Brotherhood of Thieves", qid = 18, text = "Deputy Willem.", at = at(ELWYNN, 48.2, 42.9) },
             { act = "complete", quest = "Investigate Echo Ridge", qid = 15, text = "Kobold Workers in Echo Ridge Mine.", at = at(ELWYNN, 47.6, 31.5) },
@@ -116,7 +134,7 @@ ns.Routes = {
     },
 
     {
-        id = "westfall_10_15", title = "Westfall 10-15", faction = "Alliance", author = "RUIN+DB",
+        id = "westfall_10_15", title = "Westfall 10-15", faction = "Alliance", author = "RUIN+DB", zone = WESTFALL,
         steps = {
             { act = "go",       text = "Follow the road west out of Elwynn; the Furlbrow farm is the first stop.", at = at(WESTFALL, 59.9, 19.4) },
             { act = "accept",   quest = "Westfall Stew", qid = 36, text = "Verna Furlbrow at the Furlbrow farm.", at = at(WESTFALL, 59.9, 19.4) },
@@ -144,12 +162,12 @@ ns.Routes = {
             { act = "accept",   quest = "The People's Militia", qid = 13, text = "Gryan Stoutmantle (second part).", at = at(WESTFALL, 56.3, 47.5) },
             { act = "complete", quest = "The People's Militia", qid = 13, text = "Defias Pillagers and Looters at the Dagger Hills and Moonbrook outskirts.", at = at(WESTFALL, 45.0, 70.0) },
             { act = "turnin",   quest = "The People's Militia", qid = 13, text = "Gryan Stoutmantle.", at = at(WESTFALL, 56.3, 47.5) },
-            { act = "note",     text = "At 14 and up start Cozy Sleeping Bag at the Burned-Out Remains (Alexston Farmstead, 37.4, 50.6). Next: Redridge 15-22, or Hall of Thanes 13-18 with a group." },
+            { act = "note",     text = "At 14 and up start Cozy Sleeping Bag at the Burned-Out Remains (Alexston Farmstead, 37.4, 50.6). Next: Redridge 15-22, or Hall of Thanes 13-18 with a group. Optional at 15-20: Ruins of Lordaeron above Undercity in Tirisfal (a long trip; most of its quests are Horde's)." },
         },
     },
 
     {
-        id = "dun_morogh_1_12", title = "Dun Morogh 1-12", faction = "Alliance", author = "RUIN+DB",
+        id = "dun_morogh_1_12", title = "Dun Morogh 1-12", faction = "Alliance", author = "RUIN+DB", zone = DUNMOR,
         steps = {
             { act = "accept",   quest = "Dwarven Outfitters", qid = 179, text = "Sten Stoutarm in Coldridge Valley.", at = at(DUNMOR, 29.9, 71.2) },
             { act = "complete", quest = "Dwarven Outfitters", qid = 179, text = "Kill wolves for Tough Wolf Meat.", at = at(DUNMOR, 30.0, 73.0) },
@@ -203,8 +221,9 @@ ns.Routes = {
     },
 
     {
-        id = "teldrassil_1_12", title = "Teldrassil 1-12", faction = "Alliance", author = "RUIN+DB",
+        id = "teldrassil_1_12", title = "Teldrassil 1-12", faction = "Alliance", author = "RUIN+DB", zone = TELDRAS,
         steps = {
+            { act = "note",     text = "Night elves: WoW Forever adds a level-1 quest, The Goddess Provides. Take it in Shadowglen when it's offered (Questie shows the giver)." },
             { act = "accept",   quest = "The Balance of Nature", qid = 456, text = "Conservator Ilthalaine in Shadowglen.", at = at(TELDRAS, 58.7, 44.3) },
             { act = "complete", quest = "The Balance of Nature", qid = 456, text = "Young Nightsabers and Young Thistle Boars.", at = at(TELDRAS, 60.0, 43.0) },
             { act = "turnin",   quest = "The Balance of Nature", qid = 456, text = "Conservator Ilthalaine.", at = at(TELDRAS, 58.7, 44.3) },
@@ -259,15 +278,18 @@ ns.Routes = {
     },
 
     {
-        id = "zephras_1_12", title = "Zephras Isle 1-12", faction = "Alliance", author = "RUIN+DB",
+        id = "zephras_1_12", title = "Zephras Isle 1-12", faction = "Alliance", author = "RUIN+DB", zone = ZEPHRAS,
         steps = {
             { act = "note",     text = "Skyborne starter. Accept every quest at each village hub before leaving. Exact pins vary; follow on-screen markers and Questie if installed." },
-            { act = "accept",   quest = "Welcome!", qid = 5805, text = "Starting area welcome.", at = at(ZEPHRAS, 50.0, 50.0) },
+            { act = "accept",   quest = "Welcome!", qid = 92454, text = "Starting area welcome (Zephras Isle's own quest).", at = at(ZEPHRAS, 50.0, 50.0) },
+            { act = "accept",   quest = "Coming of Age", qid = 92460, text = "New level-1 quest on Zephras Isle. Questie shows the giver." },
             { act = "accept",   quest = "Harmony in Balance", qid = 92461, text = "Early hub.", at = at(ZEPHRAS, 50.0, 50.0) },
             { act = "accept",   quest = "Infestation Investigation", qid = 92462, text = "Early hub.", at = at(ZEPHRAS, 50.0, 50.0) },
             { act = "complete", quest = "Harmony in Balance", qid = 92461, text = "Starting island objectives.", at = at(ZEPHRAS, 50.0, 50.0) },
+            { act = "complete", quest = "Coming of Age", qid = 92460, text = "Questie marks the objective." },
             { act = "complete", quest = "Infestation Investigation", qid = 92462, text = "Clear infestation mobs nearby.", at = at(ZEPHRAS, 50.0, 50.0) },
             { act = "turnin",   quest = "Harmony in Balance", qid = 92461, text = "Return to hub.", at = at(ZEPHRAS, 50.0, 50.0) },
+            { act = "turnin",   quest = "Coming of Age", qid = 92460, text = "Back to the giver." },
             { act = "turnin",   quest = "Infestation Investigation", qid = 92462, text = "Return to hub.", at = at(ZEPHRAS, 50.0, 50.0) },
             { act = "accept",   quest = "The Cirrusfly Queen", qid = 92463, text = "Next wave.", at = at(ZEPHRAS, 50.0, 50.0) },
             { act = "accept",   quest = "Agitators", qid = 92465, text = "Next wave.", at = at(ZEPHRAS, 50.0, 50.0) },
@@ -285,7 +307,7 @@ ns.Routes = {
     {
         id = "hall_of_thanes", title = "Hall of Thanes 13-18", faction = "Alliance", author = "RUIN+DB",
         steps = {
-            { act = "note",     text = "GROUP recommended. Prep in Dun Morogh before entering." },
+            { act = "note",     text = "GROUP recommended, levels 13-18. Prep in Dun Morogh before entering. Bosses in order: Faldrim Anvilmar (remove his curse from the tank, interrupt Mind Blast), Magmatus (move out of Combust, interrupt the summoners' Fireballs), Plunder, Durgen Dirgehammer. Codex's Journal has the tips and loot." },
             { act = "accept",   quest = "Nip 'Em in the Bud", qid = 96390, text = "Earthseer Farsen in Dun Morogh (~64.8, 58.4).", at = at(DUNMOR, 64.8, 58.4) },
             { act = "complete", quest = "Nip 'Em in the Bud", qid = 96390, text = "Kill Dark Iron Spies near Ironband's / Gol'Bolar (~76-78, 60). Loot the Dark Iron Map.", at = at(DUNMOR, 77.0, 61.0) },
             { act = "turnin",   quest = "Nip 'Em in the Bud", qid = 96390, text = "Earthseer Farsen.", at = at(DUNMOR, 64.8, 58.4) },
@@ -350,7 +372,7 @@ ns.Routes = {
     },
 
     {
-        id = "loch_modan_10_18", title = "Loch Modan 10-18", faction = "Alliance", author = "RUIN+DB",
+        id = "loch_modan_10_18", title = "Loch Modan 10-18", faction = "Alliance", author = "RUIN+DB", zone = LOCH,
         steps = {
             { act = "note",     text = "Enter from Dun Morogh via South Gate or from Ironforge. Head to Thelsamar first." },
             { act = "go",       text = "Arrive Thelsamar. Grab flight path. Accept everything at the inn and around the town square.", at = at(LOCH, 35.0, 47.0) },
@@ -397,7 +419,7 @@ ns.Routes = {
     },
 
     {
-        id = "darkshore_11_18", title = "Darkshore 11-18", faction = "Alliance", author = "RUIN+DB",
+        id = "darkshore_11_18", title = "Darkshore 11-18", faction = "Alliance", author = "RUIN+DB", zone = DARKSH,
         steps = {
             { act = "note",     text = "Arrive Auberdine by boat from Rut'theran. Grab flight path and set hearth if desired." },
             { act = "go",       text = "Auberdine hub — accept every quest on the docks, inn, and north/south edges before leaving town.", at = at(DARKSH, 37.0, 43.0) },
@@ -437,7 +459,7 @@ ns.Routes = {
     },
 
     {
-        id = "redridge_15_22", title = "Redridge 15-22", faction = "Alliance", author = "RUIN+DB",
+        id = "redridge_15_22", title = "Redridge 15-22", faction = "Alliance", author = "RUIN+DB", zone = REDRIDGE,
         steps = {
             { act = "note",     text = "Enter from Elwynn (east road) or Three Corners. Lakeshire is the hub — accept all before leaving town." },
             { act = "accept",   quest = "Encroaching Gnolls", qid = 244, text = "Guard Parker on the road at Three Corners, on your way in.", at = at(REDRIDGE, 10.2, 71.5) },
@@ -468,7 +490,7 @@ ns.Routes = {
     },
 
     {
-        id = "duskwood_20_28", title = "Duskwood 20-28", faction = "Alliance", author = "RUIN+DB",
+        id = "duskwood_20_28", title = "Duskwood 20-28", faction = "Alliance", author = "RUIN+DB", zone = DUSKWOOD,
         steps = {
             { act = "note",     text = "Enter from Redridge (south) or Elwynn/Westfall. Darkshire is the hub — accept all town quests first." },
             { act = "go",       text = "Darkshire. Flight path, inn, and every quest giver in town.", at = at(DUSKWOOD, 74.0, 46.0) },
@@ -499,11 +521,12 @@ ns.Routes = {
             { act = "turnin",   quest = "The Totem of Infliction", qid = 101, text = "Madame Eva.", at = at(DUSKWOOD, 75.8, 45.3) },
             { act = "complete", quest = "Look to the Stars", qid = 174, text = "Work Viktori's instrument parts (Mary, ogre, etc.) as the chain steps require.", at = at(DUSKWOOD, 79.8, 48.0) },
             { act = "note",     text = "Finish Night Watch parts, Stalvan chain (multi-zone), and remaining Raven Hill / Worgen content. Duskwood pairs well with Wetlands runs and Deadmines/Stockade at the low end of the bracket." },
+            { act = "note",     text = "At 28 and up: City of Dalaran (levels 28-33, the violet dome in Alterac Mountains). Alliance attunement: An Alarming Request from Emissary Jacques in Southshore (guides differ on the exact chain); one attuned player is often enough for the group. Its 4 quests are worth about 37,600 XP, about a level at 28. Codex's Journal has the bosses and loot." },
         },
     },
 
     {
-        id = "wetlands_20_30", title = "Wetlands 20-30", faction = "Alliance", author = "RUIN+DB",
+        id = "wetlands_20_30", title = "Wetlands 20-30", faction = "Alliance", author = "RUIN+DB", zone = WETLANDS,
         steps = {
             { act = "note",     text = "Enter from Loch Modan (north tunnel) or boat to Menethil Harbor. Menethil is the hub." },
             { act = "go",       text = "Menethil Harbor. Flight path, inn, and all dock/hall quests.", at = at(WETLANDS, 10.0, 56.0) },
@@ -525,12 +548,13 @@ ns.Routes = {
             { act = "turnin",   quest = "Tramping Paws", qid = 276, text = "Rethiel — continue Fire Taboo / related if offered.", at = at(WETLANDS, 56.3, 40.4) },
             { act = "complete", quest = "Digging Through the Ooze", qid = 470, text = "Sida's bag from oozes near the excavated / ironbeard areas.", at = at(WETLANDS, 44.0, 26.0) },
             { act = "turnin",   quest = "Digging Through the Ooze", qid = 470, text = "Sida in Menethil.", at = at(WETLANDS, 11.8, 58.0) },
-            { act = "note",     text = "Whelgar's Excavation, raptor nest, and Excavation Site dungeon quests open in the mid/high 20s. Do the new Forever Excavation Site dungeon with all quests once you hit its range (~24-29). Remaining Menethil fleet/curse chain is worth finishing." },
+            { act = "note",     text = "Whelgar's Excavation, raptor nest, and Excavation Site dungeon quests open in the mid/high 20s. Do the new Forever Excavation Site dungeon (levels 24-31, above Whelgar's Excavation) with all its quests: about 7 Alliance quests worth about 39,300 XP. The last boss, the Relic Guardian, drops the Titan Relic that starts a quest chain. Remaining Menethil fleet/curse chain is worth finishing." },
+            { act = "note",     text = "At 28 and up: City of Dalaran (levels 28-33, the violet dome in Alterac Mountains). Alliance attunement: An Alarming Request from Emissary Jacques in Southshore (guides differ on the exact chain); one attuned player is often enough for the group. Its 4 quests are worth about 37,600 XP, about a level at 28. Codex's Journal has the bosses and loot." },
         },
     },
 
     {
-        id = "ashenvale_18_28", title = "Ashenvale 18-28", faction = "Alliance", author = "RUIN+DB",
+        id = "ashenvale_18_28", title = "Ashenvale 18-28", faction = "Alliance", author = "RUIN+DB", zone = ASHENVALE,
         steps = {
             { act = "note",     text = "Enter from Darkshore (south road) or boat/flight. Astranaar is the main Alliance hub." },
             { act = "go",       text = "Astranaar. Flight path and every quest in town.", at = at(ASHENVALE, 36.0, 50.0) },
@@ -544,6 +568,7 @@ ns.Routes = {
             { act = "turnin",   quest = "The Zoram Strand", qid = 1008, text = "Shindrell Swiftfire in Astranaar.", at = at(ASHENVALE, 34.7, 48.8) },
             { act = "complete", quest = "Raene's Cleansing", qid = 991, text = "Work Raene's multi-part chain (dartol's rod, elemental, furbolg) as steps open — high XP.", at = at(ASHENVALE, 50.0, 55.0) },
             { act = "note",     text = "Maestra's Post, Falathim, and eastern outposts add more density. Blackfathom Deeps quests become relevant mid-bracket. Rotate with Stonetalon or return to EK dungeons as needed." },
+            { act = "note",     text = "At 28 and up: City of Dalaran (levels 28-33, the violet dome in Alterac Mountains). Alliance attunement: An Alarming Request from Emissary Jacques in Southshore (guides differ on the exact chain); one attuned player is often enough for the group. Its 4 quests are worth about 37,600 XP, about a level at 28. Codex's Journal has the bosses and loot." },
         },
     },
 }

@@ -572,3 +572,51 @@ ns.Routes = {
         },
     },
 }
+
+---------------------------------------------------------------------------
+-- Dungeon quest routes: which quests belong to each dungeon. The quests
+-- themselves (names, givers, levels, factions, prerequisites) come from
+-- Questie or QuestieDB in game; this list only says where to look: the
+-- dungeon's zone (area) IDs, and quests filed under a city or zone that
+-- still belong to the run (from the WoW Forever dungeon lists,
+-- foreverchanges.pro, Oct 2026). Dungeons with no published quests yet
+-- (Krol'dok Stronghold, Alcaz Prison, Blackmaw Hold, Shaper's Terrace) are
+-- listed so they fill in when the database does.
+---------------------------------------------------------------------------
+ns.DungeonQuestIndex = {
+    { name = "Hall of Thanes", levels = "13-18", areas = { 16919 }, extra = { 96395, 98423 } },
+    { name = "Ragefire Chasm", levels = "13-18", areas = { 2437 }, extra = {  } },
+    { name = "Ruins of Lordaeron", levels = "15-20", areas = { 16611 }, extra = {  } },
+    { name = "The Deadmines", levels = "17-26", areas = { 1581, 10029 }, extra = {  } },
+    { name = "Wailing Caverns", levels = "17-24", areas = { 718 }, extra = {  } },
+    { name = "Shadowfang Keep", levels = "22-30", areas = { 209, 10014, 10015, 10016, 10017, 10018, 10019 }, extra = {  } },
+    { name = "Blackfathom Deeps", levels = "24-32", areas = { 719, 10020, 10021 }, extra = {  } },
+    { name = "The Stockade", levels = "24-32", areas = { 717 }, extra = {  } },
+    { name = "Excavation Site: Wetlands", levels = "26-31", areas = { 16732 }, extra = {  } },
+    { name = "City of Dalaran", levels = "28-33", areas = { 16544 }, extra = {  } },
+    { name = "Gnomeregan", levels = "29-38", areas = { 721, 133, 10030, 10031, 10032 }, extra = {  } },
+    { name = "Razorfen Kraul", levels = "29-38", areas = { 491, 1717 }, extra = {  } },
+    { name = "Scarlet Monastery", levels = "30-46", areas = { 796, 6109, 6386, 10008, 10009, 10010 }, extra = {  } },
+    { name = "The Drowned City", levels = "35-40", areas = {  }, extra = { 96774 } },
+    { name = "Razorfen Downs", levels = "37-46", areas = { 722 }, extra = {  } },
+    { name = "Krol'dok Stronghold", levels = "40-45", areas = {  }, extra = {  } },
+    { name = "Uldaman", levels = "41-51", areas = { 1337, 1517, 10033 }, extra = {  } },
+    { name = "Zul'Farrak", levels = "44-54", areas = { 1176, 978 }, extra = {  } },
+    { name = "Maraudon", levels = "46-55", areas = { 2100, 10000 }, extra = {  } },
+    { name = "Alcaz Prison", levels = "48-53", areas = {  }, extra = {  } },
+    { name = "Sunken Temple", levels = "50-60", areas = { 1477, 1417 }, extra = { 4146 } },
+    { name = "Blackrock Depths", levels = "52-60", areas = { 1584, 1585 }, extra = {  } },
+    { name = "Dire Maul", levels = "54-60", areas = { 2557, 10022, 10023, 10024, 10025, 10026, 10027 }, extra = { 7463 } },
+    { name = "Blackmaw Hold", levels = "55-60", areas = {  }, extra = {  } },
+    { name = "Blackrock Spire", levels = "55-60", areas = { 1583, 10003, 10004, 10005, 10006, 10007 }, extra = {  } },
+    { name = "Scholomance", levels = "58-60", areas = { 2057, 10011, 10012, 10013, 6066, 10077, 10078, 10079 }, extra = {  } },
+    { name = "Shaper's Terrace", levels = "58-60", areas = {  }, extra = {  } },
+    { name = "Stratholme", levels = "58-60", areas = { 2017, 10001 }, extra = {  } },
+    { name = "Blackwing Lair", levels = "60-60", areas = { 2677 }, extra = {  }, raid = true },
+    { name = "Molten Core", levels = "60-60", areas = { 2717 }, extra = {  }, raid = true },
+    { name = "Naxxramas", levels = "60-60", areas = { 3456, 10062, 10063, 10064, 10065, 10066 }, extra = {  }, raid = true },
+    { name = "Onyxia's Lair", levels = "60-60", areas = { 2159 }, extra = {  }, raid = true },
+    { name = "Ruins of Ahn'Qiraj", levels = "60-60", areas = { 3429 }, extra = {  }, raid = true },
+    { name = "Temple of Ahn'Qiraj", levels = "60-60", areas = { 3428, 10040, 10041 }, extra = {  }, raid = true },
+    { name = "Zul'Gurub", levels = "60-60", areas = { 1977 }, extra = {  }, raid = true },
+}

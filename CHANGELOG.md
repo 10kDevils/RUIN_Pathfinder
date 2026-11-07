@@ -6,7 +6,10 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
-## 0.5.1 — 2026-11-05
+## 0.5.1 — 2026-11-06
+
+- Dungeon quest routes: a route through every quest a dungeon has for your race and class, with the quests that unlock them. It runs the unlocking quests in order first (Underground Map before Old Ironforge Incursion; the Defias Brotherhood and Westfall chains before the Deadmines), then the pick-ups nearest first, then the run (quests picked up inside, quest items and what to do), then the hand-ins. Delivery quests get no separate "Do" step, and quests that start from an item say what drops it. Built while you play from Questie or QuestieDB (nothing of Questie's is copied into RUIN), so routes match the database you have. The Routes page lists one for each dungeon with quests for you (raids are left to RUIN Codex's button: their reputation turn-ins make very long routes). Which quests belong to which dungeon: each dungeon's zone IDs, plus the quests filed under a city that still belong to the run (from WoW Forever's dungeon lists, foreverchanges.pro).
+- For RUIN Codex: `DungeonQuests(name)`, `DungeonRoute(name)`, `OpenDungeonRoute(name)`, `ShowQuestOnMap(questID)`, `QuestInfo(questID)` and `QuestDone(questID)`.
 
 Routes updated from the WoW Forever launch snapshot (2026-11-05, build 1.60.1.70790; ForeverChanges and ForeverDB):
 - Elwynn 1-10: the new level-1 quests Wabbit Pelts and Waskily Wabbits! (accept, do and turn in in Northshire), and a note for the new Paladin and Warrior class letters.

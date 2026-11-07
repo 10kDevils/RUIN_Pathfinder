@@ -70,6 +70,39 @@ local function allRoutes()
     return list
 end
 
+-- Dungeon quest routes, built from Questie when first asked for (id "dq:<name>")
+local dqRoutes = {}
+local dqCache = {}     -- dungeon -> { t, list }: the Journal redraws often (loot, kills)
+local function dqKey(name) return (tostring(name or ""):lower():gsub("^the ", ""):gsub("[^%w]", "")) end
+local function dqEntry(name)
+    local k = dqKey(name)
+    if k == "" then return nil end
+    for _, e in ipairs(ns.DungeonQuestIndex or {}) do
+        if dqKey(e.name) == k then return e end
+    end
+    return nil
+end
+M.DungeonEntry = function(_, name) return dqEntry(name) end
+
+local function dungeonRoute(entry)
+    if not entry then return nil end
+    local id = "dq:" .. dqKey(entry.name)
+    if dqRoutes[id] then return dqRoutes[id] end
+    local quests = QB.DungeonQuests(entry)
+    if not quests or #quests == 0 then return nil end
+    local steps = QB.DungeonRoute(entry, quests)
+    if not steps or #steps == 0 then return nil end
+    if #steps > MAX_STEPS then
+        for i = #steps, MAX_STEPS, -1 do steps[i] = nil end
+        steps[MAX_STEPS] = { act = "note", text = "The rest of this dungeon's quests didn't fit in one route." }
+    end
+    local r = { id = id, title = (entry.name .. " quests"):sub(1, 40), faction = UnitFactionGroup and UnitFactionGroup("player") or "Any",
+                author = "RUIN (from " .. (QB.Source() or "Questie") .. ")", steps = steps, dungeon = entry.name, levels = entry.levels,
+                quests = #quests }
+    dqRoutes[id] = r
+    return r
+end
+
 local function isBuiltInRoute(id)
     for _, r in ipairs(ns.Routes) do if r.id == id then return true end end
     return false
@@ -77,6 +110,13 @@ end
 
 local function routeById(id)
     if not id then return nil end
+    if type(id) == "string" and id:sub(1, 3) == "dq:" then
+        if dqRoutes[id] then return dqRoutes[id] end
+        for _, e in ipairs(ns.DungeonQuestIndex or {}) do
+            if "dq:" .. dqKey(e.name) == id then return dungeonRoute(e) end
+        end
+        return nil
+    end
     for _, r in ipairs(ns.Routes) do if r.id == id then return r end end
     return adb and (adb.custom[id] or adb.official[id])
 end
@@ -744,6 +784,7 @@ local function checkComplete()
 end
 
 local function onAccepted(_, a1, a2)
+    dqCache = {}
     -- Retail-style clients pass questID; Classic-style pass (logIndex, questID).
     local title = questTitle(a2 or a1, a2 and a1 or nil)
     local s = currentStep()
@@ -754,6 +795,7 @@ local function onAccepted(_, a1, a2)
 end
 
 local function onTurnedIn(_, questID)
+    dqCache = {}
     C_Timer.After(1, function() shareQuests() end)
     local title = questTitle(questID)
     local s = currentStep()
@@ -957,6 +999,86 @@ function M:DeleteRoute(id)
     if db.route == id then db.route = nil; updateTracker() end
     refreshPage()
 end
+
+---------------------------------------------------------------------------
+-- Dungeon quests, for this page and for RUIN Codex's Journal
+---------------------------------------------------------------------------
+-- A dungeon's quests for your character (see QB.DungeonQuests), or nil and why.
+function M:DungeonQuests(name)
+    local entry = dqEntry(name)
+    if not entry then return nil, "Pathfinder has no quest list for " .. tostring(name) .. "." end
+    local hit = dqCache[entry.name]
+    if hit and GetTime() - hit.t < 10 then return hit.list, nil, entry end
+    local list, why = QB.DungeonQuests(entry)
+    if list then dqCache[entry.name] = { t = GetTime(), list = list } end
+    return list, why, entry
+end
+function M:ForgetDungeonQuests() dqCache = {} end
+
+-- The route through a dungeon's quests, built from Questie (nil and why if it can't be).
+function M:DungeonRoute(name)
+    local entry = dqEntry(name)
+    if not entry then return nil, "Pathfinder has no quest list for " .. tostring(name) .. "." end
+    if not QB.Has() then return nil, "Install Questie (or QuestieDB) for dungeon quest routes." end
+    local r = dungeonRoute(entry)
+    if not r then return nil, "Questie lists no quests in " .. entry.name .. " for your character." end
+    return r
+end
+
+-- What Questie knows about one quest (see QB.Quest), and whether you've done it.
+function M:QuestInfo(qid) return QB.Quest(qid) end
+function M:QuestDone(qid) return QB.Done(qid) end
+
+-- Start a dungeon's quest route and open it on the Route page.
+function M:OpenDungeonRoute(name)
+    local r, why = self:DungeonRoute(name)
+    if not r then self:Print(why); return nil end
+    self:StartRoute(r.id)
+    self:OpenTab()
+    if ui.tabs then ui.tabs:Select(1) end
+    self:Print(("Started %s: %d steps, %d quests."):format(r.title, #r.steps, r.quests or 0))
+    return r
+end
+
+-- Mark where a quest starts (or is handed in, once it's in your log) on the map, and open it.
+function M:ShowQuestOnMap(qid, which)
+    qid = tonumber(qid)
+    if not qid then return false end
+    local inLog, ready = QB.InLog(qid)
+    which = which or (ready and "finish") or (inLog and "objective") or "start"
+    local map, x, y = R.Map:PlayerPos()
+    local spot = QB.Spot(qid, which, map, x, y) or (which ~= "start" and QB.Spot(qid, "finish", map, x, y))
+    if not spot then
+        self:Print("Questie doesn't have a place for this quest.")
+        return false
+    end
+    local info = QB.Quest(qid)
+    local label = which == "start" and "Pick up" or which == "finish" and "Hand in" or "Do"
+    R.Map:SetPin("Pathfinder", "quest", { map = spot.map, x = spot.x, y = spot.y, icon = "Interface\\Icons\\INV_Misc_Map_01",
+        color = W.MARKERS[which == "finish" and "turnin" or "quest"], title = "Pathfinder: " .. ((info and info.name) or "quest"),
+        text = label .. ": " .. (spot.name or "") })
+    local open = rawget(_G, "OpenWorldMap")
+    local wmf = rawget(_G, "WorldMapFrame")
+    if open then pcall(open, spot.map)
+    elseif wmf and ShowUIPanel then pcall(ShowUIPanel, wmf); if wmf.SetMapID then pcall(wmf.SetMapID, wmf, spot.map) end end
+    self:Print(("Marked on your map: %s %s (%s)."):format(label:lower(), (info and info.name) or "the quest", spot.name or "?"))
+    return true
+end
+
+-- Every dungeon's quest route that has quests for you (raids are left to
+-- RUIN Codex's button: their reputation turn-ins make very long routes).
+local function dungeonRoutes()
+    local out = {}
+    if not QB.Has() then return out end
+    for _, e in ipairs(ns.DungeonQuestIndex or {}) do
+        if not e.raid then
+            local r = dungeonRoute(e)
+            if r then out[#out + 1] = r end
+        end
+    end
+    return out
+end
+M.DungeonRoutes = function() return dungeonRoutes() end
 
 ---------------------------------------------------------------------------
 -- Page
@@ -1345,6 +1467,27 @@ local function buildLibrary(page)
         row.pub:SetPoint("RIGHT", row.add, "LEFT", -2, 0)
     end, function(row, e)
         local officer = R:IsOfficer()
+        row.tip = nil
+        if e.header then
+            row.text:SetText(C.gold .. e.header .. "|r")
+            row.add:Hide(); row.start:Hide(); row.export:Hide(); row.share:Hide(); row.del:Hide(); row.pub:Hide()
+            return
+        end
+        if e.route and e.route.dungeon then
+            local r = e.route
+            row.text:SetText(("%s%s|r  %s%s · %d quests · %d steps · levels %s|r%s"):format(C.white, r.title, C.dim, r.faction or "Any",
+                r.quests or 0, #r.steps, r.levels or "?", db.route == r.id and ("  " .. C.good .. "current|r") or ""))
+            row.add:Hide(); row.del:Hide(); row.pub:Hide()
+            row.start:Show(); row.export:Show(); row.share:Show()
+            row.start:SetScript("OnClick", function() M:StartRoute(r.id); ui.tabs:Select(1) end)
+            row.export:SetScript("OnClick", function() M:ExportRoute(r.id) end)
+            row.share:SetScript("OnClick", function() M:ShareRoute(r.id) end)
+            row.tip = function(tip)
+                tip:AddLine(r.title, 1, 1, 1)
+                tip:AddLine("Every quest " .. r.dungeon .. " has for your character, the quests that unlock them, the run, and the hand-ins. Built from " .. (QB.Source() or "Questie") .. ".", 0.8, 0.85, 0.95, true)
+            end
+            return
+        end
         if e.inbox then
             local r = e.inbox.route
             row.text:SetText(("%sShared by %s:|r %s  %s(%d steps)|r"):format(C.gold, R.Util.ShortName(e.inbox.from), r.title, C.dim, #r.steps))
@@ -1514,6 +1657,11 @@ local function buildPage(panel)
             local items = {}
             for _, e in ipairs(adb.inbox) do items[#items + 1] = { inbox = e } end
             for _, r in ipairs(allRoutes()) do items[#items + 1] = { route = r } end
+            local dq = dungeonRoutes()
+            if #dq > 0 then
+                items[#items + 1] = { header = "Dungeon quests  " .. C.dim .. "every quest, with the ones that unlock it|r" }
+                for _, r in ipairs(dq) do items[#items + 1] = { route = r } end
+            end
             ui.library:SetItems(items)
         elseif tab == 4 then
             ui.recBtn:SetText(adb.rec.on and "Pause recording" or "Start recording")

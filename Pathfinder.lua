@@ -46,6 +46,7 @@ local adb          -- account: custom routes, shared-route inbox, recorder
 local peers = {}   -- GUID -> { name, guild, route, step, t }
 local lastShare = -999
 local ui = { tab = 1 }
+M.UI = ui         -- for tests
 local tracker
 local warnedMissing = {}
 
@@ -1114,16 +1115,11 @@ local function buildCurrent(page)
     ui.pickLabels = {}
     ui.pick = W.Button(page, "", 270, nil)
     ui.pick:SetPoint("TOPLEFT", 0, -20)
-    ui.pick:SetScript("OnClick", function(_, mouse)
-        local routes = allRoutes()
-        if #routes == 0 then return end
-        local idx = 1
-        for i, r in ipairs(routes) do if r.id == ui.pickId then idx = i end end
-        idx = (mouse == "RightButton") and ((idx - 2) % #routes + 1) or (idx % #routes + 1)
-        ui.pickId = routes[idx].id
-        refreshPage()
-    end)
     W.MarkChoice(ui.pick)
+    W.AttachMenu(ui.pick, { width = 270,
+        items = function() local ids = {}; for _, r in ipairs(allRoutes()) do ids[#ids + 1] = r.id end; return ids end,
+        label = function(id) local r = routeById(id); return r and routeLabel(r) or tostring(id) end,
+        current = function() return ui.pickId end, pick = function(id) ui.pickId = id; refreshPage() end })
     local start = W.Button(page, "Start this route", 130, function() if ui.pickId then M:StartRoute(ui.pickId) end end)
     start:SetPoint("LEFT", ui.pick, "RIGHT", 6, 0)
     local trackCheck = W.Check(page, "Tracker", function() return db.tracker end,

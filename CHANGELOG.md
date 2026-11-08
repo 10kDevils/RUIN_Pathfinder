@@ -8,6 +8,7 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.5.1 — 2026-11-06
 
+- Route page: *Choose a route* opens a list of every route (14 at a time, scroll for more, the current one in view) instead of stepping to the next one per click (needs RUIN Core 0.5.3).
 - Dungeon quest routes: a route through every quest a dungeon has for your race and class, with the quests that unlock them. It runs the unlocking quests in order first (Underground Map before Old Ironforge Incursion; the Defias Brotherhood and Westfall chains before the Deadmines), then the pick-ups nearest first, then the run (quests picked up inside, quest items and what to do), then the hand-ins. Delivery quests get no separate "Do" step, and quests that start from an item say what drops it. Built while you play from Questie or QuestieDB (nothing of Questie's is copied into RUIN), so routes match the database you have. The Routes page lists one for each dungeon with quests for you (raids are left to RUIN Codex's button: their reputation turn-ins make very long routes). Which quests belong to which dungeon: each dungeon's zone IDs, plus the quests filed under a city that still belong to the run (from WoW Forever's dungeon lists, foreverchanges.pro).
 - For RUIN Codex: `DungeonQuests(name)`, `DungeonRoute(name)`, `OpenDungeonRoute(name)`, `ShowQuestOnMap(questID)`, `QuestInfo(questID)` and `QuestDone(questID)`.
 

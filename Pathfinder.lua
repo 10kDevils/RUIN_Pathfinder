@@ -1176,7 +1176,12 @@ local function routeLibrary()
         end
     end
     for _, r in ipairs(dungeonRoutes()) do place(r, dungeons) end
-    for _, r in ipairs(allRoutes()) do place(r, zones) end
+    -- the other faction's routes stay out of the list (your current route always shows)
+    local mine = UnitFactionGroup and UnitFactionGroup("player")
+    for _, r in ipairs(allRoutes()) do
+        local f = r.faction
+        if not (mine and f and f ~= "Any" and f ~= "" and f ~= mine and r.id ~= db.route) then place(r, zones) end
+    end
     for _, r in ipairs(zoneRoutes()) do place(r, zones) end
     local function byLevel(a, b)
         local al, bl = a.lo or 999, b.lo or 999

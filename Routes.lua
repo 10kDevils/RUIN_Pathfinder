@@ -36,6 +36,9 @@ local WETLANDS = "Wetlands"
 local ASHENVALE = "Ashenvale"
 local STORMWIND = "Stormwind City"
 local DARNASSUS = "Darnassus"
+local BARRENS  = "The Barrens"
+local STONETALON = "Stonetalon Mountains"
+local HILLSBRAD = "Hillsbrad Foothills"
 
 -- How many quests WoW Forever has in each Alliance zone, and their levels
 -- (ForeverDB, 2026-11-05). Shown on the Routes page for routes with a zone.
@@ -562,6 +565,57 @@ ns.Routes = {
             { act = "complete", quest = "Raene's Cleansing", qid = 991, text = "Work Raene's multi-part chain (dartol's rod, elemental, furbolg) as steps open — high XP.", at = at(ASHENVALE, 50.0, 55.0) },
             { act = "note",     text = "Maestra's Post, Falathim, and eastern outposts add more density. Blackfathom Deeps quests become relevant mid-bracket. Rotate with Stonetalon or return to EK dungeons as needed." },
             { act = "note",     text = "At 28 and up: City of Dalaran (levels 28-33, the violet dome in Alterac Mountains). Alliance attunement: An Alarming Request from Emissary Jacques in Southshore (guides differ on the exact chain); one attuned player is often enough for the group. Its 4 quests are worth about 37,600 XP, about a level at 28. Codex's Journal has the bosses and loot." },
+        },
+    },
+
+    -- The Cozy Sleeping Bag (camping): a chain of notes left on objects across
+    -- both continents, level 14 or higher. Alliance starts in Westfall, Horde
+    -- in the Barrens; from Stonetalon on it's the same. Steps from the Warcraft
+    -- Tavern and Method guides; quest IDs from the Forever database.
+    {
+        id = "cozy_sleeping_bag_alliance", title = "Cozy Sleeping Bag", faction = "Alliance", author = "RUIN", levels = "14-60",
+        steps = {
+            { act = "note",     text = "Level 14 or higher. Long trip across both continents; some legs pass level 30 areas. Hearth set to Stormwind or Ironforge helps." },
+            { act = "accept",   quest = "... and that note you found", qid = 79008, text = "Click the Nailed Plank in the cart wreck at the Alexston Farmstead, eastern Westfall.", at = at(WESTFALL, 37.1, 50.1) },
+            { act = "go",       text = "Westfall to Duskwood, Stranglethorn and Booty Bay; boat to Ratchet. Then south through the Barrens past Camp Taurajo to the burned tower.", at = at(BARRENS, 46.1, 74.3) },
+            { act = "turnin",   quest = "... and that note you found", qid = 79008, text = "The Burned-Out Remains inside the burned tower south of Camp Taurajo. Rewards a Swiftness Potion and a Lesser Troll's Blood Potion.", at = at(BARRENS, 46.1, 74.3) },
+            { act = "accept",   quest = "Stepping Stones", qid = 79192, text = "From the same remains.", at = at(BARRENS, 46.1, 74.3) },
+            { act = "go",       text = "Northwest into Stonetalon Mountains (keep clear of the Crossroads), up to Sun Rock Retreat.", at = at(STONETALON, 54.6, 52.4) },
+            { act = "turnin",   quest = "Stepping Stones", qid = 79192, text = "The Pocket Litter at the little camp up the hill path past Sun Rock Retreat. Rewards Flint and Tinder, 3 Simple Wood, an Old Toolbox and a Mining Pick or Farmer's Shovel.", at = at(STONETALON, 54.6, 52.4) },
+            { act = "note",     text = "Optional: light the campfire beside it with the Flint and Tinder and Simple Wood for Rekindle." },
+            { act = "accept",   quest = "Scramble", qid = 79980, text = "From the Pocket Litter.", at = at(STONETALON, 54.6, 52.4) },
+            { act = "turnin",   quest = "Scramble", qid = 79980, text = "The Mound of Dirt on the hillside a little north of the camp (jump down carefully). Rewards ammo, Student Fodder and a Silver Star, Moonsight Rifle or Precision Bow.", at = at(STONETALON, 39.6, 49.9) },
+            { act = "accept",   quest = "Wet Job", qid = 79974, text = "From the Mound of Dirt.", at = at(STONETALON, 39.6, 49.9) },
+            { act = "go",       text = "Hearth to Stormwind or Ironforge and run to Loch Modan.", at = at(LOCH, 49.5, 12.9) },
+            { act = "turnin",   quest = "Wet Job", qid = 79974, text = "The Carved Figurine on the ledge below the middle of the Stonewrought Dam: run along the top and drop down. Rewards a Hickory Pipe and Rumsey Rum Light.", at = at(LOCH, 49.5, 12.9) },
+            { act = "accept",   quest = "Eagle's Fist", qid = 79975, text = "From the Carved Figurine.", at = at(LOCH, 49.5, 12.9) },
+            { act = "go",       text = "Through the Wetlands and Arathi Highlands to the Thoradin's Wall on Hillsbrad's eastern edge. Follow the wall to the gap with the leaning cart.", at = at(HILLSBRAD, 87.4, 49.6) },
+            { act = "turnin",   quest = "Eagle's Fist", qid = 79975, text = "Jump onto the cart and up onto the wall; the Messenger Bag is on a platform on top.", at = at(HILLSBRAD, 87.4, 49.6) },
+            { act = "accept",   quest = "This Must Be The Place", qid = 79976, text = "From the Messenger Bag.", at = at(HILLSBRAD, 87.4, 49.6) },
+            { act = "turnin",   quest = "This Must Be The Place", qid = 79976, text = "The Hastily Rolled-Up Satchel just below the bag. Rewards the Cozy Sleeping Bag and 5 Student Fodder.", at = at(HILLSBRAD, 87.4, 49.6) },
+        },
+    },
+    {
+        id = "cozy_sleeping_bag_horde", title = "Cozy Sleeping Bag", faction = "Horde", author = "RUIN", levels = "14-60",
+        steps = {
+            { act = "note",     text = "Level 14 or higher (guides suggest 30 for the Horde run). Long trip across both continents; set your hearth to Orgrimmar or Undercity." },
+            { act = "accept",   quest = "... and that note you found", qid = 79007, text = "Click the Burned-Out Remains inside the burned tower south of Camp Taurajo, the Barrens.", at = at(BARRENS, 46.1, 74.3) },
+            { act = "go",       text = "Zeppelin from Orgrimmar to Grom'gol, then swim north along the coast to Westfall (watch for naga).", at = at(WESTFALL, 37.1, 50.1) },
+            { act = "turnin",   quest = "... and that note you found", qid = 79007, text = "The Nailed Plank in the cart wreck at the Alexston Farmstead, eastern Westfall. Rewards a Swiftness Potion and a Lesser Troll's Blood Potion.", at = at(WESTFALL, 37.1, 50.1) },
+            { act = "accept",   quest = "Stepping Stones", qid = 79192, text = "From the same plank.", at = at(WESTFALL, 37.1, 50.1) },
+            { act = "go",       text = "Back to Grom'gol, zeppelin to Orgrimmar, fly to the Crossroads and run west into Stonetalon Mountains, up to Sun Rock Retreat.", at = at(STONETALON, 54.6, 52.4) },
+            { act = "turnin",   quest = "Stepping Stones", qid = 79192, text = "The Pocket Litter at the little camp up the hill path past Sun Rock Retreat. Rewards Flint and Tinder, 3 Simple Wood, a Sturdy Lunchbox and a Mining Pick or Farmer's Shovel.", at = at(STONETALON, 54.6, 52.4) },
+            { act = "note",     text = "Optional: light the campfire beside it with the Flint and Tinder and Simple Wood for Rekindle." },
+            { act = "accept",   quest = "Scramble", qid = 79980, text = "From the Pocket Litter.", at = at(STONETALON, 54.6, 52.4) },
+            { act = "turnin",   quest = "Scramble", qid = 79980, text = "The Mound of Dirt on the hillside a little north of the camp (jump down carefully). Rewards ammo, Student Fodder and a Silver Star, Moonsight Rifle or Precision Bow.", at = at(STONETALON, 39.6, 49.9) },
+            { act = "accept",   quest = "Wet Job", qid = 79974, text = "From the Mound of Dirt.", at = at(STONETALON, 39.6, 49.9) },
+            { act = "go",       text = "Hearth to Orgrimmar or Undercity and make the long run to Loch Modan (level 30 guards on the dam; the hardest leg for Horde).", at = at(LOCH, 49.5, 12.9) },
+            { act = "turnin",   quest = "Wet Job", qid = 79974, text = "The Carved Figurine on the ledge below the middle of the Stonewrought Dam: run along the top and drop down. Rewards a Hickory Pipe and Rumsey Rum Light.", at = at(LOCH, 49.5, 12.9) },
+            { act = "accept",   quest = "Eagle's Fist", qid = 79975, text = "From the Carved Figurine.", at = at(LOCH, 49.5, 12.9) },
+            { act = "go",       text = "Through the Wetlands and Arathi Highlands to the Thoradin's Wall on Hillsbrad's eastern edge. Follow the wall to the gap with the leaning cart.", at = at(HILLSBRAD, 87.4, 49.6) },
+            { act = "turnin",   quest = "Eagle's Fist", qid = 79975, text = "Jump onto the cart and up onto the wall; the Messenger Bag is on a platform on top.", at = at(HILLSBRAD, 87.4, 49.6) },
+            { act = "accept",   quest = "This Must Be The Place", qid = 79976, text = "From the Messenger Bag.", at = at(HILLSBRAD, 87.4, 49.6) },
+            { act = "turnin",   quest = "This Must Be The Place", qid = 79976, text = "The Hastily Rolled-Up Satchel just below the bag. Rewards the Cozy Sleeping Bag and 5 Student Fodder.", at = at(HILLSBRAD, 87.4, 49.6) },
         },
     },
 }

@@ -527,18 +527,18 @@ updateTracker = function()
         tracker.step:SetJustifyV("TOP")
         tracker.peers = W.Label(tracker, "", "GameFontHighlightSmall")
         tracker.peers:SetPoint("BOTTOMLEFT", 10, 8)
-        tracker.peers:SetPoint("RIGHT", tracker, "RIGHT", -160, 0)
+        tracker.peers:SetPoint("RIGHT", tracker, "RIGHT", -180, 0)
         tracker.peers:SetWordWrap(false)
         tracker.next = W.Button(tracker, ">", 26, function() M:Advance(1) end)
         tracker.next:SetPoint("BOTTOMRIGHT", -6, 4)
         tracker.prev = W.Button(tracker, "<", 26, function() M:Advance(-1) end)
         tracker.prev:SetPoint("RIGHT", tracker.next, "LEFT", -2, 0)
         -- opens Pathfinder's window on the Guide
-        tracker.open = W.Button(tracker, "Open", 44, function() M:OpenTab(); if ui.tabs then ui.tabs:Select(1) end end)
+        tracker.open = W.Button(tracker, "Open", 54, function() M:OpenTab(); if ui.tabs then ui.tabs:Select(1) end end)
         tracker.open:SetPoint("RIGHT", tracker.prev, "LEFT", -2, 0)
         tracker.open.tip = "Open Pathfinder: the Guide, the route list and the rest."
         -- leaves the route; the tracker goes away until you start another
-        tracker.clear = W.Button(tracker, "Clear", 44, function() M:ClearRoute() end)
+        tracker.clear = W.Button(tracker, "Clear", 54, function() M:ClearRoute() end)
         tracker.clear:SetPoint("RIGHT", tracker.open, "LEFT", -2, 0)
         tracker.clear.tip = "Leave this route. The tracker and map pin go away until you start one again."
         -- Waypoint arrow: points where the step happens and turns as you turn.

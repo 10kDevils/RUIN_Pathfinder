@@ -527,12 +527,16 @@ updateTracker = function()
         tracker.step:SetJustifyV("TOP")
         tracker.peers = W.Label(tracker, "", "GameFontHighlightSmall")
         tracker.peers:SetPoint("BOTTOMLEFT", 10, 8)
-        tracker.peers:SetPoint("RIGHT", tracker, "RIGHT", -64, 0)
+        tracker.peers:SetPoint("RIGHT", tracker, "RIGHT", -112, 0)
         tracker.peers:SetWordWrap(false)
         tracker.next = W.Button(tracker, ">", 26, function() M:Advance(1) end)
         tracker.next:SetPoint("BOTTOMRIGHT", -6, 4)
         tracker.prev = W.Button(tracker, "<", 26, function() M:Advance(-1) end)
         tracker.prev:SetPoint("RIGHT", tracker.next, "LEFT", -2, 0)
+        -- opens Pathfinder's window on the Guide
+        tracker.open = W.Button(tracker, "Open", 44, function() M:OpenTab(); if ui.tabs then ui.tabs:Select(1) end end)
+        tracker.open:SetPoint("RIGHT", tracker.prev, "LEFT", -2, 0)
+        tracker.open.tip = "Open Pathfinder: the Guide, the route list and the rest."
         -- Waypoint arrow: points where the step happens and turns as you turn.
         tracker.arrow = tracker:CreateTexture(nil, "ARTWORK")
         tracker.arrow:SetTexture("Interface\\Minimap\\MinimapArrow")

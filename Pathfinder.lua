@@ -1129,12 +1129,67 @@ function M:GetRoute(id) return routeById(id) end
 
 -- The one list of routes both the Guide's picker and the Routes page use:
 -- { { header = text or nil, routes = { ... } }, ... }
+-- A route's levels: from its levels field ("13-18"), its title ("Elwynn
+-- 1-10"), or the levels of its quests; nil when nothing says.
+local OUTLEVELED = 3        -- a route whose top level is this far below you is out-leveled
+local function routeLevels(r)
+    local lo, hi = tostring(r.levels or ""):match("(%d+)%s*%-%s*(%d+)")
+    if not lo then lo, hi = tostring(r.title or ""):match("(%d+)%s*%-%s*(%d+)") end
+    if lo then return tonumber(lo), tonumber(hi) end
+    local a, b
+    for _, st in ipairs(r.steps or {}) do
+        local info = st.qid and QB.Has() and QB.Quest(st.qid)
+        local l = info and tonumber(info.level)
+        if l and l > 0 then a = a and math.min(a, l) or l; b = b and math.max(b, l) or l end
+    end
+    return a, b
+end
+M.RouteLevels = function(_, r) return routeLevels(r) end
+
+-- every quest on the route done?
+local function routeDone(r)
+    local any = false
+    for _, qid in ipairs(r.qids or {}) do any = true; if not QB.Done(qid) then return false end end
+    for _, st in ipairs(r.steps or {}) do
+        if st.qid and (st.act == "accept" or st.act == "turnin") then
+            any = true
+            if not QB.Done(st.qid) then return false end
+        end
+    end
+    return any
+end
+
+-- The one list of routes both the Guide's picker and the Routes page use:
+-- Dungeons, then Zones (built-in, RUIN, yours and the zone quest routes),
+-- then Completed / out-leveled, each sorted by level.
+-- { { header, sub, routes = { ... } }, ... }
 local function routeLibrary()
-    local out = { { routes = allRoutes() } }
-    local zq = zoneRoutes()
-    if #zq > 0 then out[#out + 1] = { header = "Zone quests", sub = "every quest in the zone for you, by level", routes = zq } end
-    local dq = dungeonRoutes()
-    if #dq > 0 then out[#out + 1] = { header = "Dungeon quests", sub = "every quest, with the ones that unlock it", routes = dq } end
+    local level = UnitLevel and UnitLevel("player") or 1
+    local dungeons, zones, past = {}, {}, {}
+    local function place(r, list)
+        local lo, hi = routeLevels(r)
+        r.lo, r.hi = lo, hi
+        if r.id ~= db.route and ((hi and hi <= level - OUTLEVELED) or routeDone(r)) then
+            past[#past + 1] = r
+        else
+            list[#list + 1] = r
+        end
+    end
+    for _, r in ipairs(dungeonRoutes()) do place(r, dungeons) end
+    for _, r in ipairs(allRoutes()) do place(r, zones) end
+    for _, r in ipairs(zoneRoutes()) do place(r, zones) end
+    local function byLevel(a, b)
+        local al, bl = a.lo or 999, b.lo or 999
+        if al ~= bl then return al < bl end
+        local ah, bh = a.hi or 999, b.hi or 999
+        if ah ~= bh then return ah < bh end
+        return (a.title or "") < (b.title or "")
+    end
+    table.sort(dungeons, byLevel); table.sort(zones, byLevel); table.sort(past, byLevel)
+    local out = {}
+    if #dungeons > 0 then out[#out + 1] = { header = "Dungeons", sub = "every quest, with the ones that unlock it", routes = dungeons } end
+    out[#out + 1] = { header = "Zones", sub = "leveling routes and every zone's quests", routes = zones }
+    if #past > 0 then out[#out + 1] = { header = "Completed / out-leveled", sub = ("done, or %d+ levels below you"):format(OUTLEVELED), routes = past } end
     return out
 end
 M.RouteLibrary = function() return routeLibrary() end

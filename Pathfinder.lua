@@ -12,6 +12,18 @@
 -- and RUIN members share their quest status with each other: who has the
 -- same quest, who is ready to hand it in, who has done it.
 local ADDON, ns = ...
+
+-- WoW Forever runs on the Retail 12 client, where the old global item
+-- functions may be gone; these ask C_Item when they are. (Inside each
+-- function the name still means the global, so tests and older clients work.)
+local GetItemInfo = function(...)
+    local f = GetItemInfo or (C_Item and C_Item.GetItemInfo)
+    if f then return f(...) end
+end
+local GetItemInfoInstant = function(...)
+    local f = GetItemInfoInstant or (C_Item and C_Item.GetItemInfoInstant)
+    if f then return f(...) end
+end
 local R = RUIN_API
 if not R or (R.apiLevel or 1) < 7 then
     print("|cff54b7d9[RUIN]|r Pathfinder needs a newer RUIN Core (0.3.14 or later).")

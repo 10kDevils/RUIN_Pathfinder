@@ -104,6 +104,49 @@ local function dungeonRoute(entry)
     return r
 end
 
+-- Zone quest routes, built from Questie (id "zq:<area>:<part>"): a stub
+-- with the title and levels for the lists, the steps when it's opened.
+local zqRoutes = {}
+local function zoneStub(z)
+    local several = false
+    for _, o in ipairs(QB.Zones()) do if o.area == z.area and o.part ~= z.part then several = true end end
+    return { id = ("zq:%d:%d"):format(z.area, z.part),
+             title = (("%s %d-%d"):format(z.name, z.lo, z.hi) .. (several and (" (" .. z.part .. ")") or "")):sub(1, 40),
+             faction = UnitFactionGroup and UnitFactionGroup("player") or "Any", zoneArea = z.area, part = z.part,
+             zoneName = z.name, levels = z.lo .. "-" .. z.hi, quests = #z.quests, qids = z.quests,
+             author = "RUIN (from " .. (QB.Source() or "Questie") .. ")" }
+end
+local function zoneRoute(id)
+    if zqRoutes[id] and zqRoutes[id].steps then return zqRoutes[id] end
+    if not QB.Has() then return nil end
+    for _, z in ipairs(QB.Zones()) do
+        if ("zq:%d:%d"):format(z.area, z.part) == id then
+            local r = zqRoutes[id] or zoneStub(z)
+            local steps = QB.ZoneRoute(z.quests)
+            if not steps or #steps == 0 then return nil end
+            if #steps > MAX_STEPS then
+                for i = #steps, MAX_STEPS, -1 do steps[i] = nil end
+                steps[MAX_STEPS] = { act = "note", text = "The rest of this zone's quests didn't fit in one route." }
+            end
+            r.steps = steps
+            zqRoutes[id] = r
+            return r
+        end
+    end
+    return nil
+end
+-- every zone part with quests for you, as stubs (no steps yet)
+local function zoneRoutes()
+    local out = {}
+    if not QB.Has() then return out end
+    for _, z in ipairs(QB.Zones()) do
+        local id = ("zq:%d:%d"):format(z.area, z.part)
+        zqRoutes[id] = zqRoutes[id] or zoneStub(z)
+        out[#out + 1] = zqRoutes[id]
+    end
+    return out
+end
+
 local function isBuiltInRoute(id)
     for _, r in ipairs(ns.Routes) do if r.id == id then return true end end
     return false
@@ -111,6 +154,7 @@ end
 
 local function routeById(id)
     if not id then return nil end
+    if type(id) == "string" and id:sub(1, 3) == "zq:" then return zoneRoute(id) end
     if type(id) == "string" and id:sub(1, 3) == "dq:" then
         if dqRoutes[id] then return dqRoutes[id] end
         for _, e in ipairs(ns.DungeonQuestIndex or {}) do
@@ -1014,7 +1058,7 @@ function M:DungeonQuests(name)
     if list then dqCache[entry.name] = { t = GetTime(), list = list } end
     return list, why, entry
 end
-function M:ForgetDungeonQuests() dqCache = {} end
+function M:ForgetDungeonQuests() dqCache = {}; for k in pairs(zqRoutes) do zqRoutes[k] = nil end end
 
 -- The route through a dungeon's quests, built from Questie (nil and why if it can't be).
 function M:DungeonRoute(name)
@@ -1080,12 +1124,59 @@ local function dungeonRoutes()
     return out
 end
 M.DungeonRoutes = function() return dungeonRoutes() end
+M.ZoneRoutes = function() return zoneRoutes() end
+function M:GetRoute(id) return routeById(id) end
+
+-- The one list of routes both the Guide's picker and the Routes page use:
+-- { { header = text or nil, routes = { ... } }, ... }
+local function routeLibrary()
+    local out = { { routes = allRoutes() } }
+    local zq = zoneRoutes()
+    if #zq > 0 then out[#out + 1] = { header = "Zone quests", sub = "every quest in the zone for you, by level", routes = zq } end
+    local dq = dungeonRoutes()
+    if #dq > 0 then out[#out + 1] = { header = "Dungeon quests", sub = "every quest, with the ones that unlock it", routes = dq } end
+    return out
+end
+M.RouteLibrary = function() return routeLibrary() end
+
+-- Routes hidden from the Guide's picker (Routes page checkbox), per account
+local function hiddenRoute(id) return adb.hiddenRoutes and adb.hiddenRoutes[id] or false end
+local function setHidden(id, v)
+    adb.hiddenRoutes = adb.hiddenRoutes or {}
+    adb.hiddenRoutes[id] = v or nil
+end
+M.IsRouteHidden = function(_, id) return hiddenRoute(id) end
+M.SetRouteHidden = function(_, id, v) setHidden(id, v) end
+
+-- The picker's routes: the library minus the hidden ones (the current
+-- route always stays so it can be seen)
+local function pickerRoutes()
+    local ids = {}
+    for _, sec in ipairs(routeLibrary()) do
+        for _, r in ipairs(sec.routes) do
+            if not hiddenRoute(r.id) or r.id == db.route then ids[#ids + 1] = r.id end
+        end
+    end
+    return ids
+end
+M.PickerRoutes = function() return pickerRoutes() end
 
 ---------------------------------------------------------------------------
 -- Page
 ---------------------------------------------------------------------------
 local function routeLabel(r)
     return (r.official and (OFFICER_ICON .. " ") or "") .. r.title .. " (" .. (r.faction or "Any") .. ")"
+end
+
+-- the picker labels zone and dungeon routes without building their steps
+local function pickerLabel(id)
+    if type(id) == "string" and id:sub(1, 3) == "zq:" then
+        local r = zqRoutes[id]
+        return r and (r.title .. "  " .. C.dim .. "zone · " .. r.quests .. " quests|r") or id
+    end
+    local r = routeById(id)
+    if r and r.dungeon then return r.title .. "  " .. C.dim .. "dungeon|r" end
+    return r and routeLabel(r) or tostring(id)
 end
 
 local function isBuiltIn(id)
@@ -1117,8 +1208,8 @@ local function buildCurrent(page)
     ui.pick:SetPoint("TOPLEFT", 0, -20)
     W.MarkChoice(ui.pick)
     W.AttachMenu(ui.pick, { width = 270,
-        items = function() local ids = {}; for _, r in ipairs(allRoutes()) do ids[#ids + 1] = r.id end; return ids end,
-        label = function(id) local r = routeById(id); return r and routeLabel(r) or tostring(id) end,
+        items = function() return pickerRoutes() end,
+        label = function(id) return pickerLabel(id) end,
         current = function() return ui.pickId end, pick = function(id) ui.pickId = id; refreshPage() end })
     local start = W.Button(page, "Start this route", 130, function() if ui.pickId then M:StartRoute(ui.pickId) end end)
     start:SetPoint("LEFT", ui.pick, "RIGHT", 6, 0)
@@ -1445,8 +1536,22 @@ local function buildLibrary(page)
     ui.draftBtn:SetPoint("RIGHT", imp, "LEFT", -6, 0)
     ui.draftBtn.tip = "Make a route of the quests Questie lists for your zone and level."
     ui.library = W.List(page, 26, function(row)
+        -- ticked: the route is in the Guide's "Choose a route" list
+        -- on a section header it ticks or unticks the whole section
+        row.show = W.Check(row, "", function()
+            local e = row.e
+            if e and e.route then return not hiddenRoute(e.route.id) end
+            for _, r in ipairs(e and e.routes or {}) do if not hiddenRoute(r.id) then return true end end
+            return false
+        end, function(v)
+            local e = row.e
+            if e and e.route then setHidden(e.route.id, not v)
+            else for _, r in ipairs(e and e.routes or {}) do setHidden(r.id, not v) end end
+            refreshPage()
+        end)
+        row.show:SetPoint("LEFT", 2, 0)
         row.text = W.Label(row, "")
-        row.text:SetPoint("LEFT", 4, 0)
+        row.text:SetPoint("LEFT", 28, 0)
         row.text:SetPoint("RIGHT", row, "RIGHT", -368, 0)
         row.text:SetWordWrap(false)
         row.del = W.Button(row, "Delete", 74)
@@ -1464,9 +1569,33 @@ local function buildLibrary(page)
     end, function(row, e)
         local officer = R:IsOfficer()
         row.tip = nil
+        row.e = e
+        if e.route or e.routes then
+            row.show:Show(); row.show:Refresh()
+            row.show.tip = e.route and "Show this route in the Guide tab's Choose a route list. Untick to hide it there; it stays here."
+                or "Show or hide every route in this section in the Guide tab's Choose a route list."
+        else
+            row.show:Hide()
+        end
         if e.header then
             row.text:SetText(C.gold .. e.header .. "|r")
             row.add:Hide(); row.start:Hide(); row.export:Hide(); row.share:Hide(); row.del:Hide(); row.pub:Hide()
+            return
+        end
+        if e.route and e.route.zoneArea then
+            local r = e.route
+            row.text:SetText(("%s%s|r  %s%s · %d quests · levels %s|r%s"):format(C.white, r.title, C.dim, r.faction or "Any",
+                r.quests or 0, r.levels or "?", db.route == r.id and ("  " .. C.good .. "current|r") or ""))
+            row.add:Hide(); row.del:Hide(); row.pub:Hide()
+            row.start:Show(); row.export:Show(); row.share:Show()
+            row.start:SetScript("OnClick", function() M:StartRoute(r.id); ui.tabs:Select(1) end)
+            row.export:SetScript("OnClick", function() M:ExportRoute(r.id) end)
+            row.share:SetScript("OnClick", function() M:ShareRoute(r.id) end)
+            row.tip = function(tip)
+                tip:AddLine(r.title, 1, 1, 1)
+                tip:AddLine(("Every quest %s has for your character at levels %s, with the quests from elsewhere that unlock them, nearest first. Built from %s."):format(
+                    r.zoneName or "this zone", r.levels or "?", QB.Source() or "Questie"), 0.8, 0.85, 0.95, true)
+            end
             return
         end
         if e.route and e.route.dungeon then
@@ -1636,7 +1765,7 @@ local function buildPage(panel)
         local tab = ui.tabs.selected
         if tab == 1 then
             if not ui.pickId or not routeById(ui.pickId) then
-                ui.pickId = db.route or (allRoutes()[1] and allRoutes()[1].id)
+                ui.pickId = db.route or pickerRoutes()[1]
             end
             local pr = routeById(ui.pickId)
             ui.pick:SetText(pr and routeLabel(pr) or "No routes")
@@ -1652,11 +1781,9 @@ local function buildPage(panel)
             ui.draftBtn:SetShown(QB.Has())
             local items = {}
             for _, e in ipairs(adb.inbox) do items[#items + 1] = { inbox = e } end
-            for _, r in ipairs(allRoutes()) do items[#items + 1] = { route = r } end
-            local dq = dungeonRoutes()
-            if #dq > 0 then
-                items[#items + 1] = { header = "Dungeon quests  " .. C.dim .. "every quest, with the ones that unlock it|r" }
-                for _, r in ipairs(dq) do items[#items + 1] = { route = r } end
+            for _, sec in ipairs(routeLibrary()) do
+                if sec.header then items[#items + 1] = { header = sec.header .. "  " .. C.dim .. sec.sub .. "|r", routes = sec.routes } end
+                for _, r in ipairs(sec.routes) do items[#items + 1] = { route = r } end
             end
             ui.library:SetItems(items)
         elseif tab == 4 then

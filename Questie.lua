@@ -126,7 +126,8 @@ function QB.Has()
 end
 
 local zoneIndex      -- area ID -> { quest IDs }, built the first time a dungeon asks
-function QB.Forget() cache = { quest = {}, spot = {}, miss = {} }; modules = nil; zoneIndex = nil end
+local zoneList       -- QB.Zones(), built once
+function QB.Forget() cache = { quest = {}, spot = {}, miss = {} }; modules = nil; zoneIndex = nil; zoneList = nil end
 
 -- What Questie knows about a quest:
 -- { id, name, level, req, starts = { names }, ends = { names }, objectives = { text }, zone }
@@ -536,6 +537,31 @@ function QB.State(qid, pre)
     return "available"
 end
 
+-- Step texts: who gives a quest, where it's handed in, what to do.
+local function firstOf(list) return type(list) == "table" and list[1] or nil end
+local function giverHint(qid) return ns.QuestGiverHints and ns.QuestGiverHints[qid] end
+function QB.AcceptText(qid)
+    local i = QB.Quest(qid)
+    local who = i and firstOf(i.starts) or (giverHint(qid) and giverHint(qid).starts)
+    if who then return who .. "." end
+    local _, item, from, kind = QB.StartItem(qid)
+    if item then
+        local src = from and (kind == "object" and (" (found on " .. from .. ")") or (" (drops from " .. from .. ")")) or ""
+        return "Starts from " .. item .. src .. "."
+    end
+    return "Questie doesn't say who gives this quest."
+end
+function QB.TurninText(qid)
+    local i = QB.Quest(qid)
+    local who = i and firstOf(i.ends) or (giverHint(qid) and giverHint(qid).ends)
+    return who and (who .. ".") or "Questie doesn't say where this is handed in."
+end
+function QB.DoText(qid)
+    if not hasObjectives(qid) then return "" end
+    local i = QB.Quest(qid)
+    return i and i.objectives[1] or ""
+end
+
 -- A dungeon's quests for your character, by level:
 -- { { id, name, level, req, state, pre = { ids }, starts = { names }, ends = { names },
 --     item = item name when an item starts it, inside = starts in the dungeon,
@@ -598,28 +624,7 @@ function QB.DungeonRoute(entry, quests)
     local function step(act, qid, text)
         steps[#steps + 1] = { act = act, quest = name(qid), qid = qid, text = (text or ""):sub(1, 120) }
     end
-    local function hint(qid) return ns.QuestGiverHints and ns.QuestGiverHints[qid] end
-    local function acceptText(qid)
-        local i = QB.Quest(qid)
-        local who = i and first(i.starts) or (hint(qid) and hint(qid).starts)
-        if who then return who .. "." end
-        local _, item, from, kind = QB.StartItem(qid)
-        if item then
-            local src = from and (kind == "object" and (" (found on " .. from .. ")") or (" (drops from " .. from .. ")")) or ""
-            return "Starts from " .. item .. src .. "."
-        end
-        return "Questie doesn't say who gives this quest."
-    end
-    local function turninText(qid)
-        local i = QB.Quest(qid)
-        local who = i and first(i.ends) or (hint(qid) and hint(qid).ends)
-        return who and (who .. ".") or "Questie doesn't say where this is handed in."
-    end
-    local function doText(qid)
-        if not hasObjectives(qid) then return "" end
-        local i = QB.Quest(qid)
-        return i and i.objectives[1] or ""
-    end
+    local acceptText, turninText, doText = QB.AcceptText, QB.TurninText, QB.DoText
     -- order quests nearest-first, by map then distance, from where you stand
     local cm, cx, cy = map, px or 0.5, py or 0.5     -- where the route has got to
     local function nearest(list, which)
@@ -683,6 +688,168 @@ function QB.DungeonRoute(entry, quests)
         local t = doText(q.id)
         if t ~= "" then step("complete", q.id, t) end
         step("turnin", q.id, turninText(q.id))
+    end
+    return steps
+end
+
+---------------------------------------------------------------------------
+-- Zone quest routes: every zone the database has quests in, split into
+-- routes of ZONE_CHUNK quests by level. Built from Questie in game, so a
+-- zone the hand-written routes don't cover still gets one.
+---------------------------------------------------------------------------
+local ZONE_CHUNK = 18
+local MIN_ZONE_QUESTS = 3
+QB.ZONE_CHUNK = ZONE_CHUNK
+
+local function dungeonAreas()
+    local out = {}
+    for _, e in ipairs(ns.DungeonQuestIndex or {}) do
+        for _, a in ipairs(e.areas or {}) do out[a] = true end
+    end
+    return out
+end
+
+function QB.AreaName(area)
+    local name = C_Map and C_Map.GetAreaInfo and C_Map.GetAreaInfo(area)
+    if type(name) == "string" and name ~= "" then return name end
+    return "Zone " .. tostring(area)
+end
+
+local function repeatable(qid)
+    local f = tonumber(QB.Field(qid, "specialFlags"))
+    return f and f % 2 == 1
+end
+
+-- A zone's quests for your character, by level: { { id, level }, ... }
+function QB.ZoneQuests(area)
+    local byArea = areaQuests()
+    if not byArea then return {} end
+    local list = {}
+    for _, qid in ipairs(byArea[area] or {}) do
+        if QB.ForMe(qid) and not repeatable(qid) then
+            list[#list + 1] = { id = qid, level = tonumber(QB.Field(qid, "questLevel")) or tonumber(QB.Field(qid, "requiredLevel")) or 0 }
+        end
+    end
+    table.sort(list, function(a, b) if a.level ~= b.level then return a.level < b.level end return a.id < b.id end)
+    return list
+end
+
+-- Every zone with quests for you, split into parts:
+-- { { area, part, name, quests = { ids }, lo, hi }, ... } by level
+function QB.Zones()
+    if zoneList then return zoneList end
+    local byArea = areaQuests()
+    if not byArea then return {} end
+    local skip = dungeonAreas()
+    local out = {}
+    for area in pairs(byArea) do
+        if not skip[area] then
+            local list = QB.ZoneQuests(area)
+            if #list >= MIN_ZONE_QUESTS then
+                local name = QB.AreaName(area)
+                local parts = math.ceil(#list / ZONE_CHUNK)
+                for k = 1, parts do
+                    local ids, lo, hi = {}, nil, nil
+                    for i = (k - 1) * ZONE_CHUNK + 1, math.min(k * ZONE_CHUNK, #list) do
+                        local e = list[i]
+                        ids[#ids + 1] = e.id
+                        lo = lo and math.min(lo, e.level) or e.level
+                        hi = hi and math.max(hi, e.level) or e.level
+                    end
+                    -- a short last part joins the one before it
+                    if k == parts and k > 1 and #ids < MIN_ZONE_QUESTS then
+                        local prev = out[#out]
+                        for _, id in ipairs(ids) do prev.quests[#prev.quests + 1] = id end
+                        prev.hi = math.max(prev.hi, hi)
+                    else
+                        out[#out + 1] = { area = area, part = k, name = name, quests = ids, lo = lo, hi = hi }
+                    end
+                end
+            end
+        end
+    end
+    table.sort(out, function(a, b)
+        if a.lo ~= b.lo then return a.lo < b.lo end
+        if a.name ~= b.name then return a.name < b.name end
+        return a.part < b.part
+    end)
+    zoneList = out
+    return out
+end
+
+-- A route through one part of a zone: quests from elsewhere that unlock
+-- these first, then rounds of pick up / do / hand in, nearest first, where a
+-- round only holds quests whose earlier quests are handed in already.
+function QB.ZoneRoute(qids)
+    if type(qids) ~= "table" or #qids == 0 then return nil end
+    local map, px, py = nil, nil, nil
+    if RUIN_API and RUIN_API.Map and RUIN_API.Map.PlayerPos then map, px, py = RUIN_API.Map:PlayerPos() end
+    local cm, cx, cy = map, px or 0.5, py or 0.5
+    local inPart, pre = {}, {}
+    for _, q in ipairs(qids) do inPart[q] = true end
+    local steps = {}
+    local function name(qid) local i = QB.Quest(qid); return i and i.name or ("Quest " .. qid) end
+    local function step(act, qid, text)
+        steps[#steps + 1] = { act = act, quest = name(qid), qid = qid, text = (text or ""):sub(1, 120) }
+    end
+    local function nearest(list, which)
+        local placed, rest = {}, {}
+        for _, qid in ipairs(list) do
+            local sp = QB.Spot(qid, which, map, px, py)
+            if sp then placed[#placed + 1] = { qid = qid, s = sp } else rest[#rest + 1] = qid end
+        end
+        local out = {}
+        while #placed > 0 do
+            local bi, bd
+            for i, e in ipairs(placed) do
+                local d = (e.s.map == cm and 0 or 10) + (e.s.x - cx) ^ 2 + (e.s.y - cy) ^ 2
+                if not bd or d < bd then bi, bd = i, d end
+            end
+            local e = table.remove(placed, bi)
+            out[#out + 1] = e.qid
+            cm, cx, cy = e.s.map, e.s.x, e.s.y
+        end
+        for _, qid in ipairs(rest) do out[#out + 1] = qid end
+        return out
+    end
+    -- quests from elsewhere that come first
+    local before, seen = {}, {}
+    local zoneOf = {}
+    for _, q in ipairs(qids) do
+        pre[q] = QB.Prereqs(q)
+        for _, p in ipairs(pre[q]) do
+            if not inPart[p] and not seen[p] then
+                seen[p] = true
+                -- one from earlier in the same zone belongs to the route before this one
+                local z = QB.Field(p, "zoneOrSort")
+                if z ~= QB.Field(q, "zoneOrSort") then before[#before + 1] = p end
+            end
+        end
+    end
+    for _, p in ipairs(before) do
+        step("accept", p, QB.AcceptText(p))
+        local t = QB.DoText(p)
+        if t ~= "" then step("complete", p, t) end
+        step("turnin", p, QB.TurninText(p))
+    end
+    -- rounds
+    local placed, left = {}, {}
+    for _, q in ipairs(qids) do left[#left + 1] = q end
+    while #left > 0 do
+        local round, wait = {}, {}
+        for _, q in ipairs(left) do
+            local ready = true
+            for _, p in ipairs(pre[q]) do if inPart[p] and not placed[p] then ready = false end end
+            if ready then round[#round + 1] = q else wait[#wait + 1] = q end
+        end
+        if #round == 0 then round, wait = wait, {} end      -- a loop in the data: take the rest
+        for _, q in ipairs(nearest(round, "start")) do step("accept", q, QB.AcceptText(q)) end
+        local todo = {}
+        for _, q in ipairs(round) do if QB.DoText(q) ~= "" then todo[#todo + 1] = q end end
+        for _, q in ipairs(nearest(todo, "objective")) do step("complete", q, QB.DoText(q)) end
+        for _, q in ipairs(nearest(round, "finish")) do step("turnin", q, QB.TurninText(q)) end
+        for _, q in ipairs(round) do placed[q] = true end
+        left = wait
     end
     return steps
 end

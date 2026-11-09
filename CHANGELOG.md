@@ -9,6 +9,10 @@ Versioning: the third number counts the meaningful changes made since the second
 ## 0.5.2 — 2026-11-08
 
 - City of Dalaran's quest route is complete. The Forever database files several of its quests outside the dungeon and records no order between them, so Pathfinder now adds them by hand: for Alliance, An Alarming Request first, then Starving Arcane and Heart of Disruption, then Friend of the Kirin Tor; for Horde, Prison Break In, Dalaran Patrols and Blood in the Streets, then Heart of Disruption and Shrewd Negotiations, plus Key to the City. Opportunistic Education, which has no giver in the database, now says to get it from Rexxie Copperclutch just inside the entrance.
+- A route for every zone. With Questie or QuestieDB installed, the Routes page lists a Zone quests section: every zone with quests for your character, split into routes of about 18 quests by level ("Westfall 10-17", "Westfall 17-25"...). Each starts with any quest from elsewhere that unlocks one, then rounds of pick up, do and hand in, nearest first, with follow-ups in the round after their quest. Repeatable quests are left out; dungeons keep their own routes.
+- The Guide tab's Choose a route list now has every route on the Routes page, including the zone and dungeon routes; both use the same list.
+- Each route on the Routes page has a checkbox: untick it to hide that route from the Choose a route list. A section header's checkbox hides or shows the whole section. Your current route always stays in the list.
+- Built-in routes checked against QuestieDB 1.0.12 (Forever): Elwynn's two rabbit quests and Zephras Isle's "Welcome!" aren't in the Forever database and are gone; Zephras Isle's steps lost their placeholder map pins (Questie places them instead); two quest names match the game's capitals.
 - Dungeon routes in general: a quest that follows another of the dungeon's quests is picked up after that one is handed in, instead of at the start.
 
 ## 0.5.1 — 2026-11-06

@@ -593,7 +593,9 @@ ns.DungeonQuestIndex = {
     { name = "Blackfathom Deeps", levels = "24-32", areas = { 719, 10020, 10021 }, extra = {  } },
     { name = "The Stockade", levels = "24-32", areas = { 717 }, extra = {  } },
     { name = "Excavation Site: Wetlands", levels = "26-31", areas = { 16732 }, extra = {  } },
-    { name = "City of Dalaran", levels = "28-33", areas = { 16544 }, extra = {  } },
+    -- the attunement quests and hand-ins sit in Alterac Mountains (zone 36)
+    -- and Hillsbrad, not inside, so they're listed by hand
+    { name = "City of Dalaran", levels = "28-33", areas = { 16544 }, extra = { 92459, 93680, 97287 } },
     { name = "Gnomeregan", levels = "29-38", areas = { 721, 133, 10030, 10031, 10032 }, extra = {  } },
     { name = "Razorfen Kraul", levels = "29-38", areas = { 491, 1717 }, extra = {  } },
     { name = "Scarlet Monastery", levels = "30-46", areas = { 796, 6109, 6386, 10008, 10009, 10010 }, extra = {  } },
@@ -619,4 +621,25 @@ ns.DungeonQuestIndex = {
     { name = "Ruins of Ahn'Qiraj", levels = "60-60", areas = { 3429 }, extra = {  }, raid = true },
     { name = "Temple of Ahn'Qiraj", levels = "60-60", areas = { 3428, 10040, 10041 }, extra = {  }, raid = true },
     { name = "Zul'Gurub", levels = "60-60", areas = { 1977 }, extra = {  }, raid = true },
+}
+
+-- Quest order the Forever database doesn't record yet: quest = { quests
+-- that come before it }. Pathfinder adds these to the database's own
+-- prerequisites when it builds a dungeon's route.
+ns.QuestPrereqHints = {
+    -- City of Dalaran, Alliance: An Alarming Request (Emissary Jacques,
+    -- Southshore) opens Modera's two; Friend of the Kirin Tor follows Heart of Disruption
+    [92457] = { 92432 },            -- Starving Arcane
+    [92458] = { 92432 },            -- Heart of Disruption
+    [92459] = { 92458 },            -- Friend of the Kirin Tor
+    -- City of Dalaran, Horde attunement in Hillsbrad: Prison Break In,
+    -- Dalaran Patrols, Blood in the Streets, then Heart of Disruption and its follow-up
+    [92434] = { 545 },              -- Blood in the Streets
+    [96984] = { 92434 },            -- Heart of Disruption
+    [97287] = { 96984 },            -- Shrewd Negotiations
+}
+
+-- Givers the Forever database doesn't have yet: quest = where to get it.
+ns.QuestGiverHints = {
+    [96987] = { starts = "Rexxie Copperclutch, just inside City of Dalaran's entrance", ends = "Rexxie Copperclutch, on the way out", inside = true },
 }

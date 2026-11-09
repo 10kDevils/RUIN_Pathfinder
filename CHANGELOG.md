@@ -6,6 +6,11 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.5.2 — 2026-11-08
+
+- City of Dalaran's quest route is complete. The Forever database files several of its quests outside the dungeon and records no order between them, so Pathfinder now adds them by hand: for Alliance, An Alarming Request first, then Starving Arcane and Heart of Disruption, then Friend of the Kirin Tor; for Horde, Prison Break In, Dalaran Patrols and Blood in the Streets, then Heart of Disruption and Shrewd Negotiations, plus Key to the City. Opportunistic Education, which has no giver in the database, now says to get it from Rexxie Copperclutch just inside the entrance.
+- Dungeon routes in general: a quest that follows another of the dungeon's quests is picked up after that one is handed in, instead of at the start.
+
 ## 0.5.1 — 2026-11-06
 
 - Route page: *Choose a route* opens a list of every route (14 at a time, scroll for more, the current one in view) instead of stepping to the next one per click (needs RUIN Core 0.5.3).

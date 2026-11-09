@@ -430,6 +430,10 @@ function QB.Prereqs(qid)
         for _, p in ipairs(ids(QB.Field(id, "preQuestGroup"))) do
             if QB.ForMe(p) then visit(p, depth + 1); add(p) end
         end
+        -- order the database doesn't record yet (Routes.lua)
+        for _, p in ipairs(ns.QuestPrereqHints and ns.QuestPrereqHints[id] or {}) do
+            if not added[p] and QB.ForMe(p) then visit(p, depth + 1); add(p) end
+        end
         local single = ids(QB.Field(id, "preQuestSingle"))
         if #single > 0 then
             local done, pick = false, nil
@@ -552,7 +556,8 @@ function QB.DungeonQuests(entry)
         local info = QB.Quest(qid)
         if not info or type(info.name) ~= "string" then return end
         local pre = QB.Prereqs(qid)
-        local inside, endsInside = false, false
+        local hint = ns.QuestGiverHints and ns.QuestGiverHints[qid]
+        local inside, endsInside = hint and hint.inside or false, hint and hint.inside or false
         for a in pairs(giverAreas(qid, "start")) do if areas[a] then inside = true end end
         for a in pairs(giverAreas(qid, "finish")) do if areas[a] then endsInside = true end end
         local _, itemName, itemFrom = QB.StartItem(qid)
@@ -593,9 +598,10 @@ function QB.DungeonRoute(entry, quests)
     local function step(act, qid, text)
         steps[#steps + 1] = { act = act, quest = name(qid), qid = qid, text = (text or ""):sub(1, 120) }
     end
+    local function hint(qid) return ns.QuestGiverHints and ns.QuestGiverHints[qid] end
     local function acceptText(qid)
         local i = QB.Quest(qid)
-        local who = i and first(i.starts)
+        local who = i and first(i.starts) or (hint(qid) and hint(qid).starts)
         if who then return who .. "." end
         local _, item, from, kind = QB.StartItem(qid)
         if item then
@@ -606,7 +612,7 @@ function QB.DungeonRoute(entry, quests)
     end
     local function turninText(qid)
         local i = QB.Quest(qid)
-        local who = i and first(i.ends)
+        local who = i and first(i.ends) or (hint(qid) and hint(qid).ends)
         return who and (who .. ".") or "Questie doesn't say where this is handed in."
     end
     local function doText(qid)
@@ -644,22 +650,39 @@ function QB.DungeonRoute(entry, quests)
         local f = QB.Spot(p, "finish", cm, cx, cy)
         if f then cm, cx, cy = f.map, f.x, f.y end
     end
-    -- 2. pick up the dungeon's quests outside
-    local outside, inside, handOut, handIn = {}, {}, {}, {}
+    -- 2. pick up the dungeon's quests outside. A quest that follows another
+    -- of the dungeon's quests (Friend of the Kirin Tor after Heart of
+    -- Disruption) waits until that one is handed in.
+    local outside, inside, handOut, handIn, after = {}, {}, {}, {}, {}
     for _, q in ipairs(quests) do
-        if q.inside or (q.item and #q.starts == 0) then inside[#inside + 1] = q.id else outside[#outside + 1] = q.id end
-        if q.endsInside then handIn[#handIn + 1] = q.id else handOut[#handOut + 1] = q.id end
+        local follows = false
+        for _, p in ipairs(q.pre) do if isDungeonQuest[p] then follows = true end end
+        if follows then
+            after[#after + 1] = q
+        else
+            if q.inside or (q.item and #q.starts == 0) then inside[#inside + 1] = q.id else outside[#outside + 1] = q.id end
+            if q.endsInside then handIn[#handIn + 1] = q.id else handOut[#handOut + 1] = q.id end
+        end
     end
+    local isAfter = {}
+    for _, q in ipairs(after) do isAfter[q.id] = true end
     for _, qid in ipairs(nearest(outside, "start")) do step("accept", qid, acceptText(qid)) end
     -- 3. the run
     steps[#steps + 1] = { act = "note", text = ("Run %s (levels %s): the quests below are done inside."):format(entry.name, entry.levels or "?") }
     for _, qid in ipairs(inside) do step("accept", qid, acceptText(qid)) end
     for _, q in ipairs(quests) do
-        local t = doText(q.id)
+        local t = not isAfter[q.id] and doText(q.id) or ""
         if t ~= "" then step("complete", q.id, t) end
     end
     for _, qid in ipairs(handIn) do step("turnin", qid, turninText(qid)) end
     -- 4. hand in the rest
     for _, qid in ipairs(nearest(handOut, "finish")) do step("turnin", qid, turninText(qid)) end
+    -- 5. the follow-ups, each once the quest before it is in
+    for _, q in ipairs(after) do
+        step("accept", q.id, acceptText(q.id))
+        local t = doText(q.id)
+        if t ~= "" then step("complete", q.id, t) end
+        step("turnin", q.id, turninText(q.id))
+    end
     return steps
 end

@@ -527,7 +527,7 @@ updateTracker = function()
         tracker.step:SetJustifyV("TOP")
         tracker.peers = W.Label(tracker, "", "GameFontHighlightSmall")
         tracker.peers:SetPoint("BOTTOMLEFT", 10, 8)
-        tracker.peers:SetPoint("RIGHT", tracker, "RIGHT", -112, 0)
+        tracker.peers:SetPoint("RIGHT", tracker, "RIGHT", -160, 0)
         tracker.peers:SetWordWrap(false)
         tracker.next = W.Button(tracker, ">", 26, function() M:Advance(1) end)
         tracker.next:SetPoint("BOTTOMRIGHT", -6, 4)
@@ -537,6 +537,10 @@ updateTracker = function()
         tracker.open = W.Button(tracker, "Open", 44, function() M:OpenTab(); if ui.tabs then ui.tabs:Select(1) end end)
         tracker.open:SetPoint("RIGHT", tracker.prev, "LEFT", -2, 0)
         tracker.open.tip = "Open Pathfinder: the Guide, the route list and the rest."
+        -- leaves the route; the tracker goes away until you start another
+        tracker.clear = W.Button(tracker, "Clear", 44, function() M:ClearRoute() end)
+        tracker.clear:SetPoint("RIGHT", tracker.open, "LEFT", -2, 0)
+        tracker.clear.tip = "Leave this route. The tracker and map pin go away until you start one again."
         -- Waypoint arrow: points where the step happens and turns as you turn.
         tracker.arrow = tracker:CreateTexture(nil, "ARTWORK")
         tracker.arrow:SetTexture("Interface\\Minimap\\MinimapArrow")
@@ -696,6 +700,18 @@ function M:StartRoute(id)
     updateStepPin()
     refreshPage()
     announceWaypoint()
+end
+
+-- Leaves the current route without starting another (and stops following).
+function M:ClearRoute()
+    if not db.route then return end
+    db.route, db.step, db.follow = nil, 1, nil
+    holdUntil = nil
+    share()
+    updateTracker()
+    updateStepPin()
+    refreshPage()
+    self:Print("Route cleared.")
 end
 
 -- The step's quest: by ID when both sides have one, else by title.
@@ -1308,6 +1324,9 @@ local function buildCurrent(page)
     ui.samplePill = W.Pill(page, 104)
     ui.samplePill:SetPoint("LEFT", ui.stepCount, "RIGHT", 10, 0)
     ui.samplePill:SetTag("Sample", "Classic sample")
+    ui.clearBtn = W.Button(page, "Clear route", 90, function() M:ClearRoute() end)
+    ui.clearBtn:SetPoint("TOPRIGHT", page, "TOPRIGHT", -24, -50)
+    ui.clearBtn.tip = "Leave the route you're on without starting another."
     ui.list = W.List(page, 32, function(row)
         row.box = CreateFrame("Frame", nil, row)
         row.box:SetSize(16, 16)
@@ -1880,6 +1899,7 @@ local function buildPage(panel)
             ui.list:SetItems(r and r.steps or {})
             ui.stepCount:SetText(r and (C.dim .. ("%d/%d done"):format(math.min(db.step - 1, #r.steps), #r.steps) .. "|r") or "")
             ui.samplePill:SetShown(r ~= nil and isSample(r.id))
+            if r then ui.clearBtn:Show() else ui.clearBtn:Hide() end
             refreshClassTrack()
             ui.peers:SetItems(livePeers())
         elseif tab == 2 then
@@ -1962,7 +1982,7 @@ BINDING_NAME_RUIN_PATHFINDER_OPEN = "Open Pathfinder"
 BINDING_NAME_RUIN_PATHFINDER_NEXT = "Pathfinder: next step"
 BINDING_NAME_RUIN_PATHFINDER_PREV = "Pathfinder: previous step"
 
--- /path next | prev | tracker | arrow | record | rec | mark <note> | save | import | unfollow | trainer
+-- /path next | prev | tracker | arrow | record | rec | mark <note> | save | import | unfollow | clear | trainer
 --       | quests | draft | skip | questshare
 SLASH_RUINPATH1 = "/path"
 SLASH_RUINPATH2 = "/pathfinder"
@@ -1997,5 +2017,6 @@ SlashCmdList.RUINPATH = function(input)
     elseif msg == "import" then
         R:ShowText("Import route", "Paste a RUIN route string and press OK.", "", function(text) M:ImportRoute(text) end)
     elseif msg == "unfollow" then M:Follow(nil)
+    elseif msg == "clear" or msg == "stop" then M:ClearRoute()
     else M:OpenTab() end
 end

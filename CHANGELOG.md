@@ -9,6 +9,7 @@ Versioning: the third number counts the meaningful changes made since the second
 ## 0.5.2 — 2026-11-08
 
 - The tracker has an Open button (beside < and >) that opens Pathfinder on the Guide.
+- Clear the route you're on without starting another: Clear on the tracker, Clear route on the Guide, or /path clear.
 - Item names and details come from C_Item when the old global item functions aren't there (the Retail 12 client WoW Forever runs on), so items stop showing as "Loading item...".
 - New route: Cozy Sleeping Bag, for Alliance and Horde (level 14+). It follows the chain of notes from Westfall and the Barrens through Stonetalon Mountains and Loch Modan to the Thoradin's Wall in Hillsbrad, where the last one gives the camping bag. Each step has its spot and the rewards along the way.
 - The other faction's routes no longer show in your lists (your current route always does).

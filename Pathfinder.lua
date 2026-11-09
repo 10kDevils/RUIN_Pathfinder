@@ -1605,6 +1605,28 @@ local function buildLibrary(page)
             refreshPage()
         end)
         row.show:SetPoint("LEFT", 2, 0)
+        -- a section header is a tinted band with Pathfinder's color down its
+        -- left edge and a gold line under it; clicking it folds the section
+        local ac = W.SchemeOf(row).accent
+        row.band = row:CreateTexture(nil, "BORDER")
+        row.band:SetAllPoints()
+        row.band:SetColorTexture(ac[1], ac[2], ac[3], 0.22)
+        row.bandEdge = row:CreateTexture(nil, "ARTWORK")
+        row.bandEdge:SetPoint("TOPLEFT"); row.bandEdge:SetPoint("BOTTOMLEFT")
+        row.bandEdge:SetWidth(3)
+        row.bandEdge:SetColorTexture(ac[1], ac[2], ac[3], 0.95)
+        row.bandLine = row:CreateTexture(nil, "ARTWORK")
+        row.bandLine:SetPoint("BOTTOMLEFT"); row.bandLine:SetPoint("BOTTOMRIGHT")
+        row.bandLine:SetHeight(1)
+        row.bandLine:SetColorTexture(0.9, 0.72, 0.38, 0.6)
+        row:SetScript("OnMouseUp", function(self, button)
+            local e = self.e
+            if button == "LeftButton" and e and e.header and e.key then
+                adb.collapsedRoutes = adb.collapsedRoutes or {}
+                adb.collapsedRoutes[e.key] = not adb.collapsedRoutes[e.key] or nil
+                refreshPage()
+            end
+        end)
         row.text = W.Label(row, "")
         row.text:SetPoint("LEFT", 28, 0)
         row.text:SetPoint("RIGHT", row, "RIGHT", -368, 0)
@@ -1625,6 +1647,15 @@ local function buildLibrary(page)
         local officer = R:IsOfficer()
         row.tip = nil
         row.e = e
+        local isHead = e.header ~= nil
+        row.band:SetShown(isHead); row.bandEdge:SetShown(isHead); row.bandLine:SetShown(isHead)
+        row.text:SetFontObject(isHead and "GameFontNormal" or "GameFontHighlight")
+        if e.spacer then
+            row.zebra:SetColorTexture(0, 0, 0, 0)
+            row.show:Hide(); row.text:SetText("")
+            row.add:Hide(); row.start:Hide(); row.export:Hide(); row.share:Hide(); row.del:Hide(); row.pub:Hide()
+            return
+        end
         if e.route or e.routes then
             row.show:Show(); row.show:Refresh()
             row.show.tip = e.route and "Show this route in the Guide tab's Choose a route list. Untick to hide it there; it stays here."
@@ -1836,9 +1867,16 @@ local function buildPage(panel)
             ui.draftBtn:SetShown(QB.Has())
             local items = {}
             for _, e in ipairs(adb.inbox) do items[#items + 1] = { inbox = e } end
-            for _, sec in ipairs(routeLibrary()) do
-                if sec.header then items[#items + 1] = { header = sec.header .. "  " .. C.dim .. sec.sub .. "|r", routes = sec.routes } end
-                for _, r in ipairs(sec.routes) do items[#items + 1] = { route = r } end
+            local PLUS, MINUS = "|TInterface\\Buttons\\UI-PlusButton-Up:14:14|t", "|TInterface\\Buttons\\UI-MinusButton-Up:14:14|t"
+            for i, sec in ipairs(routeLibrary()) do
+                local folded = adb.collapsedRoutes and adb.collapsedRoutes[sec.header]
+                if i > 1 or #items > 0 then items[#items + 1] = { spacer = true } end
+                items[#items + 1] = { key = sec.header, routes = sec.routes,
+                    header = ("%s %s  %s(%d)|r  %s%s|r"):format(folded and PLUS or MINUS, sec.header, C.white, #sec.routes, C.dim,
+                        folded and "click to show" or sec.sub) }
+                if not folded then
+                    for _, r in ipairs(sec.routes) do items[#items + 1] = { route = r } end
+                end
             end
             ui.library:SetItems(items)
         elseif tab == 4 then

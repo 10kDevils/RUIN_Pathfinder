@@ -701,8 +701,20 @@ local ZONE_CHUNK = 18
 local MIN_ZONE_QUESTS = 3
 QB.ZONE_CHUNK = ZONE_CHUNK
 
+-- Cities and battlegrounds get no zone route: their quests are hand-ins and
+-- class quests scattered across the world, or PvP.
+local NO_ZONE_ROUTE = {
+    [1519] = true, [1537] = true, [1657] = true, [3557] = true,    -- Stormwind, Ironforge, Darnassus, Exodar
+    [1637] = true, [1638] = true, [1497] = true, [3487] = true,    -- Orgrimmar, Thunder Bluff, Undercity, Silvermoon
+    [3703] = true, [4395] = true, [2257] = true,                   -- Shattrath, Dalaran (Northrend), Deeprun Tram
+    [2597] = true, [3277] = true, [3358] = true, [3820] = true,    -- Alterac Valley, Warsong Gulch, Arathi Basin, Eye of the Storm
+    [4384] = true, [4710] = true,                                  -- Strand of the Ancients, Isle of Conquest
+}
+QB.NO_ZONE_ROUTE = NO_ZONE_ROUTE
+
 local function dungeonAreas()
     local out = {}
+    for a in pairs(NO_ZONE_ROUTE) do out[a] = true end
     for _, e in ipairs(ns.DungeonQuestIndex or {}) do
         for _, a in ipairs(e.areas or {}) do out[a] = true end
     end

@@ -8,6 +8,8 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.5.3 — 2026-11-09
 
+- The step gets the game's own waypoint: a pin in the world over the spot with the distance under it, plus its map pin. It moves with each step and goes away when you clear the route; a waypoint you place yourself is only replaced at the next step. Part of the Arrow + pin option; `/path waypoint` turns just the world pin off or on.
+- The tracker's arrow works on WoW Forever's client (it never showed before) and points to steps in neighbouring zones too (needs RUIN Core 0.5.5). When the step is on another continent, the corner names its zone.
 - The tracker is wider and grows taller to fit a long step, so the text no longer runs under the Clear, Open, < and > buttons. The zone (or distance) sits in the top-right corner, right-justified, with the arrow below it.
 
 ## 0.5.2 — 2026-11-08

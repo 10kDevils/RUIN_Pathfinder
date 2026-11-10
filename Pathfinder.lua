@@ -236,7 +236,8 @@ local function resolveZone(zone)
         if info.name and info.name:lower() == zone:lower() then return map end
         map, depth = info.parentMapID, depth + 1
     end
-    return nil
+    -- anywhere else: the zone by name from the world map's own list
+    return R.Map.ZoneMapID and R.Map:ZoneMapID(zone) or nil
 end
 
 local function questIdByTitle(title)
@@ -271,9 +272,45 @@ local function stepPos(s)
     return nil
 end
 
+-- The game's own waypoint on the step: its 3D pin in the world (with the
+-- distance under it) and its map pin. Only a waypoint Pathfinder placed is
+-- ever moved or cleared; one you place yourself is left alone until the
+-- next step.
+local placedWp
+local function sameSpot(a, b)
+    return a and b and a.map == b.map and math.abs(a.x - b.x) < 0.0005 and math.abs(a.y - b.y) < 0.0005
+end
+local function currentWaypoint()
+    local p = C_Map.GetUserWaypoint and C_Map.GetUserWaypoint()
+    if not p then return nil end
+    local x, y = p.position.x, p.position.y
+    if p.position.GetXY then x, y = p.position:GetXY() end
+    return { map = p.uiMapID, x = x, y = y }
+end
+local function clearWaypoint()
+    if placedWp and C_Map and C_Map.ClearUserWaypoint and sameSpot(currentWaypoint(), placedWp) then
+        C_Map.ClearUserWaypoint()
+    end
+    placedWp = nil
+end
+local function updateWaypoint(map, x, y)
+    if not (C_Map and C_Map.SetUserWaypoint and UiMapPoint and UiMapPoint.CreateFromCoordinates) then return end
+    if not (map and db.arrow and db.waypoint ~= false) then clearWaypoint(); return end
+    local want = { map = map, x = x, y = y }
+    if sameSpot(placedWp, want) and sameSpot(currentWaypoint(), want) then return end
+    if C_Map.CanSetUserWaypointOnMap and not C_Map.CanSetUserWaypointOnMap(map) then clearWaypoint(); return end
+    local ok = pcall(C_Map.SetUserWaypoint, UiMapPoint.CreateFromCoordinates(map, x, y))
+    if not ok then return end
+    placedWp = want
+    if C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then
+        pcall(C_SuperTrack.SetSuperTrackedUserWaypoint, true)
+    end
+end
+
 local function updateStepPin()
     local s = currentStep()
     local map, x, y = stepPos(s)
+    updateWaypoint(s and map, x, y)
     if map and db.arrow then
         R.Map:SetPin("Pathfinder", "step", { map = map, x = x, y = y, icon = "Interface\\Icons\\INV_Misc_Map_01",
             color = W.MARKERS[ACT_MARKER[s.act] or "waypoint"], title = "Pathfinder: " .. (ACT_LABEL[s.act] or s.act) .. (s.quest and (" " .. s.quest) or ""),
@@ -500,7 +537,13 @@ local function arrowTick(nav, elapsed)
     end
     local east, north, yards = R.Map:Offset(map, x, y)
     local facing = GetPlayerFacing and GetPlayerFacing()
-    if not yards or not facing then arrow:Hide(); dist:SetText(""); return end
+    if not yards then
+        arrow:Hide()
+        local info = C_Map.GetMapInfo and C_Map.GetMapInfo(map)
+        dist:SetText(info and info.name and (C.dim .. info.name .. "|r") or "")
+        return
+    end
+    if not facing then arrow:Hide(); dist:SetText(("%d yards"):format(yards)); return end
     arrow:SetRotation(math.atan2(-east, north) - facing)
     if yards < 15 then arrow:SetVertexColor(0.3, 1, 0.3) else arrow:SetVertexColor(1, 0.82, 0.2) end
     arrow:Show()
@@ -1320,6 +1363,7 @@ local function buildCurrent(page)
     local arrowCheck = W.Check(page, "Arrow + pin", function() return db.arrow end,
         function(v) db.arrow = v; updateStepPin() end)
     arrowCheck:SetPoint("LEFT", trackCheck, "RIGHT", 64, 0)
+    arrowCheck.tip = "The tracker's arrow, the map pin, and the game's waypoint on the step: a pin in the world with the distance under it. /path waypoint turns just the world pin off or on."
     local skipCheck = W.Check(page, "Skip done quests", function() return db.skipDone end,
         function(v) db.skipDone = v; if v then M:SkipDone() end end)
     skipCheck:SetPoint("LEFT", arrowCheck, "RIGHT", 90, 0)
@@ -1991,7 +2035,7 @@ BINDING_NAME_RUIN_PATHFINDER_OPEN = "Open Pathfinder"
 BINDING_NAME_RUIN_PATHFINDER_NEXT = "Pathfinder: next step"
 BINDING_NAME_RUIN_PATHFINDER_PREV = "Pathfinder: previous step"
 
--- /path next | prev | tracker | arrow | record | rec | mark <note> | save | import | unfollow | clear | trainer
+-- /path next | prev | tracker | arrow | record | rec | mark <note> | save | import | unfollow | clear | waypoint | trainer
 --       | quests | draft | skip | questshare
 SLASH_RUINPATH1 = "/path"
 SLASH_RUINPATH2 = "/pathfinder"
@@ -2027,5 +2071,9 @@ SlashCmdList.RUINPATH = function(input)
         R:ShowText("Import route", "Paste a RUIN route string and press OK.", "", function(text) M:ImportRoute(text) end)
     elseif msg == "unfollow" then M:Follow(nil)
     elseif msg == "clear" or msg == "stop" then M:ClearRoute()
+    elseif msg == "waypoint" then
+        db.waypoint = db.waypoint == false
+        updateStepPin()
+        M:Print("Waypoint in the world " .. (db.waypoint and "on." or "off."))
     else M:OpenTab() end
 end

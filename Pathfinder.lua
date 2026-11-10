@@ -306,10 +306,56 @@ local function clearWaypoint()
     end
     placedWp = nil
 end
+-- The world pin only draws with the game's In-Game Navigation option on.
+local function ensureNavigation()
+    if GetCVar and SetCVar and GetCVar("showInGameNavigation") == "0" and not (InCombatLockdown and InCombatLockdown()) then
+        if pcall(SetCVar, "showInGameNavigation", "1") and not db.navTurnedOn then
+            db.navTurnedOn = true
+            M:Print("Turned on the game's In-Game Navigation so the waypoint shows in the world. /path waypoint turns Pathfinder's waypoint off.")
+        end
+    end
+end
+
+-- A quest step whose quest is in your log is tracked the game's own way
+-- (super-tracked), so the pin follows the quest's objective or turn-in
+-- like clicking it in the objective tracker. Quests the game can't place
+-- fall back to a waypoint on Pathfinder's spot.
+local placedQuest, questAt
+local questNoNav = {}
+local function inLog(qid)
+    return C_QuestLog and C_QuestLog.GetLogIndexForQuestID and (C_QuestLog.GetLogIndexForQuestID(qid) or 0) > 0
+end
+local function trackableQuest(s)
+    return s and s.qid and (s.act == "complete" or s.act == "turnin") and not questNoNav[s.qid]
+        and C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID and inLog(s.qid)
+end
+local function releaseQuest()
+    if placedQuest and C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID
+            and C_SuperTrack.GetSuperTrackedQuestID() == placedQuest and C_SuperTrack.SetSuperTrackedQuestID then
+        pcall(C_SuperTrack.SetSuperTrackedQuestID, 0)
+    end
+    placedQuest = nil
+end
+
 local function noteWp(why, map, x, y, err)
     db.navLast = { t = time and time() or 0, route = db.route, step = db.step, why = why, map = map, x = x, y = y, err = err and tostring(err) }
 end
-local function updateWaypoint(map, x, y)
+local function updateWaypoint(map, x, y, s)
+    if db.arrow and db.waypoint ~= false and trackableQuest(s) then
+        if placedQuest == s.qid and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID() == s.qid then return end
+        clearWaypoint()
+        if placedQuest ~= s.qid then releaseQuest() end
+        local ok, err = pcall(C_SuperTrack.SetSuperTrackedQuestID, s.qid)
+        if not ok then
+            questNoNav[s.qid] = true
+            noteWp("quest tracking failed", nil, nil, nil, err)
+            return updateWaypoint(map, x, y, s)
+        end
+        placedQuest, questAt = s.qid, GetTime()
+        ensureNavigation()
+        return noteWp("tracking quest " .. s.qid)
+    end
+    releaseQuest()
     if not (C_Map and C_Map.SetUserWaypoint and UiMapPoint and UiMapPoint.CreateFromCoordinates) then
         return noteWp("no waypoint API (C_Map.SetUserWaypoint " .. tostring(C_Map and C_Map.SetUserWaypoint ~= nil) .. ", UiMapPoint " .. tostring(UiMapPoint ~= nil) .. ")")
     end
@@ -330,14 +376,23 @@ local function updateWaypoint(map, x, y)
     if C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then
         tok, terr = pcall(C_SuperTrack.SetSuperTrackedUserWaypoint, true)
     end
-    -- the world pin only draws with the game's In-Game Navigation option on
-    if GetCVar and SetCVar and GetCVar("showInGameNavigation") == "0" and not (InCombatLockdown and InCombatLockdown()) then
-        if pcall(SetCVar, "showInGameNavigation", "1") and not db.navTurnedOn then
-            db.navTurnedOn = true
-            M:Print("Turned on the game's In-Game Navigation so the waypoint shows in the world. /path waypoint turns Pathfinder's waypoint off.")
-        end
-    end
+    ensureNavigation()
     noteWp(tok and ("placed; now " .. tostring(currentWaypoint() and "set" or "missing")) or "super-track failed", map, x, y, terr)
+end
+
+function M.PinOn() return db and db.pin ~= false end
+
+-- What the RUIN pin should call the current target, when it's Pathfinder's.
+function M.PinInfo()
+    local s = navStep()
+    if not s then return nil end
+    local label = ACT_LABEL[s.act] or s.act
+    local title = s.quest or (s.text ~= "" and s.text) or label
+    if placedWp and C_SuperTrack and C_SuperTrack.IsSuperTrackingUserWaypoint and C_SuperTrack.IsSuperTrackingUserWaypoint()
+            and sameSpot(currentWaypoint(), placedWp) then
+        return { title = title, act = label, step = db.step, route = currentRoute() and currentRoute().title }
+    end
+    if placedQuest then return { quest = placedQuest, act = label, step = db.step, route = currentRoute() and currentRoute().title } end
 end
 
 -- /path nav: every link from the step to the arrow and the world pin, so a
@@ -377,7 +432,7 @@ end
 
 local function updateStepPin()
     local s, map, x, y = navStep()
-    updateWaypoint(s and map, x, y)
+    updateWaypoint(s and map, x, y, s)
     if map and db.arrow then
         R.Map:SetPin("Pathfinder", "step", { map = map, x = x, y = y, icon = "Interface\\Icons\\INV_Misc_Map_01",
             color = W.MARKERS[ACT_MARKER[s.act] or "waypoint"], title = "Pathfinder: " .. (ACT_LABEL[s.act] or s.act) .. (s.quest and (" " .. s.quest) or ""),
@@ -594,7 +649,17 @@ local function arrowTick(nav, elapsed)
     nav.wp = (nav.wp or 0) + (elapsed or 0)
     if nav.acc < 0.05 then return end
     nav.acc = 0
-    if nav.wp > 3 then nav.wp = 0; if not placedWp then updateStepPin() end end
+    if nav.wp > 3 then
+        nav.wp = 0
+        -- a tracked quest the game can't place (no navigation after a few seconds) gets a waypoint instead
+        if placedQuest and questAt and GetTime() - questAt > 3 and C_Navigation and C_Navigation.GetFrame and not C_Navigation.GetFrame() then
+            questNoNav[placedQuest] = true
+            placedQuest = nil
+            updateStepPin()
+        elseif not placedWp and not placedQuest then
+            updateStepPin()
+        end
+    end
     local s, map, x, y, elsewhere = navStep()
     local arrow, dist = tracker.arrow, tracker.dist
     if not db.arrow or not s then arrow:Hide(); dist:SetText(""); return end
@@ -2115,7 +2180,7 @@ BINDING_NAME_RUIN_PATHFINDER_OPEN = "Open Pathfinder"
 BINDING_NAME_RUIN_PATHFINDER_NEXT = "Pathfinder: next step"
 BINDING_NAME_RUIN_PATHFINDER_PREV = "Pathfinder: previous step"
 
--- /path next | prev | tracker | arrow | record | rec | mark <note> | save | import | unfollow | clear | waypoint | trainer
+-- /path next | prev | tracker | arrow | record | rec | mark <note> | save | import | unfollow | clear | waypoint | pin | trainer
 --       | quests | draft | skip | questshare
 SLASH_RUINPATH1 = "/path"
 SLASH_RUINPATH2 = "/pathfinder"
@@ -2152,6 +2217,10 @@ SlashCmdList.RUINPATH = function(input)
     elseif msg == "unfollow" then M:Follow(nil)
     elseif msg == "clear" or msg == "stop" then M:ClearRoute()
     elseif msg == "nav" then M:NavReport()
+    elseif msg == "pin" then
+        db.pin = db.pin == false
+        if M.RefreshPin then M.RefreshPin() end
+        M:Print("RUIN waypoint pin " .. (db.pin and "on." or "off (the game's own marker shows instead)."))
     elseif msg == "waypoint" then
         db.waypoint = db.waypoint == false
         updateStepPin()

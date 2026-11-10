@@ -8,6 +8,8 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.5.3 — 2026-11-09
 
+- New RUIN waypoint pin: a gold marker standing over whatever the game is navigating to (the quest you select in the objective tracker, a map pin, or Pathfinder's step), with what it is, the distance and a walking time under it, and a tracked quest's objectives. When the spot is off screen it waits at the screen edge with an arrow pointing the way, and it shows a check when you arrive. It replaces the game's own marker while it's on; `/path pin` switches back.
+- Quest steps whose quest is in your log are tracked the game's own way, like clicking the quest in the objective tracker, so the pin follows its objective or turn-in. A quest the game can't place falls back to a waypoint on Pathfinder's spot.
 - Publish shows only to officers and up, and only on routes an officer (or higher) made; built-in routes and members' routes no longer have it. Approving a member's shared route from the inbox is unchanged.
 - A step with no place of its own (a note) points the arrow, map pin and waypoint at the next step that has one.
 - The world pin needs the game's In-Game Navigation option, which can be off; Pathfinder turns it on when it places a waypoint and says so once.

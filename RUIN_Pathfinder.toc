@@ -14,3 +14,4 @@
 Routes.lua
 Questie.lua
 Pathfinder.lua
+WaypointPin.lua

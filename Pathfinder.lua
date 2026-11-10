@@ -293,23 +293,42 @@ local function clearWaypoint()
     end
     placedWp = nil
 end
+local function noteWp(why, map, x, y, err)
+    db.navLast = { t = time and time() or 0, route = db.route, step = db.step, why = why, map = map, x = x, y = y, err = err and tostring(err) }
+end
 local function updateWaypoint(map, x, y)
-    if not (C_Map and C_Map.SetUserWaypoint and UiMapPoint and UiMapPoint.CreateFromCoordinates) then return end
-    if not (map and db.arrow and db.waypoint ~= false) then clearWaypoint(); return end
+    if not (C_Map and C_Map.SetUserWaypoint and UiMapPoint and UiMapPoint.CreateFromCoordinates) then
+        return noteWp("no waypoint API (C_Map.SetUserWaypoint " .. tostring(C_Map and C_Map.SetUserWaypoint ~= nil) .. ", UiMapPoint " .. tostring(UiMapPoint ~= nil) .. ")")
+    end
+    if not (map and db.arrow and db.waypoint ~= false) then
+        clearWaypoint()
+        return noteWp(not map and "step has no spot" or "turned off")
+    end
     local want = { map = map, x = x, y = y }
     if sameSpot(placedWp, want) and sameSpot(currentWaypoint(), want) then return end
-    if C_Map.CanSetUserWaypointOnMap and not C_Map.CanSetUserWaypointOnMap(map) then clearWaypoint(); return end
-    local ok = pcall(C_Map.SetUserWaypoint, UiMapPoint.CreateFromCoordinates(map, x, y))
-    if not ok then return end
-    placedWp = want
-    if C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then
-        pcall(C_SuperTrack.SetSuperTrackedUserWaypoint, true)
+    if C_Map.CanSetUserWaypointOnMap and not C_Map.CanSetUserWaypointOnMap(map) then
+        clearWaypoint()
+        return noteWp("map doesn't take waypoints", map, x, y)
     end
+    local ok, err = pcall(C_Map.SetUserWaypoint, UiMapPoint.CreateFromCoordinates(map, x, y))
+    if not ok then return noteWp("SetUserWaypoint failed", map, x, y, err) end
+    placedWp = want
+    local tok, terr = true, nil
+    if C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then
+        tok, terr = pcall(C_SuperTrack.SetSuperTrackedUserWaypoint, true)
+    end
+    noteWp(tok and ("placed; now " .. tostring(currentWaypoint() and "set" or "missing")) or "super-track failed", map, x, y, terr)
 end
 
 -- /path nav: every link from the step to the arrow and the world pin, so a
 -- break can be seen from chat
 function M:NavReport()
+    local lines = {}
+    adb.navReport = lines
+    local realPrint = self.Print
+    local me = self
+    local function out(_, m) lines[#lines + 1] = m; realPrint(me, m) end
+    self = setmetatable({ Print = out }, { __index = me })
     local function v(...) local t = {} for i = 1, select("#", ...) do t[#t + 1] = tostring((select(i, ...))) end return table.concat(t, ", ") end
     local s, r = currentStep()
     self:Print(("Nav: route %s, step %s/%s: %s %s"):format(tostring(db.route), tostring(db.step), r and #r.steps or "-",
@@ -331,6 +350,8 @@ function M:NavReport()
     self:Print("  waypoint: " .. (wp and v(wp.map, wp.x, wp.y) or "none") .. ", placed by Pathfinder " .. (placedWp and v(placedWp.map, placedWp.x, placedWp.y) or "none")
         .. ", super-tracked " .. v(C_SuperTrack and C_SuperTrack.IsSuperTrackingUserWaypoint and C_SuperTrack.IsSuperTrackingUserWaypoint())
         .. ", in-game navigation " .. v(GetCVar and GetCVar("showInGameNavigation")))
+    local n = db.navLast
+    if n then self:Print("  last waypoint try: " .. v(n.why, n.map, n.x, n.y, n.err)) end
 end
 
 local function updateStepPin()

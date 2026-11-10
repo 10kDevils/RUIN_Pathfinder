@@ -307,6 +307,32 @@ local function updateWaypoint(map, x, y)
     end
 end
 
+-- /path nav: every link from the step to the arrow and the world pin, so a
+-- break can be seen from chat
+function M:NavReport()
+    local function v(...) local t = {} for i = 1, select("#", ...) do t[#t + 1] = tostring((select(i, ...))) end return table.concat(t, ", ") end
+    local s, r = currentStep()
+    self:Print(("Nav: route %s, step %s/%s: %s %s"):format(tostring(db.route), tostring(db.step), r and #r.steps or "-",
+        s and tostring(s.act) or "-", s and s.at and ("at " .. v(s.at.zone, s.at.x, s.at.y)) or (s and s.qid and ("quest " .. s.qid) or "")))
+    local map, x, y, elsewhere = stepPos(s)
+    local info = map and C_Map.GetMapInfo and C_Map.GetMapInfo(map)
+    self:Print("  step spot: " .. v(map, x, y, elsewhere) .. (info and (" (" .. tostring(info.name) .. ", type " .. tostring(info.mapType) .. ")") or ""))
+    if s and s.at then self:Print("  zone lookup: " .. v(R.Map.ZoneMapID and R.Map:ZoneMapID(s.at.zone))) end
+    local pm, px, py = R.Map:PlayerPos()
+    self:Print("  you: " .. v(C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player"), pm, px, py))
+    if map then self:Print("  world (step): " .. v(R.Map:WorldPos(map, x, y))) end
+    if pm then self:Print("  world (you): " .. v(R.Map:WorldPos(pm, px, py))) end
+    if map then self:Print("  offset: " .. v(R.Map:Offset(map, x, y))) end
+    self:Print("  facing: " .. v(GetPlayerFacing and GetPlayerFacing()) .. ", arrow option " .. v(db.arrow) .. ", tracker shown " .. v(tracker and tracker:IsShown()))
+    self:Print("  APIs: GetWorldPosFromMapPos " .. v(C_Map.GetWorldPosFromMapPos ~= nil) .. ", SetUserWaypoint " .. v(C_Map.SetUserWaypoint ~= nil)
+        .. ", UiMapPoint " .. v(UiMapPoint ~= nil) .. ", C_SuperTrack " .. v(C_SuperTrack ~= nil))
+    if map and C_Map.CanSetUserWaypointOnMap then self:Print("  can waypoint here: " .. v(C_Map.CanSetUserWaypointOnMap(map))) end
+    local wp = currentWaypoint and C_Map.GetUserWaypoint and currentWaypoint()
+    self:Print("  waypoint: " .. (wp and v(wp.map, wp.x, wp.y) or "none") .. ", placed by Pathfinder " .. (placedWp and v(placedWp.map, placedWp.x, placedWp.y) or "none")
+        .. ", super-tracked " .. v(C_SuperTrack and C_SuperTrack.IsSuperTrackingUserWaypoint and C_SuperTrack.IsSuperTrackingUserWaypoint())
+        .. ", in-game navigation " .. v(GetCVar and GetCVar("showInGameNavigation")))
+end
+
 local function updateStepPin()
     local s = currentStep()
     local map, x, y = stepPos(s)
@@ -524,8 +550,10 @@ end
 ---------------------------------------------------------------------------
 local function arrowTick(nav, elapsed)
     nav.acc = (nav.acc or 0) + (elapsed or 0)
+    nav.wp = (nav.wp or 0) + (elapsed or 0)
     if nav.acc < 0.05 then return end
     nav.acc = 0
+    if nav.wp > 3 then nav.wp = 0; if not placedWp then updateStepPin() end end
     local s = currentStep()
     local map, x, y, elsewhere = stepPos(s)
     local arrow, dist = tracker.arrow, tracker.dist
@@ -588,7 +616,11 @@ updateTracker = function()
         tracker.clear.tip = "Leave this route. The tracker and map pin go away until you start one again."
         -- Waypoint arrow: points where the step happens and turns as you turn.
         tracker.arrow = tracker:CreateTexture(nil, "ARTWORK")
-        tracker.arrow:SetTexture("Interface\\Minimap\\MinimapArrow")
+        -- the game's navigation arrow when the client has it, else the minimap arrow
+        if not (tracker.arrow.SetAtlas and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo("Navigation-Tracked-Arrow")
+                and tracker.arrow:SetAtlas("Navigation-Tracked-Arrow") ~= false) then
+            tracker.arrow:SetTexture("Interface\\Minimap\\MinimapArrow")
+        end
         tracker.arrow:SetSize(30, 30)
         tracker.arrow:SetPoint("TOPRIGHT", -12, -26)
         tracker.arrow:Hide()
@@ -2071,6 +2103,7 @@ SlashCmdList.RUINPATH = function(input)
         R:ShowText("Import route", "Paste a RUIN route string and press OK.", "", function(text) M:ImportRoute(text) end)
     elseif msg == "unfollow" then M:Follow(nil)
     elseif msg == "clear" or msg == "stop" then M:ClearRoute()
+    elseif msg == "nav" then M:NavReport()
     elseif msg == "waypoint" then
         db.waypoint = db.waypoint == false
         updateStepPin()

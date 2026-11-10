@@ -272,6 +272,19 @@ local function stepPos(s)
     return nil
 end
 
+-- Where to point: the current step's spot, or for a step with no place of
+-- its own (a note, a level-up) the next step that has one.
+local function navStep()
+    local s, r = currentStep()
+    if not s then return nil end
+    for i = db.step, math.min(#r.steps, db.step + 6) do
+        local st = r.steps[i]
+        local map, x, y, elsewhere = stepPos(st)
+        if map or elsewhere then return st, map, x, y, elsewhere end
+    end
+    return s
+end
+
 -- The game's own waypoint on the step: its 3D pin in the world (with the
 -- distance under it) and its map pin. Only a waypoint Pathfinder placed is
 -- ever moved or cleared; one you place yourself is left alone until the
@@ -317,6 +330,13 @@ local function updateWaypoint(map, x, y)
     if C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then
         tok, terr = pcall(C_SuperTrack.SetSuperTrackedUserWaypoint, true)
     end
+    -- the world pin only draws with the game's In-Game Navigation option on
+    if GetCVar and SetCVar and GetCVar("showInGameNavigation") == "0" and not (InCombatLockdown and InCombatLockdown()) then
+        if pcall(SetCVar, "showInGameNavigation", "1") and not db.navTurnedOn then
+            db.navTurnedOn = true
+            M:Print("Turned on the game's In-Game Navigation so the waypoint shows in the world. /path waypoint turns Pathfinder's waypoint off.")
+        end
+    end
     noteWp(tok and ("placed; now " .. tostring(currentWaypoint() and "set" or "missing")) or "super-track failed", map, x, y, terr)
 end
 
@@ -333,7 +353,8 @@ function M:NavReport()
     local s, r = currentStep()
     self:Print(("Nav: route %s, step %s/%s: %s %s"):format(tostring(db.route), tostring(db.step), r and #r.steps or "-",
         s and tostring(s.act) or "-", s and s.at and ("at " .. v(s.at.zone, s.at.x, s.at.y)) or (s and s.qid and ("quest " .. s.qid) or "")))
-    local map, x, y, elsewhere = stepPos(s)
+    local ns_, map, x, y, elsewhere = navStep()
+    if ns_ and ns_ ~= s then self:Print("  pointing at a later step: " .. v(ns_.act, ns_.quest or ns_.text)) end
     local info = map and C_Map.GetMapInfo and C_Map.GetMapInfo(map)
     self:Print("  step spot: " .. v(map, x, y, elsewhere) .. (info and (" (" .. tostring(info.name) .. ", type " .. tostring(info.mapType) .. ")") or ""))
     if s and s.at then self:Print("  zone lookup: " .. v(R.Map.ZoneMapID and R.Map:ZoneMapID(s.at.zone))) end
@@ -355,8 +376,7 @@ function M:NavReport()
 end
 
 local function updateStepPin()
-    local s = currentStep()
-    local map, x, y = stepPos(s)
+    local s, map, x, y = navStep()
     updateWaypoint(s and map, x, y)
     if map and db.arrow then
         R.Map:SetPin("Pathfinder", "step", { map = map, x = x, y = y, icon = "Interface\\Icons\\INV_Misc_Map_01",
@@ -575,8 +595,7 @@ local function arrowTick(nav, elapsed)
     if nav.acc < 0.05 then return end
     nav.acc = 0
     if nav.wp > 3 then nav.wp = 0; if not placedWp then updateStepPin() end end
-    local s = currentStep()
-    local map, x, y, elsewhere = stepPos(s)
+    local s, map, x, y, elsewhere = navStep()
     local arrow, dist = tracker.arrow, tracker.dist
     if not db.arrow or not s then arrow:Hide(); dist:SetText(""); return end
     if not map then
@@ -729,9 +748,8 @@ end
 ---------------------------------------------------------------------------
 -- "[RUIN] Pathfinder: Waypoint set: The Forgotten Heirloom (252 yards)"
 local function announceWaypoint()
-    local s = currentStep()
+    local s, map, x, y = navStep()
     if not (s and db.arrow) then return end
-    local map, x, y = stepPos(s)
     if not map then return end
     local _, _, yards = R.Map:Offset(map, x, y)
     M:Print(("Waypoint set: %s%s"):format(s.quest or (s.text ~= "" and s.text) or ACT_LABEL[s.act] or "next step",

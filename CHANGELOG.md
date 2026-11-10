@@ -8,6 +8,8 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.5.3 — 2026-11-09
 
+- A step with no place of its own (a note) points the arrow, map pin and waypoint at the next step that has one.
+- The world pin needs the game's In-Game Navigation option, which can be off; Pathfinder turns it on when it places a waypoint and says so once.
 - `/path nav` prints each link from the step to the arrow and the world pin (the step's spot, your position, world positions, facing, the waypoint), to find where it breaks. The waypoint is retried every few seconds until it can be placed, and the arrow uses the game's navigation arrow art when the client has it.
 - The step gets the game's own waypoint: a pin in the world over the spot with the distance under it, plus its map pin. It moves with each step and goes away when you clear the route; a waypoint you place yourself is only replaced at the next step. Part of the Arrow + pin option; `/path waypoint` turns just the world pin off or on.
 - The tracker's arrow works on WoW Forever's client (it never showed before) and points to steps in neighbouring zones too (needs RUIN Core 0.5.5). When the step is on another continent, the corner names its zone.

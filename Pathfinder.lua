@@ -1107,10 +1107,19 @@ local function officialPayload(r)
     return d
 end
 
+-- Was this route made by an officer (or higher)? Built-in routes weren't.
+local function officerMade(r)
+    if not r or isBuiltInRoute(r.id) or type(r.author) ~= "string" or r.author == "" then return false end
+    return R.IsOfficerName and R:IsOfficerName(r.author) or false
+end
+M.OfficerMade = officerMade
+
+-- from: the member whose shared route an officer approves from the inbox
 function M:PublishRoute(id, from)
     local r = routeById(id)
     if not r then return end
     if not R:IsOfficer() then return self:Print("Only officers publish routes to RUIN.") end
+    if not from and not officerMade(r) then return self:Print("Only routes made by officers can be published.") end
     local me = UnitName("player")
     local oid = r.official and r.id or ("o" .. tostring(r.id):gsub("^o", ""))
     local copy = cleanRoute(exportable(r))
@@ -1917,7 +1926,7 @@ local function buildLibrary(page)
         end or nil
         row.add:Hide()
         -- officers publish their routes (or the built-in ones) to everyone, and withdraw RUIN routes
-        row.pub:SetShown(officer and not official)
+        row.pub:SetShown(officer and not official and officerMade(r))
         row.pub:SetText(OFFICER_ICON .. " Publish")
         row.pub:ClearAllPoints()
         row.pub:SetPoint("RIGHT", row.start, "LEFT", -2, 0)

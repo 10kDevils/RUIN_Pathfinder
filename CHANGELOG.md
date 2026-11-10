@@ -8,6 +8,7 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.5.3 — 2026-11-09
 
+- Publish shows only to officers and up, and only on routes an officer (or higher) made; built-in routes and members' routes no longer have it. Approving a member's shared route from the inbox is unchanged.
 - A step with no place of its own (a note) points the arrow, map pin and waypoint at the next step that has one.
 - The world pin needs the game's In-Game Navigation option, which can be off; Pathfinder turns it on when it places a waypoint and says so once.
 - `/path nav` prints each link from the step to the arrow and the world pin (the step's spot, your position, world positions, facing, the waypoint), to find where it breaks. The waypoint is retried every few seconds until it can be placed, and the arrow uses the game's navigation arrow art when the client has it.

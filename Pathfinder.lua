@@ -428,6 +428,8 @@ function M:NavReport()
         .. ", in-game navigation " .. v(GetCVar and GetCVar("showInGameNavigation")))
     local n = db.navLast
     if n then self:Print("  last waypoint try: " .. v(n.why, n.map, n.x, n.y, n.err)) end
+    self:Print("  tracked quest: " .. v(placedQuest, C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID()))
+    if M.Pin then self:Print("  RUIN pin: " .. M.Pin.State()) end
 end
 
 local function updateStepPin()

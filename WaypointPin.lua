@@ -192,22 +192,40 @@ local function update(_, elapsed)
     pin:Show()
 end
 
+-- The pin hides itself when there's nothing to show, and a hidden frame gets
+-- no OnUpdate, so an always-visible driver runs it. The driver also looks
+-- for the game's navigation frame twice a second, in case an event is missed.
+local driver = CreateFrame("Frame", nil, UIParent)
+local look = 0
+
 local function detach()
     navFrame = nil
-    if pin then pin:Hide(); pin:SetScript("OnUpdate", nil) end
+    if pin then pin:Hide() end
     setGameMarker(false)
 end
 
 local function attach()
     if not on() then return detach() end
-    navFrame = C_Navigation.GetFrame()
-    if not navFrame then return detach() end
-    if not pin then build() end
-    pin.check:Hide()
-    pin.icon:SetAlpha(1)
+    local f = C_Navigation.GetFrame()
+    if not f then return detach() end
+    if f ~= navFrame then
+        navFrame = f
+        if not pin then build() end
+        pin.check:Hide()
+        pin.icon:SetAlpha(1)
+    end
     setGameMarker(true)
-    pin:SetScript("OnUpdate", update)
 end
+
+driver:SetScript("OnUpdate", function(_, elapsed)
+    look = look + (elapsed or 0)
+    if look > 0.5 then
+        look = 0
+        local f = on() and C_Navigation.GetFrame() or nil
+        if f ~= navFrame then if f then attach() else detach() end end
+    end
+    if navFrame and pin then update(nil, elapsed) end
+end)
 
 -- reached: a moment's check mark, then the game moves on (or Pathfinder does)
 local function reached()
@@ -234,4 +252,14 @@ function M.RefreshPin()
     if C_Navigation and C_Navigation.GetFrame and C_Navigation.GetFrame() then attach() else detach() end
 end
 
-M.Pin = { Update = function() if pin and navFrame then update(nil, 0) end end, Frame = function() return pin end }
+M.Pin = { Update = function() if pin and navFrame then update(nil, 0) end end, Frame = function() return pin end,
+    Driver = driver,
+    State = function()
+        return ("pin %s, attached %s, shown %s, nav frame %s, on screen %s, clamped %s, distance %s, tracking type %s"):format(
+            tostring(M.PinOn and M.PinOn()), tostring(navFrame ~= nil), tostring(pin and pin:IsShown() or false),
+            tostring(C_Navigation and C_Navigation.GetFrame and C_Navigation.GetFrame() ~= nil),
+            tostring(C_Navigation and C_Navigation.HasValidScreenPosition and C_Navigation.HasValidScreenPosition()),
+            tostring(C_Navigation and C_Navigation.WasClampedToScreen and C_Navigation.WasClampedToScreen()),
+            tostring(C_Navigation and C_Navigation.GetDistance and C_Navigation.GetDistance()),
+            tostring(C_SuperTrack and C_SuperTrack.GetHighestPrioritySuperTrackingType and C_SuperTrack.GetHighestPrioritySuperTrackingType()))
+    end }

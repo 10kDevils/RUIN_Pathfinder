@@ -2,7 +2,7 @@
 ## Title: |cffe6b862RUIN|r Pathfinder
 ## Notes: Step-by-step questing routes with an on-screen tracker, Questie's quest database when you have it, and which RUIN members share your quests.
 ## Author: RUIN
-## Version: 0.5.2
+## Version: 0.5.3
 ## Dependencies: RUIN_Core
 ## OptionalDeps: Questie, QuestieDB
 ## SavedVariables: RUIN_PathfinderDB

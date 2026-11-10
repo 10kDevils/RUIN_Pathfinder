@@ -6,6 +6,10 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.5.3 — 2026-11-09
+
+- The tracker is wider and grows taller to fit a long step, so the text no longer runs under the Clear, Open, < and > buttons. The zone (or distance) sits in the top-right corner, right-justified, with the arrow below it.
+
 ## 0.5.2 — 2026-11-08
 
 - The tracker has an Open button (beside < and >) that opens Pathfinder on the Guide.

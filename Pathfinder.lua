@@ -32,7 +32,7 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Pathfinder", { version = "0.5.2" })
+local M = R:RegisterModule("Pathfinder", { version = "0.5.3" })
 local QB = ns.QB
 
 local SHARE_EVERY, PEER_TTL = 120, 300
@@ -507,6 +507,8 @@ local function arrowTick(nav, elapsed)
     dist:SetText(yards < 15 and (C.good .. "here|r") or ("%d yards"):format(yards))
 end
 
+local TRACKER_W, TRACKER_MIN_H = 340, 92
+
 updateTracker = function()
     if not db then return end
     local s, r = currentStep()
@@ -516,14 +518,14 @@ updateTracker = function()
     end
     if not tracker then
         tracker = W.HudFrame("RUIN_PathfinderTracker", "Pathfinder", db, "trackerPos", { "RIGHT", UIParent, "RIGHT", -40, 140 })
-        tracker:SetSize(310, 92)
+        tracker:SetSize(TRACKER_W, TRACKER_MIN_H)
         tracker.title = W.Label(tracker, "", "GameFontNormalSmall")
         tracker.title:SetPoint("TOPLEFT", 10, -9)
-        tracker.title:SetPoint("RIGHT", tracker, "RIGHT", -52, 0)
+        tracker.title:SetPoint("RIGHT", tracker, "RIGHT", -122, 0)
         tracker.title:SetWordWrap(false)
         tracker.step = W.Label(tracker, "")
-        tracker.step:SetPoint("TOPLEFT", 10, -25)
-        tracker.step:SetWidth(242)
+        tracker.step:SetPoint("TOPLEFT", 10, -26)
+        tracker.step:SetWidth(TRACKER_W - 62)
         tracker.step:SetJustifyV("TOP")
         tracker.peers = W.Label(tracker, "", "GameFontHighlightSmall")
         tracker.peers:SetPoint("BOTTOMLEFT", 10, 8)
@@ -545,15 +547,22 @@ updateTracker = function()
         tracker.arrow = tracker:CreateTexture(nil, "ARTWORK")
         tracker.arrow:SetTexture("Interface\\Minimap\\MinimapArrow")
         tracker.arrow:SetSize(30, 30)
-        tracker.arrow:SetPoint("TOPRIGHT", -12, -8)
+        tracker.arrow:SetPoint("TOPRIGHT", -12, -26)
         tracker.arrow:Hide()
+        -- the zone (or distance) sits in the top-right corner, right-justified
         tracker.dist = W.Label(tracker, "", "GameFontHighlightSmall")
-        tracker.dist:SetPoint("TOP", tracker.arrow, "BOTTOM", 0, 0)
+        tracker.dist:SetPoint("TOPRIGHT", -10, -9)
+        tracker.dist:SetWidth(110)
+        tracker.dist:SetJustifyH("RIGHT")
+        tracker.dist:SetWordWrap(false)
         tracker.nav = CreateFrame("Frame", nil, tracker)
         tracker.nav:SetScript("OnUpdate", arrowTick)
     end
     tracker.title:SetText(("Pathfinder  ·  %s  %d/%d"):format(r.title, math.min(db.step, #r.steps), #r.steps))
     tracker.step:SetText(s and stepText(s) or (C.good .. "Route complete!|r"))
+    -- grow to fit the step so it never runs under the buttons
+    local textH = tracker.step.GetStringHeight and tracker.step:GetStringHeight() or 14
+    tracker:SetHeight(math.max(TRACKER_MIN_H, math.ceil(26 + textH + 8 + 28)))
     local n = #sameStepPeers()
     local follow = db.follow and peers[db.follow]
     local line = follow and (C.gold .. "Following " .. R.Util.ShortName(follow.name) .. "|r  ") or ""

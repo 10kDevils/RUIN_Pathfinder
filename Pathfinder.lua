@@ -871,7 +871,8 @@ end
 -- tracker grows taller instead, so nothing is ever cut off.
 local function fitTracker()
     local lineH = 14
-    local maxLines = math.max(1, math.floor((TRACKER_H - 28 - 8) / lineH))
+    -- two lines, or one per objective on the Tracked tab
+    local maxLines = math.max(math.max(1, math.floor((TRACKER_H - 28 - 8) / lineH)), tracker.wantLines or 0)
     local pad = SIDE * 2 + 8 + 26      -- the sides, plus room for the arrow at the right
     local step = tracker.step
     if step.SetMaxLines then step:SetMaxLines(0) end   -- measure the whole text
@@ -1067,7 +1068,9 @@ updateTracker = function()
         local title = tq and C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(tq)
         tracker.title:SetText("Tracked" .. (title and ("  ·  " .. title) or ""))
         local body = tq and M.ObjectiveLines(tq) or ""
-        body = body:gsub("\n", "     ")
+        -- each objective on its own line; the tracker grows taller to fit them
+        local _, breaks = body:gsub("\n", "")
+        tracker.wantLines = breaks + 1
         if body == "" then body = C.dim .. "No objectives to show.|r" end
         tracker.step:SetText(body)
         tracker.prev.tip, tracker.next.tip = "Track the previous quest in your log.", "Track the next quest in your log."
@@ -1078,6 +1081,7 @@ updateTracker = function()
             .. (n > 0 and ("  " .. C.good .. "· " .. n .. " RUIN here|r") or "")
         tracker.title:SetText(("Pathfinder  ·  %s  %d/%d"):format(r.title, math.min(db.step, #r.steps), #r.steps) .. extra)
         tracker.step:SetText(s and stepText(s) or (C.good .. "Route complete!|r"))
+        tracker.wantLines = nil
         tracker.prev.tip, tracker.next.tip = "Previous step.", "Next step."
     end
     tracker:Show()

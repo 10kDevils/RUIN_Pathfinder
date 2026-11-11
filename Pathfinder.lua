@@ -730,10 +730,7 @@ local function arrowTick(nav, elapsed)
 end
 
 local TRACKER_W, TRACKER_H, TRACKER_MAX_W = 320, 66, 640
-local SIDE = 24                 -- room for < and > on each side
-local PIP = "Interface\\AddOns\\RUIN_Core\\Media\\Pip"
-local PIP_DONE = "|T" .. PIP .. ":9:9:0:0:64:32:0:32:0:32|t"
-local PIP_OPEN = "|T" .. PIP .. ":9:9:0:0:64:32:32:64:0:32|t"
+local SIDE = 22                 -- room for < and > on each side
 
 -- Are you in a quest's objective area? Near any place its objectives are
 -- found (Questie's spawn points for its mobs, objects and drops), on your
@@ -780,11 +777,12 @@ function M.ObjectiveLines(qid, max)
     local out = {}
     for _, o in ipairs(type(list) == "table" and list or {}) do
         if o.text and o.text ~= "" then
-            out[#out + 1] = o.finished and (PIP_DONE .. "  " .. C.good .. o.text .. "|r") or (PIP_OPEN .. "  " .. C.white .. o.text .. "|r")
+            -- "- 3/10 Turtle Meat", like the quest log; finished ones in green
+            out[#out + 1] = o.finished and (C.good .. "- " .. o.text .. "|r") or (C.white .. "- " .. o.text .. "|r")
             if max and #out >= max then break end
         end
     end
-    if #out == 0 and C_QuestLog.IsComplete and C_QuestLog.IsComplete(qid) then out[1] = PIP_DONE .. "  " .. C.good .. "Ready to turn in|r" end
+    if #out == 0 and C_QuestLog.IsComplete and C_QuestLog.IsComplete(qid) then out[1] = C.good .. "- Ready to turn in|r" end
     return table.concat(out, "\n")
 end
 
@@ -948,10 +946,37 @@ local function paintTrackerTabs(cur, hasRoute, hasQuest)
     end
 end
 
--- A small square button for < and >, centered on the tracker's sides.
+-- A small round button for < and >, centered on the tracker's sides: a
+-- dark disc in a thin gold ring with the arrow in the middle.
+local DISC = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local function sideButton(label, onClick)
-    local b = W.Button(tracker, label, 18, onClick)
-    b:SetHeight(30)
+    local b = CreateFrame("Button", nil, tracker)
+    b:SetSize(18, 18)
+    b.ring = b:CreateTexture(nil, "BACKGROUND")
+    b.ring:SetTexture(DISC)
+    b.ring:SetAllPoints()
+    b.ring:SetVertexColor(0.90, 0.72, 0.38, 0.75)
+    b.disc = b:CreateTexture(nil, "BORDER")
+    b.disc:SetTexture(DISC)
+    b.disc:SetPoint("TOPLEFT", 1, -1); b.disc:SetPoint("BOTTOMRIGHT", -1, 1)
+    b.disc:SetVertexColor(0.05, 0.065, 0.10, 1)
+    b.text = b:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    b.text:SetText(label)
+    b.text:SetPoint("CENTER", label == "<" and -0.5 or 0.5, 1)
+    b.text:SetTextColor(0.90, 0.72, 0.38)
+    b:SetScript("OnClick", function() onClick() end)
+    b:SetScript("OnEnter", function(self)
+        self.disc:SetVertexColor(0.11, 0.13, 0.19, 1)
+        self.text:SetTextColor(1, 0.88, 0.55)
+        if self.tip and GameTooltip then
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:SetText(self.tip); GameTooltip:Show()
+        end
+    end)
+    b:SetScript("OnLeave", function(self)
+        self.disc:SetVertexColor(0.05, 0.065, 0.10, 1)
+        self.text:SetTextColor(0.90, 0.72, 0.38)
+        if GameTooltip then GameTooltip:Hide() end
+    end)
     return b
 end
 
@@ -978,11 +1003,11 @@ updateTracker = function()
         tracker.prev = sideButton("<", function()
             if trackerTab() == "tracked" then stepTracked(-1) else M:Advance(-1) end
         end)
-        tracker.prev:SetPoint("LEFT", 4, 0)
+        tracker.prev:SetPoint("LEFT", 5, 0)
         tracker.next = sideButton(">", function()
             if trackerTab() == "tracked" then stepTracked(1) else M:Advance(1) end
         end)
-        tracker.next:SetPoint("RIGHT", -4, 0)
+        tracker.next:SetPoint("RIGHT", -5, 0)
         -- a little x in the top-right corner
         tracker.clear = CreateFrame("Button", nil, tracker)
         tracker.clear:SetSize(14, 14)

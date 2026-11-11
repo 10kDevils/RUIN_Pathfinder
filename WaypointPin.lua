@@ -24,8 +24,6 @@ local CARD_MIN, CARD_MAX, PAD = 150, 250, 10
 local GOLD = { 0.90, 0.72, 0.38 }
 local INK = { 0.035, 0.045, 0.075 }
 local MEDIA = "Interface\\AddOns\\RUIN_Core\\Media\\"
-local DOT = "|T" .. MEDIA .. "Pip:9:9:0:0:64:32:0:32:0:32|t"       -- filled pip
-local RING = "|T" .. MEDIA .. "Pip:9:9:0:0:64:32:32:64:0:32|t"      -- hollow pip
 local GAME_PARTS = { "Icon", "Arrow", "DistanceText", "IconBorder" }
 
 local pin, navFrame, hidGame

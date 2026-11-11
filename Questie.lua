@@ -195,8 +195,20 @@ function QB.Spots(qid, which)
     if cache.spot[key] then return cache.spot[key] end
     local now = GetTime and GetTime() or 0
     if cache.miss[key] and now - cache.miss[key] < 30 then return {} end   -- the arrow asks often
+    -- where RUIN members actually picked it up, did it and handed it in on
+    -- WoW Forever (Pathfinder's atlas) comes first; Questie fills the gaps
+    local seen = ns.AtlasSpots and ns.AtlasSpots(qid, which)
+    if seen and #seen > 0 and (which ~= "objective" or #seen >= 3) then
+        -- a pick-up or hand-in seen twice or more is where it is
+        if which ~= "objective" and (seen[1].seen or 1) >= 2 then cache.spot[key] = seen; return seen end
+    else
+        seen = nil
+    end
     local m = db()
-    if not m then return {} end
+    if not m then
+        if seen then cache.spot[key] = seen; return seen end
+        return {}
+    end
     local ok, q = pcall(m.DB.GetQuest, qid)
     local out = {}
     if ok and type(q) == "table" then
@@ -227,8 +239,22 @@ function QB.Spots(qid, which)
             end
         end
     end
+    if seen then
+        local merged = {}
+        for _, sp in ipairs(seen) do merged[#merged + 1] = sp end
+        for _, sp in ipairs(out) do merged[#merged + 1] = sp end
+        out = merged
+    end
     if #out > 0 then cache.spot[key] = out else cache.miss[key] = now end   -- asked again in 30 seconds
     return out
+end
+
+-- The atlas learned something new about a quest: ask again.
+function QB.ForgetSpots(qid)
+    for _, which in ipairs({ "start", "finish", "objective" }) do
+        cache.spot[which .. ":" .. qid] = nil
+        cache.miss[which .. ":" .. qid] = nil
+    end
 end
 
 -- The spot closest to (map, x, y), else the first on that map, else the first.
@@ -789,79 +815,251 @@ function QB.Zones()
     return out
 end
 
+---------------------------------------------------------------------------
+-- Route planning: the order to pick up, do and hand in a set of quests with
+-- the least walking. Every quest is three stops (pick up, its objectives,
+-- hand in) with the order a quest needs (pick up before doing before
+-- handing in; a quest's earlier quests handed in before it's picked up).
+-- A first pass always walks to the nearest stop that's allowed (so quest
+-- givers standing together are picked up together, and objectives in the
+-- same area are done one after another); then stops are moved wherever that
+-- shortens the walk without breaking the order, which gathers hand-ins into
+-- one visit and stops going back and forth.
+---------------------------------------------------------------------------
+local OTHER_MAP = 4000       -- yards a change of zone counts as
+local SAME_STOP = 30         -- yards: closer than this is the same stop
+
+-- yards across a map, for distances (cached per map)
+local mapYards = {}
+local function yardsPer(map)
+    local m = mapYards[map]
+    if m == nil then
+        local Map = RUIN_API and RUIN_API.Map
+        local w = Map and Map.Yards and Map:Yards(map, 0, 0, 1, 0)
+        local h = Map and Map.Yards and Map:Yards(map, 0, 0, 0, 1)
+        m = (w and h and w > 0 and h > 0) and { w, h } or { 4000, 2700 }
+        mapYards[map] = m
+    end
+    return m
+end
+local function dist(a, b)
+    if not (a and b) then return 0 end                -- a stop we can't place costs nothing to reach
+    if a.map ~= b.map then return OTHER_MAP end
+    local s = yardsPer(a.map)
+    return math.sqrt(((a.x - b.x) * s[1]) ^ 2 + ((a.y - b.y) * s[2]) ^ 2)
+end
+
+-- Where a quest's objectives are best done: of the places its targets are,
+-- the one with the most others nearby (the middle of the busiest area).
+local function objectiveSpot(qid, near)
+    local list = QB.Spots(qid, "objective")
+    if #list == 0 then return nil end
+    -- the map most of them are on (or the one you're on)
+    local count, map = {}, nil
+    for _, sp in ipairs(list) do count[sp.map] = (count[sp.map] or 0) + 1 end
+    for m, n in pairs(count) do if not map or n > count[map] or (near and m == near.map and n == count[map]) then map = m end end
+    local onMap = {}
+    for _, sp in ipairs(list) do if sp.map == map then onMap[#onMap + 1] = sp end end
+    if #onMap <= 2 then return onMap[1] end
+    local step = math.max(1, math.floor(#onMap / 40))  -- big lists: a sample is plenty
+    local best, bestN
+    for i = 1, #onMap, step do
+        local a, n = onMap[i], 0
+        for j = 1, #onMap, step do if dist(a, onMap[j]) < 150 then n = n + 1 end end
+        if not bestN or n > bestN then best, bestN = a, n end
+    end
+    return best
+end
+QB.ObjectiveSpot = objectiveSpot
+
+-- tasks: { kind = "accept" | "complete" | "turnin", qid, at = spot, after = { task indexes } }
+local function buildTasks(qids, here)
+    local tasks, index = {}, {}
+    local inSet = {}
+    for _, q in ipairs(qids) do inSet[q] = true end
+    local function add(kind, qid, at)
+        tasks[#tasks + 1] = { kind = kind, qid = qid, at = at, after = {} }
+        index[kind .. qid] = #tasks
+        return #tasks
+    end
+    for _, q in ipairs(qids) do
+        local a = add("accept", q, QB.Spot(q, "start", here and here.map, here and here.x, here and here.y))
+        local prev = a
+        if QB.DoText(q) ~= "" then
+            local d = add("complete", q, objectiveSpot(q, here))
+            tasks[d].after[#tasks[d].after + 1] = a
+            prev = d
+        end
+        local t = add("turnin", q, QB.Spot(q, "finish", here and here.map, here and here.x, here and here.y))
+        tasks[t].after[#tasks[t].after + 1] = prev
+    end
+    -- a stop we can't place stands where the quest's previous stop was
+    for k, t in ipairs(tasks) do
+        if not t.at then
+            local need = t.after[1]
+            t.at = need and tasks[need].at or nil
+            if not t.at and t.kind == "accept" then
+                local tk = index["turnin" .. t.qid]
+                t.at = tk and tasks[tk].at or here
+            end
+        end
+    end
+    -- earlier quests in the set are handed in before a quest is picked up
+    for _, q in ipairs(qids) do
+        for _, p in ipairs(QB.Prereqs(q)) do
+            if inSet[p] then
+                local a, t = index["accept" .. q], index["turnin" .. p]
+                tasks[a].after[#tasks[a].after + 1] = t
+            end
+        end
+    end
+    return tasks
+end
+
+local function routeLength(tasks, order, here)
+    local total, pos = 0, here
+    for _, i in ipairs(order) do
+        local at = tasks[i].at
+        total = total + dist(pos, at)
+        pos = at or pos
+    end
+    return total
+end
+
+-- is this order allowed (every task after the ones it needs)?
+local function allowed(tasks, order)
+    local seen = {}
+    for _, i in ipairs(order) do
+        for _, need in ipairs(tasks[i].after) do if not seen[need] then return false end end
+        seen[i] = true
+    end
+    return true
+end
+
+-- First pass: always the nearest allowed stop. At the same stop, pick-ups
+-- before objectives before hand-ins, and a hand-in before the pick-up it opens.
+local KIND_RANK = { turnin = 1, accept = 2, complete = 3 }
+local function greedy(tasks, here)
+    local done, order, pos = {}, {}, here
+    for _ = 1, #tasks do
+        local best, bestD
+        for i, t in ipairs(tasks) do
+            if not done[i] then
+                local ok = true
+                for _, need in ipairs(t.after) do if not done[need] then ok = false; break end end
+                if ok then
+                    local d = dist(pos, t.at)
+                    if d < SAME_STOP then d = KIND_RANK[t.kind] * 0.01 end   -- same stop: hand in, pick up, then do
+                    if not bestD or d < bestD then best, bestD = i, d end
+                end
+            end
+        end
+        if not best then break end
+        done[best] = true
+        order[#order + 1] = best
+        pos = tasks[best].at or pos
+    end
+    return order
+end
+
+-- Second pass: move one stop, or a run of up to three, to wherever the walk
+-- gets shorter and the order still holds; again until nothing helps. Each
+-- move is costed by what changes at its two ends, so this stays quick.
+local function improve(tasks, order, here, budget)
+    local n = #order
+    local function at(k) if k < 1 then return here end return tasks[order[k]].at end
+    local passes, improved = 0, true
+    while improved and passes < (budget or 40) do
+        improved, passes = false, passes + 1
+        for len = 1, 3 do
+            local i = 1
+            while i <= n - len + 1 do
+                local first, last = at(i), at(i + len - 1)
+                local prev, nxt = at(i - 1), (i + len <= n) and at(i + len) or nil
+                -- taking the run out
+                local gain = dist(prev, first) + (nxt and (dist(last, nxt) - dist(prev, nxt)) or 0)
+                local moved = false
+                for j = 0, n do
+                    -- put it between order[j] and order[j + 1] (in the original numbering), outside the run
+                    if j < i - 1 or j > i + len - 1 then
+                        local a, b = at(j), (j + 1 <= n) and at(j + 1) or nil
+                        if j + 1 >= i and j + 1 <= i + len - 1 then b = nxt end
+                        local cost = dist(a, first) + (b and (dist(last, b) - dist(a, b)) or 0)
+                        if cost + 1 < gain then
+                            local cand, run = {}, {}
+                            for k = i, i + len - 1 do run[#run + 1] = order[k] end
+                            for k = 1, n do
+                                if k < i or k > i + len - 1 then cand[#cand + 1] = order[k] end
+                                if k == j then for _, v in ipairs(run) do cand[#cand + 1] = v end end
+                            end
+                            if j == 0 then
+                                local c2 = {}
+                                for _, v in ipairs(run) do c2[#c2 + 1] = v end
+                                for _, v in ipairs(cand) do c2[#c2 + 1] = v end
+                                cand = c2
+                            end
+                            if #cand == n and allowed(tasks, cand) then
+                                order, improved, moved = cand, true, true
+                                break
+                            end
+                        end
+                    end
+                end
+                if not moved then i = i + 1 end
+            end
+        end
+    end
+    return order, routeLength(tasks, order, here)
+end
+
+-- Plans a set of quests from where you stand: the ordered tasks, and the walk in yards.
+function QB.Plan(qids, here)
+    local tasks = buildTasks(qids, here)
+    if #tasks == 0 then return {}, 0 end
+    local order = greedy(tasks, here)
+    local before = routeLength(tasks, order, here)
+    local budget = #tasks > 60 and 6 or 40               -- big sets: fewer passes, still most of the gain
+    local better, length = improve(tasks, order, here, budget)
+    local out = {}
+    for _, i in ipairs(better) do out[#out + 1] = tasks[i] end
+    return out, length, before
+end
+
 -- A route through one part of a zone: quests from elsewhere that unlock
--- these first, then rounds of pick up / do / hand in, nearest first, where a
--- round only holds quests whose earlier quests are handed in already.
+-- these first, then the planned order of pick-ups, objectives and hand-ins.
 function QB.ZoneRoute(qids)
     if type(qids) ~= "table" or #qids == 0 then return nil end
-    local map, px, py = nil, nil, nil
-    if RUIN_API and RUIN_API.Map and RUIN_API.Map.PlayerPos then map, px, py = RUIN_API.Map:PlayerPos() end
-    local cm, cx, cy = map, px or 0.5, py or 0.5
-    local inPart, pre = {}, {}
+    local here
+    if RUIN_API and RUIN_API.Map and RUIN_API.Map.PlayerPos then
+        local map, px, py = RUIN_API.Map:PlayerPos()
+        if map then here = { map = map, x = px, y = py } end
+    end
+    local inPart = {}
     for _, q in ipairs(qids) do inPart[q] = true end
     local steps = {}
     local function name(qid) local i = QB.Quest(qid); return i and i.name or ("Quest " .. qid) end
     local function step(act, qid, text)
         steps[#steps + 1] = { act = act, quest = name(qid), qid = qid, text = (text or ""):sub(1, 120) }
     end
-    local function nearest(list, which)
-        local placed, rest = {}, {}
-        for _, qid in ipairs(list) do
-            local sp = QB.Spot(qid, which, map, px, py)
-            if sp then placed[#placed + 1] = { qid = qid, s = sp } else rest[#rest + 1] = qid end
-        end
-        local out = {}
-        while #placed > 0 do
-            local bi, bd
-            for i, e in ipairs(placed) do
-                local d = (e.s.map == cm and 0 or 10) + (e.s.x - cx) ^ 2 + (e.s.y - cy) ^ 2
-                if not bd or d < bd then bi, bd = i, d end
-            end
-            local e = table.remove(placed, bi)
-            out[#out + 1] = e.qid
-            cm, cx, cy = e.s.map, e.s.x, e.s.y
-        end
-        for _, qid in ipairs(rest) do out[#out + 1] = qid end
-        return out
-    end
-    -- quests from elsewhere that come first
+    -- quests from other zones that come first, in the plan too
     local before, seen = {}, {}
-    local zoneOf = {}
     for _, q in ipairs(qids) do
-        pre[q] = QB.Prereqs(q)
-        for _, p in ipairs(pre[q]) do
+        for _, p in ipairs(QB.Prereqs(q)) do
             if not inPart[p] and not seen[p] then
                 seen[p] = true
-                -- one from earlier in the same zone belongs to the route before this one
-                local z = QB.Field(p, "zoneOrSort")
-                if z ~= QB.Field(q, "zoneOrSort") then before[#before + 1] = p end
+                if QB.Field(p, "zoneOrSort") ~= QB.Field(q, "zoneOrSort") then before[#before + 1] = p end
             end
         end
     end
-    for _, p in ipairs(before) do
-        step("accept", p, QB.AcceptText(p))
-        local t = QB.DoText(p)
-        if t ~= "" then step("complete", p, t) end
-        step("turnin", p, QB.TurninText(p))
-    end
-    -- rounds
-    local placed, left = {}, {}
-    for _, q in ipairs(qids) do left[#left + 1] = q end
-    while #left > 0 do
-        local round, wait = {}, {}
-        for _, q in ipairs(left) do
-            local ready = true
-            for _, p in ipairs(pre[q]) do if inPart[p] and not placed[p] then ready = false end end
-            if ready then round[#round + 1] = q else wait[#wait + 1] = q end
+    -- the ones from other zones first (they're elsewhere), then the zone's own
+    local function emit(plan)
+        for _, t in ipairs(plan) do
+            local text = t.kind == "accept" and QB.AcceptText(t.qid) or t.kind == "turnin" and QB.TurninText(t.qid) or QB.DoText(t.qid)
+            step(t.kind, t.qid, text)
+            here = t.at or here
         end
-        if #round == 0 then round, wait = wait, {} end      -- a loop in the data: take the rest
-        for _, q in ipairs(nearest(round, "start")) do step("accept", q, QB.AcceptText(q)) end
-        local todo = {}
-        for _, q in ipairs(round) do if QB.DoText(q) ~= "" then todo[#todo + 1] = q end end
-        for _, q in ipairs(nearest(todo, "objective")) do step("complete", q, QB.DoText(q)) end
-        for _, q in ipairs(nearest(round, "finish")) do step("turnin", q, QB.TurninText(q)) end
-        for _, q in ipairs(round) do placed[q] = true end
-        left = wait
     end
+    if #before > 0 then emit((QB.Plan(before, here))) end
+    emit((QB.Plan(qids, here)))
     return steps
 end

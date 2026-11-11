@@ -32,7 +32,7 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Pathfinder", { version = "0.6.0" })
+local M = R:RegisterModule("Pathfinder", { version = "0.6.1" })
 local QB = ns.QB
 
 local SHARE_EVERY, PEER_TTL = 120, 300
@@ -1435,12 +1435,154 @@ local function checkComplete()
     end
 end
 
+---------------------------------------------------------------------------
+-- The atlas: where quests are really picked up, done and handed in on WoW
+-- Forever, learned as RUIN members play and shared with RUIN. It's RUIN's
+-- own quest map: it fills in quests Questie doesn't know, corrects places
+-- WoW Forever moved, and comes first when routes are planned.
+---------------------------------------------------------------------------
+local ATLAS_NEAR = 60           -- yards: a sighting this close to the known spot refines it
+local ATLAS_OBJ_MAX = 16        -- places kept per quest's objectives
+local ATLAS_SHARE_EVERY = 300   -- seconds between sharing new sightings
+local ATLAS_SHARE_MAX = 40      -- sightings per message
+local atlasPending, atlasLastShare = {}, 0
+
+local function atlas()
+    adb.atlas = adb.atlas or { s = {}, f = {}, o = {} }
+    return adb.atlas
+end
+
+local function yd(map, x1, y1, x2, y2)
+    return (R.Map.Yards and R.Map:Yards(map, x1, y1, x2, y2)) or (math.sqrt((x1 - x2) ^ 2 + (y1 - y2) ^ 2) * 4000)
+end
+
+-- one sighting: kind "s" (picked up), "f" (handed in) or "o" (objective progress)
+local function atlasNote(kind, qid, map, x, y, mine)
+    qid, map, x, y = tonumber(qid), tonumber(map), tonumber(x), tonumber(y)
+    if not (qid and qid > 0 and map and x and y and x >= 0 and x <= 1 and y >= 0 and y <= 1) then return false end
+    local A = atlas()
+    if kind == "o" then
+        local list = A.o[qid] or {}
+        A.o[qid] = list
+        for _, p in ipairs(list) do
+            if p[1] == map and yd(map, p[2], p[3], x, y) < 25 then p[4] = math.min(99, (p[4] or 1) + 1); return false end
+        end
+        if #list >= ATLAS_OBJ_MAX then
+            -- make room: drop the least-seen place
+            local low = 1
+            for i, p in ipairs(list) do if (p[4] or 1) < (list[low][4] or 1) then low = i end end
+            table.remove(list, low)
+        end
+        list[#list + 1] = { map, x, y, 1 }
+    else
+        local t = A[kind][qid]
+        if t and t[1] == map and yd(map, t[2], t[3], x, y) < ATLAS_NEAR then
+            local n = math.min(50, t[4] or 1)
+            t[2], t[3], t[4] = (t[2] * n + x) / (n + 1), (t[3] * n + y) / (n + 1), n + 1
+        elseif not t then
+            A[kind][qid] = { map, x, y, 1 }               -- the first sighting
+        else
+            -- somewhere else: a stray, or the place moved. It takes over once
+            -- it's been seen as often as the old place.
+            local alt = t[5]
+            if alt and alt[1] == map and yd(map, alt[2], alt[3], x, y) < ATLAS_NEAR then
+                local n = alt[4] or 1
+                alt[2], alt[3], alt[4] = (alt[2] * n + x) / (n + 1), (alt[3] * n + y) / (n + 1), n + 1
+            else
+                alt = { map, x, y, 1 }
+                t[5] = alt
+            end
+            if alt[4] < (t[4] or 1) then return false end
+            A[kind][qid] = { alt[1], alt[2], alt[3], alt[4] }
+        end
+    end
+    if QB.ForgetSpots then QB.ForgetSpots(qid) end
+    if mine and adb.atlasShare ~= false then
+        atlasPending[#atlasPending + 1] = { kind, qid, map, math.floor(x * 10000 + 0.5), math.floor(y * 10000 + 0.5) }
+        while #atlasPending > ATLAS_SHARE_MAX * 4 do table.remove(atlasPending, 1) end
+    end
+    return true
+end
+M.AtlasNote = atlasNote
+
+-- for Questie.lua: what the atlas knows, as spots
+ns.AtlasSpots = function(qid, which)
+    if not adb or not adb.atlas then return nil end
+    local A = adb.atlas
+    if which == "objective" then
+        local list = A.o[qid]
+        if not list or #list == 0 then return nil end
+        local out = {}
+        for _, p in ipairs(list) do out[#out + 1] = { map = p[1], x = p[2], y = p[3], seen = p[4] } end
+        return out
+    end
+    local t = A[which == "start" and "s" or "f"][qid]
+    if t then return { { map = t[1], x = t[2], y = t[3], seen = t[4] } } end
+end
+
+local function atlasHere(kind, qid)
+    local map, x, y = R.Map:PlayerPos()
+    if map then atlasNote(kind, qid, map, x, y, true) end
+end
+
+-- objective progress: a quest's objectives went up since we last looked
+local objSeen, objLook = {}, 0
+local function atlasObjectives()
+    local now = GetTime()
+    if now - objLook < 1 then return end
+    objLook = now
+    if not (C_QuestLog and C_QuestLog.GetNumQuestLogEntries and C_QuestLog.GetInfo and C_QuestLog.GetQuestObjectives) then return end
+    for i = 1, C_QuestLog.GetNumQuestLogEntries() or 0 do
+        local info = C_QuestLog.GetInfo(i)
+        if info and not info.isHeader and info.questID then
+            local total = 0
+            for _, o in ipairs(C_QuestLog.GetQuestObjectives(info.questID) or {}) do total = total + (tonumber(o.numFulfilled) or 0) end
+            local before = objSeen[info.questID]
+            if before and total > before then atlasHere("o", info.questID) end
+            objSeen[info.questID] = total
+        end
+    end
+end
+
+local function atlasShare()
+    if #atlasPending == 0 or adb.atlasShare == false or GetTime() - atlasLastShare < ATLAS_SHARE_EVERY then return end
+    atlasLastShare = GetTime()
+    local flat = {}
+    for i = 1, math.min(#atlasPending, ATLAS_SHARE_MAX) do
+        local e = table.remove(atlasPending, 1)
+        for _, v in ipairs(e) do flat[#flat + 1] = v end
+    end
+    M:Send("ATLAS", { l = flat }, "ORG", nil, R.PRIORITY.BULK)
+end
+
+function M:OnAtlas(d, sender)
+    if type(d) ~= "table" or type(d.l) ~= "table" or adb.atlasShare == false then return end
+    local l = d.l
+    for i = 1, math.min(#l, ATLAS_SHARE_MAX * 5) - 4, 5 do
+        local kind = l[i]
+        if kind == "s" or kind == "f" or kind == "o" then
+            atlasNote(kind, l[i + 1], l[i + 2], (tonumber(l[i + 3]) or -1) / 10000, (tonumber(l[i + 4]) or -1) / 10000, false)
+        end
+    end
+end
+
+function M.AtlasCounts()
+    local A = adb and adb.atlas or { s = {}, f = {}, o = {} }
+    local n = { s = 0, f = 0, o = 0 }
+    for k in pairs(n) do for _ in pairs(A[k]) do n[k] = n[k] + 1 end end
+    return n
+end
+
 local function onAccepted(_, a1, a2)
     dqCache = {}
     -- Retail-style clients pass questID; Classic-style pass (logIndex, questID).
     local title = questTitle(a2 or a1, a2 and a1 or nil)
     local s = currentStep()
     local qid = tonumber(a2 or a1)
+    -- the atlas: where it was picked up (not for quests started from an item)
+    -- (only from an NPC or object: a quest a party member shared isn't where you stand)
+    local fromNpc = UnitExists and UnitExists("npc") and not (UnitIsPlayer and UnitIsPlayer("npc"))
+    if qid and fromNpc and not (QB.StartItem and QB.StartItem(qid)) then atlasHere("s", qid) end
     if s and s.act == "accept" and sameQuest(s, title, qid) then M:Advance(1) end
     if title then M:RecordStep("accept", title, "", qid and { qid = qid } or nil) end
     C_Timer.After(0.5, checkComplete)
@@ -1448,6 +1590,7 @@ end
 
 local function onTurnedIn(_, questID)
     dqCache = {}
+    if tonumber(questID) then atlasHere("f", tonumber(questID)); objSeen[tonumber(questID)] = nil end
     C_Timer.After(1, function() shareQuests() end)
     local title = questTitle(questID)
     local s = currentStep()
@@ -2462,12 +2605,8 @@ local function buildRecorder(page)
 end
 
 -- Key bindings (Bindings.xml): Game Menu > Options > Keybindings > AddOns.
-BINDING_HEADER_RUIN_PATHFINDER = "RUIN Pathfinder"
-BINDING_NAME_RUIN_PATH_NEXT = "Next step"
-BINDING_NAME_RUIN_PATH_PREV = "Previous step"
-BINDING_NAME_RUIN_PATH_CLEAR = "Clear the route"
-BINDING_NAME_RUIN_PATH_PIN = "Show or hide the RUIN pin"
-BINDING_NAME_RUIN_PATH_OPEN = "Open Pathfinder"
+BINDING_NAME_RUIN_PATH_CLEAR = "Pathfinder: clear the route"
+BINDING_NAME_RUIN_PATH_PIN = "Pathfinder: show or hide the RUIN pin"
 function RUIN_PathfinderBinding(cmd)
     if cmd == "open" then M:OpenTab(); if ui.tabs then ui.tabs:Select(1) end; return end
     if SlashCmdList and SlashCmdList.RUINPATH then SlashCmdList.RUINPATH(cmd) end
@@ -2508,6 +2647,10 @@ local function buildOptions(page)
     check(w, "Put a waypoint on each step", "waypoint", "The game's waypoint on the step's spot, so the pin (and the game's navigation) leads you there. /path waypoint", nil, 12, -30)
     check(w, "Track quest steps the game's way", "trackQuests", "For a quest in your log, track the quest itself (like clicking it in the objective tracker) so the pin follows its objective or turn-in.", nil, COL2, -30)
     check(w, "Turn on In-Game Navigation when needed", "autoNav", "The game draws nothing in the world while its In-Game Navigation option is off. Pathfinder turns it on when it places a waypoint.", nil, 12, -54)
+    local share = W.Check(w, "Share quest locations with RUIN", function() return adb.atlasShare ~= false end, function(v) adb.atlasShare = v end)
+    share:SetPoint("TOPLEFT", COL2, -54)
+    share.tip = "Pathfinder's atlas: where you pick up, do and hand in quests, shared with RUIN so routes follow where things really are on WoW Forever. Only quest numbers and map spots. /path atlas"
+    checks[#checks + 1] = share
 
     local p = card("RUIN pin", -184, 132)
     check(p, "Show the RUIN pin", "pin", "RUIN's marker over whatever the game is navigating to. Off: the game's own marker shows instead. /path pin", nil, 12, -30)
@@ -2637,10 +2780,11 @@ function M:OnEnable()
     self:Listen("OFFDEL", "OnOfficialDelete")
     self:Listen("ASK", "OnAsk")
     self:Listen("QSTAT", "OnQuests")
+    self:Listen("ATLAS", "OnAtlas")
     self:AddTab("Pathfinder", buildPage)
     self:RegisterEvent("QUEST_ACCEPTED", onAccepted)
     self:RegisterEvent("QUEST_TURNED_IN", onTurnedIn)
-    self:RegisterEvent("QUEST_LOG_UPDATE", function() checkComplete() end)
+    self:RegisterEvent("QUEST_LOG_UPDATE", function() checkComplete(); atlasObjectives() end)
     self:RegisterEvent("ZONE_CHANGED_NEW_AREA", function() updateStepPin() end)
     self:RegisterEvent("PLAYER_LEVEL_UP", onLevelUp)
     self:RegisterEvent("CHAT_MSG_LOOT", onLootRecord)
@@ -2654,6 +2798,7 @@ function M:OnEnable()
     C_Timer.NewTicker(10, function()
         if db.route and GetTime() - lastShare >= SHARE_EVERY then share() end
         shareQuests()
+        atlasShare()
         updateTracker()
         refreshPage()
     end)
@@ -2707,6 +2852,10 @@ SlashCmdList.RUINPATH = function(input)
     elseif msg == "unfollow" then M:Follow(nil)
     elseif msg == "clear" or msg == "stop" then M:ClearRoute()
     elseif msg == "nav" then M:NavReport()
+    elseif msg == "atlas" then
+        local n = M.AtlasCounts()
+        M:Print(("Atlas: where %d quests are picked up, %d handed in, and the objectives of %d, from RUIN members playing WoW Forever. Sharing is %s."):format(
+            n.s, n.f, n.o, adb.atlasShare == false and "off" or "on"))
     elseif msg == "editor" or msg == "edit" then if M.OpenWaypointEditor then M.OpenWaypointEditor() end
     elseif msg == "pin" then
         db.pin = db.pin == false

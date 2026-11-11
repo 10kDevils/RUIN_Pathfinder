@@ -1,7 +1,17 @@
 <Bindings>
-    <Binding name="RUIN_PATH_NEXT" header="RUIN_PATHFINDER" category="ADDONS">RUIN_PathfinderBinding("next")</Binding>
-    <Binding name="RUIN_PATH_PREV" category="ADDONS">RUIN_PathfinderBinding("prev")</Binding>
-    <Binding name="RUIN_PATH_CLEAR" category="ADDONS">RUIN_PathfinderBinding("clear")</Binding>
-    <Binding name="RUIN_PATH_PIN" category="ADDONS">RUIN_PathfinderBinding("pin")</Binding>
-    <Binding name="RUIN_PATH_OPEN" category="ADDONS">RUIN_PathfinderBinding("open")</Binding>
+	<Binding name="RUIN_PATHFINDER_OPEN" header="RUIN_PATHFINDER" category="ADDONS">
+		RUIN_Pathfinder_Open()
+	</Binding>
+	<Binding name="RUIN_PATHFINDER_NEXT" category="ADDONS">
+		RUIN_Pathfinder_Next()
+	</Binding>
+	<Binding name="RUIN_PATHFINDER_PREV" category="ADDONS">
+		RUIN_Pathfinder_Prev()
+	</Binding>
+	<Binding name="RUIN_PATH_CLEAR" category="ADDONS">
+		RUIN_PathfinderBinding("clear")
+	</Binding>
+	<Binding name="RUIN_PATH_PIN" category="ADDONS">
+		RUIN_PathfinderBinding("pin")
+	</Binding>
 </Bindings>

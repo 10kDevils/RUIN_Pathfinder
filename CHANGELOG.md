@@ -6,6 +6,12 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.6.1 — 2026-11-11
+
+- A new route planner for the zone routes. Every quest is a pick-up, its objectives and a hand-in, and the planner orders them for the shortest walk: quest givers standing together are picked up together, objectives in the same area are done one after another, and hand-ins are gathered into one visit, while a quest is still picked up only after the quests it needs are handed in. Objectives are aimed at the busiest part of their area. A 60-quest plan is about 15% shorter than walking to the nearest stop each time.
+- Pathfinder's atlas: where RUIN members really pick up, do and hand in quests on WoW Forever, learned while playing and shared with RUIN (only quest numbers and map spots; Options > Waypoint > Share quest locations with RUIN). A pick-up or hand-in seen twice comes before Questie's data, and objective sightings join Questie's, so routes and waypoints follow where things are on WoW Forever, including its new and moved quests. A place WoW Forever moved takes over once it's been seen as often as the old one. `/path atlas` shows what's known.
+- Key bindings: the original Open Pathfinder, Next step and Previous step bindings are back (0.6.0 had renamed them, which lost keys you'd set), beside the new Clear the route and Show or hide the RUIN pin.
+
 ## 0.6.0 — 2026-11-11
 
 - Plays nicer with the game's objective tracker: Pathfinder never changes what the game tracks during combat (it catches up when combat ends), stops tracking your quest when you untrack it in the game instead of re-tracking it a few seconds later, ignores its own tracking changes when deciding what you picked, and only retries a waypoint on the Route tab when the step has a place.

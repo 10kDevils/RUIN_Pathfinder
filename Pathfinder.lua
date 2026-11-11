@@ -211,6 +211,14 @@ local function cleanRoute(r)
             local st = { act = s.act, quest = type(s.quest) == "string" and s.quest:sub(1, 60) or nil,
                          text = type(s.text) == "string" and s.text:sub(1, 120) or "",
                          qid = tonumber(s.qid) and math.floor(tonumber(s.qid)) or nil }
+            if s.act == "complete" and type(s.qids) == "table" then
+                local list = {}
+                for k, q in ipairs(s.qids) do
+                    if k > 6 then break end
+                    if tonumber(q) then list[#list + 1] = math.floor(tonumber(q)) end
+                end
+                if #list > 1 then st.qids = list end
+            end
             if type(s.at) == "table" and type(s.at.zone) == "string" and tonumber(s.at.x) and tonumber(s.at.y) then
                 st.at = { zone = s.at.zone:sub(1, 40), x = tonumber(s.at.x), y = tonumber(s.at.y) }
             end
@@ -254,8 +262,19 @@ end
 
 -- Where a step happens when the route gives no place: Questie's database
 -- (see Questie.lua) by quest ID, else by finding the quest in your log.
+-- The quest a step is about: for a "complete" step shared by several
+-- quests, the first one that still needs work.
+local function workQid(s)
+    if s and s.act == "complete" and type(s.qids) == "table" then
+        for _, q in ipairs(s.qids) do
+            if not QB.Done(q) and not select(2, QB.InLog(q)) then return q end
+        end
+    end
+    return s and s.qid
+end
+M.WorkQid = function(_, s) return workQid(s) end
 local function stepQid(s)
-    return s and (s.qid or (s.quest and questIdByTitle(s.quest))) or nil
+    return s and (workQid(s) or (s.quest and questIdByTitle(s.quest))) or nil
 end
 
 -- map, x, y (0-1) for a step, or nil, plus the zone name when it's elsewhere.
@@ -338,8 +357,9 @@ local function inLog(qid)
     return C_QuestLog and C_QuestLog.GetLogIndexForQuestID and (C_QuestLog.GetLogIndexForQuestID(qid) or 0) > 0
 end
 local function trackableQuest(s)
-    return s and s.qid and (s.act == "complete" or s.act == "turnin") and not questNoNav[s.qid]
-        and C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID and inLog(s.qid)
+    local q = workQid(s)
+    return q and (s.act == "complete" or s.act == "turnin") and not questNoNav[q]
+        and C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID and inLog(q) and q
 end
 -- The quest YOU chose to track (clicked in the objective tracker, or picked
 -- on the tracker's Tracked tab), kept apart from the quests Pathfinder
@@ -386,22 +406,23 @@ local function updateWaypoint(map, x, y, s)
         ensureNavigation()
         return noteWp("following your tracked quest " .. uq)
     end
-    if db.waypoint ~= false and db.trackQuests ~= false and trackableQuest(s) then
-        if placedQuest == s.qid and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID() == s.qid then return end
+    local tq = db.waypoint ~= false and db.trackQuests ~= false and trackableQuest(s)
+    if tq then
+        if placedQuest == tq and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID() == tq then return end
         clearWaypoint()
-        if placedQuest ~= s.qid then releaseQuest() end
-        settingQuest = s.qid
+        if placedQuest ~= tq then releaseQuest() end
+        settingQuest = tq
         selfChange()
-        local ok, err = pcall(C_SuperTrack.SetSuperTrackedQuestID, s.qid)
+        local ok, err = pcall(C_SuperTrack.SetSuperTrackedQuestID, tq)
         settingQuest = nil
         if not ok then
-            questNoNav[s.qid] = true
+            questNoNav[tq] = true
             noteWp("quest tracking failed", nil, nil, nil, err)
             return updateWaypoint(map, x, y, s)
         end
-        placedQuest, questAt = s.qid, GetTime()
+        placedQuest, questAt = tq, GetTime()
         ensureNavigation()
-        return noteWp("tracking quest " .. s.qid)
+        return noteWp("tracking quest " .. tq)
     end
     releaseQuest()
     if not (C_Map and C_Map.SetUserWaypoint and UiMapPoint and UiMapPoint.CreateFromCoordinates) then
@@ -1208,11 +1229,21 @@ local function announceWaypoint()
         yards and (" (%d yards)"):format(yards) or ""))
 end
 
+-- A "complete" step for several quests (they share targets) is done when
+-- every one of them is ready to hand in or handed in.
+local function allReady(s)
+    for _, q in ipairs(s.qids or { s.qid }) do
+        if not QB.Done(q) and not select(2, QB.InLog(q)) then return false end
+    end
+    return true
+end
+
 -- A step for a quest you've already done (or already have) needs nothing
 -- from you. Quests are matched by ID, so steps without one never skip.
 local function stepDone(s)
     if not (s and s.qid) then return false end
     if s.act ~= "accept" and s.act ~= "complete" and s.act ~= "turnin" then return false end
+    if s.act == "complete" and s.qids then return allReady(s) end
     if QB.Done(s.qid) then return true end
     local inLog, ready = QB.InLog(s.qid)
     if s.act == "accept" then return inLog end
@@ -1421,9 +1452,17 @@ function M:SaveRecording()
     return r
 end
 
+local sharedOn          -- the quest a shared "do" step was pointing at
 local function checkComplete()
     local s = currentStep()
-    if s and s.act == "complete" and ((s.qid and select(2, QB.InLog(s.qid))) or (s.quest and questComplete(s.quest))) then M:Advance(1) end
+    if s and s.act == "complete" and ((s.qids and allReady(s)) or (not s.qids and ((s.qid and select(2, QB.InLog(s.qid))) or (s.quest and questComplete(s.quest))))) then
+        M:Advance(1)
+    elseif s and s.qids then
+        -- one quest of a shared step is ready: point at the next one
+        local q = workQid(s)
+        if sharedOn and q ~= sharedOn then updateTracker(); updateStepPin() end
+        sharedOn = q
+    end
     M:SkipDone()
     shareQuests()
     if adb.rec.on then
@@ -1823,9 +1862,9 @@ function M:ForgetDungeonQuests() dqCache = {}; for k in pairs(zqRoutes) do zqRou
 function M:DungeonRoute(name)
     local entry = dqEntry(name)
     if not entry then return nil, "Pathfinder has no quest list for " .. tostring(name) .. "." end
-    if not QB.Has() then return nil, "Install Questie (or QuestieDB) for dungeon quest routes." end
+    if not QB.Has() then return nil, "Enable RUIN Quest Data (or install Questie) for dungeon quest routes." end
     local r = dungeonRoute(entry)
-    if not r then return nil, "Questie lists no quests in " .. entry.name .. " for your character." end
+    if not r then return nil, "The quest database lists no quests in " .. entry.name .. " for your character." end
     return r
 end
 
@@ -1853,7 +1892,7 @@ function M:ShowQuestOnMap(qid, which)
     local map, x, y = R.Map:PlayerPos()
     local spot = QB.Spot(qid, which, map, x, y) or (which ~= "start" and QB.Spot(qid, "finish", map, x, y))
     if not spot then
-        self:Print("Questie doesn't have a place for this quest.")
+        self:Print("The quest database doesn't have a place for this quest.")
         return false
     end
     local info = QB.Quest(qid)
@@ -2181,9 +2220,9 @@ function M:DraftFromQuestie()
     if not r then return self:Print("No draft: " .. tostring(why)) end
     local clean = cleanRoute(r)
     if not clean then return self:Print("No draft: no usable steps.") end
-    clean.author = "Questie draft"
+    clean.author = (QB.Source() or "Questie") .. " draft"
     addCustom(clean)
-    self:Print(("Drafted %s (%d steps) from Questie. It's on the Routes page; start it, or record a better one."):format(clean.title, #clean.steps))
+    self:Print(("Drafted %s (%d steps) from the quest database. It's on the Routes page; start it, or record a better one."):format(clean.title, #clean.steps))
     refreshPage()
     return clean
 end
@@ -2261,7 +2300,7 @@ local function buildQuests(page)
         local _, ready = QB.InLog(q)
         local map, x, y = R.Map:PlayerPos()
         local spot = QB.Spot(q, ready and "finish" or "objective", map, x, y) or QB.Spot(q, "finish", map, x, y)
-        if not spot then return M:Print("Questie doesn't have a place for this quest.") end
+        if not spot then return M:Print("The quest database doesn't have a place for this quest.") end
         R.Map:SetPin("Pathfinder", "quest", { map = spot.map, x = spot.x, y = spot.y, icon = "Interface\\AddOns\\RUIN_Core\\Media\\EmblemIcon", plain = true, shadow = true,
             color = W.MARKERS[ready and "turnin" or "quest"], title = "Pathfinder: " .. (C_QuestLog and C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(q) or "quest"),
             text = ready and ("Hand in: " .. (spot.name or "")) or (spot.name or "") })
@@ -2324,7 +2363,7 @@ local function refreshQuests()
             if info.ends[1] then lines[#lines + 1] = C.dim .. "Hand in: |r" .. info.ends[1] end
             for i = 1, math.min(4, #info.objectives) do lines[#lines + 1] = "- " .. info.objectives[i] end
         else
-            lines[#lines + 1] = C.dim .. (QB.Has() and "Questie has no entry for this quest." or "Install Questie to see where this quest starts, ends and where its targets are.") .. "|r"
+            lines[#lines + 1] = C.dim .. (QB.Has() and "The quest database has no entry for this quest." or "Enable RUIN Quest Data to see where this quest starts, ends and where its targets are.") .. "|r"
         end
         lines[#lines + 1] = " "
         local have, ready, done = whoHas(qid)
@@ -2340,8 +2379,8 @@ local function refreshQuests()
         ui.qzHead:SetText(C.good .. (QB.Source() or "Questie") .. " found|r")
         ui.qzText:SetText(C.dim .. "Givers, hand-ins and targets come from " .. (QB.Source() or "Questie") .. ". Draft a route of this zone's quests for your level.|r")
     else
-        ui.qzHead:SetText(C.dim .. "Questie not installed|r")
-        ui.qzText:SetText(C.dim .. "Routes and sharing work without it. With Questie or QuestieDB, every step gets a place and you can draft routes.|r")
+        ui.qzHead:SetText(C.dim .. "No quest database|r")
+        ui.qzText:SetText(C.dim .. "Routes and sharing work without it. Enable RUIN Quest Data (or install Questie) and every step gets a place and you can draft routes.|r")
     end
     ui.qDraft:SetEnabled(QB.Has())
 end

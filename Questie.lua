@@ -1,4 +1,6 @@
--- RUIN Pathfinder: Questie bridge
+-- RUIN Pathfinder: quest database bridge
+-- Pathfinder reads, in order: the standalone QuestieDB addon, RUIN Quest Data
+-- (the quest database addon that ships with the suite), or Questie.
 -- When the standalone QuestieDB addon (contract 4, e.g. the one that ships
 -- with Ruinous Forever Planner) is installed, Pathfinder reads it; otherwise,
 -- when Questie is installed, Pathfinder reads Questie's quest database at run time
@@ -50,14 +52,9 @@ end
 
 local OBJECTIVE_KINDS = { "monster", "object", "item" }     -- QuestieDB's positional objective groups 1-3
 
-local function fromQuestieDB()
-    local lib = rawget(_G, "LibQuestieDB")
-    if type(lib) ~= "table" or type(lib.RequireContract) ~= "function" then return nil end
-    local okc, compatible = pcall(lib.RequireContract, 4)
-    if not okc or not compatible then return nil end
-    local Q, N, O, I = lib.Quest, lib.Npc, lib.Object, lib.Item
-    if type(Q) ~= "table" or type(Q.Get) ~= "function" or type(Q.Exists) ~= "function" then return nil end
-    local toMap, toArea = zoneMaps(lib)
+-- Quest, NPC, object and item tables that answer Get(id, field) and
+-- Exists(id), as LibQuestieDB's do; the rest of Pathfinder reads the shape below.
+local function adapt(Q, N, O, I, toMap, toArea, source)
     local function exists(E, id) return type(E) == "table" and type(id) == "number" and E.Exists(id) end
     local DB = {}
     function DB.GetQuest(id)
@@ -96,14 +93,58 @@ local function fromQuestieDB()
     local Zone = {}
     function Zone:GetUiMapIdByAreaId(areaId) return toMap[areaId] end
     function Zone:GetAreaIdByUiMapId(uiMap) return toArea[uiMap] end
-    return { DB = DB, Zone = Zone, source = "QuestieDB" }
+    return { DB = DB, Zone = Zone, source = source }
+end
+
+local function fromQuestieDB()
+    local lib = rawget(_G, "LibQuestieDB")
+    if type(lib) ~= "table" or type(lib.RequireContract) ~= "function" then return nil end
+    local okc, compatible = pcall(lib.RequireContract, 4)
+    if not okc or not compatible then return nil end
+    local Q = lib.Quest
+    if type(Q) ~= "table" or type(Q.Get) ~= "function" or type(Q.Exists) ~= "function" then return nil end
+    local toMap, toArea = zoneMaps(lib)
+    return adapt(Q, lib.Npc, lib.Object, lib.Item, toMap, toArea, "QuestieDB")
+end
+
+-- RUIN Quest Data (the bundled database addon): positional rows, with the
+-- field names in RUIN_QuestData.fields.
+local function fromRUIN()
+    local D = rawget(_G, "RUIN_QuestData")
+    if type(D) ~= "table" or type(D.q) ~= "table" or type(D.fields) ~= "table" or next(D.q) == nil then return nil end
+    -- the rows that differ for your faction (the data is Alliance's otherwise)
+    local faction = UnitFactionGroup and UnitFactionGroup("player")
+    if not D.applied and type(faction) == "string" then
+        local put = type(D.faction) == "table" and D.faction[faction]
+        if type(put) == "function" then pcall(put, D.q, D.n or {}, D.o or {}, D.i or {}) end
+        D.applied = faction
+    end
+    local function table_(rows, names)
+        local col = {}
+        for i, f in ipairs(names or {}) do col[f] = i end
+        local T = {}
+        function T.Exists(id) return rows[id] ~= nil end
+        function T.Get(id, field)
+            local r, c = rows[id], col[field]
+            if r and c then return r[c] end
+        end
+        function T.GetAllIds() return rows end
+        return T
+    end
+    local F = D.fields
+    local z = D.z or {}
+    return adapt(table_(D.q, F.Q), table_(D.n or {}, F.N), table_(D.o or {}, F.O), table_(D.i or {}, F.I),
+        z.areaToMap or {}, z.mapToArea or {}, "RUIN Quest Data")
 end
 
 local function db()
     if modules ~= nil then return modules or nil end
-    -- The standalone QuestieDB addon first, then Questie's own database.
+    -- The standalone QuestieDB addon first (it can be newer), then RUIN's
+    -- own quest data, then Questie's database.
     local ok, fromLib = pcall(fromQuestieDB)
     if ok and fromLib then modules = fromLib; return modules end
+    local okr, fromData = pcall(fromRUIN)
+    if okr and fromData then modules = fromData; return modules end
     if type(QuestieLoader) ~= "table" or type(QuestieLoader.ImportModule) ~= "function" then return nil end
     local ok1, DB = pcall(QuestieLoader.ImportModule, QuestieLoader, "QuestieDB")
     local ok2, ZoneDB = pcall(QuestieLoader.ImportModule, QuestieLoader, "ZoneDB")
@@ -114,7 +155,7 @@ local function db()
     return modules
 end
 
--- "QuestieDB" or "Questie" (whichever Pathfinder reads), or nil.
+-- "QuestieDB", "RUIN Quest Data" or "Questie" (whichever Pathfinder reads), or nil.
 function QB.Source()
     local m = db()
     return m and m.source or nil
@@ -340,7 +381,7 @@ end
 -- Returns a route table, or nil and a reason.
 function QB.DraftRoute(uiMap, level, px, py)
     local m = db()
-    if not m then return nil, "Questie isn't installed or hasn't loaded yet." end
+    if not m then return nil, "No quest database is loaded (enable RUIN Quest Data, or install Questie)." end
     if type(m.DB.QuestPointers) ~= "table" or type(m.DB.QueryQuestSingle) ~= "function" then
         return nil, "this version of Questie doesn't offer its quest list."
     end
@@ -596,7 +637,7 @@ end
 function QB.DungeonQuests(entry)
     if type(entry) ~= "table" then return nil, "unknown dungeon" end
     local m = db()
-    if not m then return nil, "Questie isn't installed or hasn't loaded yet." end
+    if not m then return nil, "No quest database is loaded (enable RUIN Quest Data, or install Questie)." end
     local byArea = areaQuests()
     if not byArea then return nil, "this version of Questie doesn't offer its quest list." end
     local areas, list, seen = {}, {}, {}
@@ -872,7 +913,83 @@ local function objectiveSpot(qid, near)
 end
 QB.ObjectiveSpot = objectiveSpot
 
--- tasks: { kind = "accept" | "complete" | "turnin", qid, at = spot, after = { task indexes } }
+-- What a quest's objectives are done on: the NPCs and objects it needs
+-- killed, used or looted (an item counts as the NPCs and objects it drops
+-- from), as a set of "n<id>" / "o<id>" keys.
+function QB.Targets(qid)
+    local m = db()
+    local out = {}
+    if not m then return out end
+    local ok, q = pcall(m.DB.GetQuest, qid)
+    if not (ok and type(q) == "table") then return out end
+    for _, o in ipairs(type(q.ObjectiveData) == "table" and q.ObjectiveData or {}) do
+        if type(o) == "table" and o.Id then
+            if o.Type == "monster" then out["n" .. o.Id] = true
+            elseif o.Type == "object" then out["o" .. o.Id] = true
+            elseif o.Type == "item" then
+                local oki, item = pcall(m.DB.GetItem, m.DB, o.Id)
+                if oki and type(item) == "table" then
+                    for _, n in ipairs(type(item.npcDrops) == "table" and item.npcDrops or {}) do out["n" .. n] = true end
+                    for _, b in ipairs(type(item.objectDrops) == "table" and item.objectDrops or {}) do out["o" .. b] = true end
+                end
+            end
+        end
+    end
+    return out
+end
+
+-- Quests of the set that share a target are done as one stop: groups of
+-- quest IDs (a quest alone is a group of one). Two quests where one leads to
+-- the other are never put together (the later one can't be picked up yet).
+local MAX_TOGETHER = 4
+local function doGroups(list)
+    local group, members, byTarget = {}, {}, {}
+    local before = {}
+    for _, q in ipairs(list) do
+        group[q], members[q] = q, { q }
+        before[q] = {}
+        for _, p in ipairs(QB.Prereqs(q)) do before[q][p] = true end
+    end
+    local function linked(a, b)
+        for _, x in ipairs(members[a]) do
+            for _, y in ipairs(members[b]) do
+                if before[x][y] or before[y][x] then return true end
+            end
+        end
+    end
+    for _, q in ipairs(list) do
+        for key in pairs(QB.Targets(q)) do
+            local other = byTarget[key]
+            if not other then
+                byTarget[key] = q
+            else
+                local ga, gb = group[other], group[q]
+                if ga ~= gb and #members[ga] + #members[gb] <= MAX_TOGETHER and not linked(ga, gb) then
+                    for _, x in ipairs(members[gb]) do group[x] = ga; members[ga][#members[ga] + 1] = x end
+                    members[gb] = nil
+                end
+            end
+        end
+    end
+    return group, members
+end
+QB.DoGroups = doGroups
+
+-- Of a group's objective spots, the one nearest the rest.
+local function groupSpot(qids, here)
+    local spots = {}
+    for _, q in ipairs(qids) do spots[#spots + 1] = objectiveSpot(q, here) end
+    local best, bestD
+    for _, a in pairs(spots) do
+        local d = 0
+        for _, b in pairs(spots) do d = d + dist(a, b) end
+        if not bestD or d < bestD then best, bestD = a, d end
+    end
+    return best
+end
+
+-- tasks: { kind = "accept" | "complete" | "turnin", qid, qids (a shared
+-- "complete": every quest done there), at = spot, after = { task indexes } }
 local function buildTasks(qids, here)
     local tasks, index = {}, {}
     local inSet = {}
@@ -882,11 +999,22 @@ local function buildTasks(qids, here)
         index[kind .. qid] = #tasks
         return #tasks
     end
+    local withDo = {}
+    for _, q in ipairs(qids) do if QB.DoText(q) ~= "" then withDo[#withDo + 1] = q end end
+    local group, members = doGroups(withDo)
     for _, q in ipairs(qids) do
         local a = add("accept", q, QB.Spot(q, "start", here and here.map, here and here.x, here and here.y))
         local prev = a
-        if QB.DoText(q) ~= "" then
-            local d = add("complete", q, objectiveSpot(q, here))
+        if group[q] then
+            local g = group[q]
+            local d = index["complete" .. g]
+            if not d then
+                d = add("complete", g, nil)
+                local list = members[g]
+                if #list > 1 then tasks[d].qids = list end
+                tasks[d].at = groupSpot(list, here)
+            end
+            index["complete" .. q] = d
             tasks[d].after[#tasks[d].after + 1] = a
             prev = d
         end
@@ -1054,8 +1182,20 @@ function QB.ZoneRoute(qids)
     -- the ones from other zones first (they're elsewhere), then the zone's own
     local function emit(plan)
         for _, t in ipairs(plan) do
-            local text = t.kind == "accept" and QB.AcceptText(t.qid) or t.kind == "turnin" and QB.TurninText(t.qid) or QB.DoText(t.qid)
-            step(t.kind, t.qid, text)
+            if t.qids then
+                -- quests that share targets: one stop for all of them
+                local names, texts = {}, {}
+                for _, q in ipairs(t.qids) do
+                    names[#names + 1] = name(q)
+                    local d = QB.DoText(q)
+                    if d ~= "" then texts[#texts + 1] = d end
+                end
+                steps[#steps + 1] = { act = "complete", quest = table.concat(names, " + "):sub(1, 60), qid = t.qids[1],
+                                      qids = { unpack(t.qids) }, text = table.concat(texts, "; "):sub(1, 120) }
+            else
+                local text = t.kind == "accept" and QB.AcceptText(t.qid) or t.kind == "turnin" and QB.TurninText(t.qid) or QB.DoText(t.qid)
+                step(t.kind, t.qid, text)
+            end
             here = t.at or here
         end
     end

@@ -270,6 +270,12 @@ local function paint(p, d, lk, relayout)
         p.arrow:Hide()
         vis(p.beam, lk.stem); vis(p.foot, lk.stem)
         p.tag:SetPoint("TOP", p.foot, "BOTTOM", 0, -4)
+        -- the card sits on the marker; without it, on top of the stem; without
+        -- both, right where the ground dot would be
+        p.card:ClearAllPoints()
+        if lk.marker then p.card:SetPoint("BOTTOM", p, "TOP", 0, 7)
+        elseif lk.stem then p.card:SetPoint("BOTTOM", p.beam, "TOP", 0, 4)
+        else p.card:SetPoint("BOTTOM", p.beam, "BOTTOM", 0, 2) end
         if relayout then
             p.sub:SetText(d.sub or "")
             p.title:SetText(d.title or "")

@@ -17,6 +17,8 @@ local C = W.COLORS
 local PIN, EDGE_ARROW, EDGE_INSET = 38, 18, 44
 local RUN_SPEED = 7            -- yards per second on foot
 local FAR = 600                -- shrink a little beyond this
+local STEM = 26               -- the stem from the marker down to the dot
+local FOOT_LIFT = 4            -- the dot sits this far above the spot
 local FADE = 0.5              -- seconds to fade out in the quest's area
 local NEAR = 12                -- fade the card when you're on top of it
 local OBJ_LINES = 5
@@ -119,7 +121,7 @@ local function build()
     else
         pin.beam:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.5)
     end
-    pin.beam:SetSize(1, 26)
+    pin.beam:SetSize(1, STEM)
     pin.beam:SetPoint("TOP", pin, "BOTTOM", 0, 0)
     pin.foot = pin:CreateTexture(nil, "BACKGROUND")
     pin.foot:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask")
@@ -238,19 +240,26 @@ local function update(_, elapsed)
         local angle = math.atan2(ny - h / 2, nx - w / 2)
         local ex = math.max(EDGE_INSET, math.min(w - EDGE_INSET, nx))
         local ey = math.max(EDGE_INSET, math.min(h - EDGE_INSET, ny))
-        pin:SetPoint("CENTER", UIParent, "BOTTOMLEFT", ex, ey)
+        local sc = 0.8 * size
+        pin:SetScale(sc)
+        -- offsets are in the pin's own (scaled) units
+        pin:SetPoint("CENTER", UIParent, "BOTTOMLEFT", ex / sc, ey / sc)
         pin.arrow:ClearAllPoints()
         pin.arrow:SetPoint("CENTER", pin, "CENTER", math.cos(angle) * (PIN * 0.82), math.sin(angle) * (PIN * 0.82))
         pin.arrow:SetRotation(angle - math.pi / 2)
         pin.arrow:Show()
         pin.beam:Hide(); pin.foot:Hide(); pin.card:Hide()
-        pin:SetScale(0.8 * size)
         pin.tag:SetPoint("TOP", pin, "BOTTOM", 0, -6)
     else
-        pin:SetPoint("CENTER", UIParent, "BOTTOMLEFT", nx, ny + 32)
+        -- the dot at the stem's foot sits on the spot, a touch above rather than below,
+        -- plus the nudge from the options (screen pixels)
+        local sc = (yards > FAR and 0.85 or 1) * size
+        pin:SetScale(sc)
+        local fx = nx + (opt("pinOffsetX", 0) or 0)
+        local fy = ny + FOOT_LIFT + (opt("pinOffsetY", 0) or 0)
+        pin:SetPoint("CENTER", UIParent, "BOTTOMLEFT", fx / sc, fy / sc + STEM + PIN / 2)
         pin.arrow:Hide()
         pin.beam:Show(); pin.foot:Show(); pin.card:Show()
-        pin:SetScale((yards > FAR and 0.85 or 1) * size)
         pin.card:SetAlpha(yards < NEAR and 0.35 or 1)
         pin.tag:SetPoint("TOP", pin.foot, "BOTTOM", 0, -4)
     end

@@ -8,6 +8,7 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.5.3 — 2026-11-09
 
+- The pin's dot now sits on the spot (a touch above rather than below), at every pin size: the size setting had been shifting it. Options > RUIN pin has Up / down and Left / right nudges (5 pixels a click, 0 to reset) to fine-tune where it sits.
 - The tracker has two tabs above it, like the chat window's, that fade in while the mouse is over it: Route (the route) and Tracked (the quest you picked in the objective tracker, with its objectives). A tab with nothing to show is greyed out and can't be picked. The world pin follows the selected tab: the route's step on Route, your quest on Tracked; picking a quest in the objective tracker opens Tracked.
 - A simpler tracker: small round < and > buttons centered on its sides (on Tracked they step through your quest log), a little x in the top-right corner to leave the route or stop tracking, and a double-click opens Pathfinder on the Guide or on your quest in the Quests tab. It keeps a fixed height and grows wider for longer text: from its left edge in the left third of the screen, from its right edge in the right third, and from the middle in between. Followers and RUIN members on your step show on the title line.
 - The pin always hides inside the tracked quest's objective area (near the places its objectives are found, from Questie), and fades out over half a second rather than vanishing.

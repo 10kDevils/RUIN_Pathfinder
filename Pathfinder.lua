@@ -51,7 +51,7 @@ local DEFAULTS = { route = nil, step = 1, tracker = true, trackerPos = nil, foll
                    -- waypoint and pin settings (Options tab)
                    waypoint = true, trackQuests = true, autoNav = true, announce = true,
                    pin = true, pinHideInArea = true, pinHideYards = 15, pinObjectives = true, pinWalk = true,
-                   pinScale = 1, pinEdge = true }
+                   pinScale = 1, pinEdge = true, pinOffsetX = 0, pinOffsetY = 0 }
 local ACCOUNT_DEFAULTS = { custom = {}, inbox = {}, official = {}, rec = { on = false, title = "", steps = {} } }
 -- Officer routes carry this badge wherever they're listed.
 local OFFICER_ICON = "|TInterface\\GroupFrame\\UI-Group-AssistantIcon:14:14|t"
@@ -2477,7 +2477,7 @@ local function buildOptions(page)
     check(w, "Track quest steps the game's way", "trackQuests", "For a quest in your log, track the quest itself (like clicking it in the objective tracker) so the pin follows its objective or turn-in.", nil, COL2, -30)
     check(w, "Turn on In-Game Navigation when needed", "autoNav", "The game draws nothing in the world while its In-Game Navigation option is off. Pathfinder turns it on when it places a waypoint.", nil, 12, -54)
 
-    local p = card("RUIN pin", -184, 132)
+    local p = card("RUIN pin", -184, 156)
     check(p, "Show the RUIN pin", "pin", "RUIN's marker over whatever the game is navigating to. Off: the game's own marker shows instead. /path pin", nil, 12, -30)
     check(p, "Hide when the game says you're there", "pinHideInArea", "The pin always steps aside in the tracked quest's objective area. This also hides it when the game says you've arrived, or within the distance below.", nil, COL2, -30)
     check(p, "Show quest objectives", "pinObjectives", "The tracked quest's objectives on the pin's card.", nil, 12, -54)
@@ -2503,6 +2503,26 @@ local function buildOptions(page)
             b:SetText(on and (C.gold .. b.name .. "|r") or b.name)
         end
     end
+    -- nudge: where the pin sits over the spot, in screen pixels
+    local function nudge(label, key, x, y, upWord, downWord)
+        local l = W.Label(p, "", "GameFontHighlight")
+        l:SetPoint("TOPLEFT", x, y)
+        local function show()
+            local v = db[key] or 0
+            l:SetText(("%s %s%s|r"):format(label, C.gold, v == 0 and "centered" or (("%d %s"):format(math.abs(v), v > 0 and upWord or downWord))))
+        end
+        local minus = W.Button(p, "-", 24, function() db[key] = math.max(-150, (db[key] or 0) - 5); show() end)
+        minus:SetPoint("TOPLEFT", x + 150, y + 4)
+        local plus = W.Button(p, "+", 24, function() db[key] = math.min(150, (db[key] or 0) + 5); show() end)
+        plus:SetPoint("LEFT", minus, "RIGHT", 2, 0)
+        local zero = W.Button(p, "0", 24, function() db[key] = 0; show() end)
+        zero:SetPoint("LEFT", plus, "RIGHT", 2, 0)
+        minus.tip, plus.tip, zero.tip = "Move it " .. downWord .. " 5 pixels.", "Move it " .. upWord .. " 5 pixels.", "Back to the spot."
+        return show
+    end
+    local showY = nudge("Up / down:", "pinOffsetY", 16, -132, "up", "down")
+    local showX = nudge("Left / right:", "pinOffsetX", COL2 + 4, -132, "right", "left")
+
     for i, sz in ipairs(SIZES) do
         local b = W.Button(p, sz[2], 70, function() db.pinScale = sz[1]; syncSize() end)
         b.scale, b.name = sz[1], sz[2]
@@ -2510,7 +2530,7 @@ local function buildOptions(page)
         sizeBtns[i] = b
     end
 
-    local k = card("Controls", -324, 76)
+    local k = card("Controls", -348, 76)
     local kl = W.Label(k, "", "GameFontHighlightSmall")
     kl:SetPoint("TOPLEFT", 12, -30)
     kl:SetPoint("RIGHT", k, "RIGHT", -12, 0)
@@ -2521,7 +2541,7 @@ local function buildOptions(page)
 
     page:SetScript("OnShow", function()
         for _, c in ipairs(checks) do c:Refresh() end
-        yardsLabel(); syncSize()
+        yardsLabel(); syncSize(); showY(); showX()
     end)
     ui.optionChecks = checks
 end

@@ -417,6 +417,7 @@ end
 function M.PinOn() return db and db.pin ~= false end
 -- the pin's settings, read live by WaypointPin.lua
 function M.PinSetting(key) return db and db[key] end
+function M.SetPinSetting(key, v) if db then db[key] = v end; M.pinDirty = true end
 
 -- What the RUIN pin should call the current target, when it's Pathfinder's.
 function M.PinInfo()
@@ -2477,15 +2478,16 @@ local function buildOptions(page)
     check(w, "Track quest steps the game's way", "trackQuests", "For a quest in your log, track the quest itself (like clicking it in the objective tracker) so the pin follows its objective or turn-in.", nil, COL2, -30)
     check(w, "Turn on In-Game Navigation when needed", "autoNav", "The game draws nothing in the world while its In-Game Navigation option is off. Pathfinder turns it on when it places a waypoint.", nil, 12, -54)
 
-    local p = card("RUIN pin", -184, 156)
+    local p = card("RUIN pin", -184, 132)
     check(p, "Show the RUIN pin", "pin", "RUIN's marker over whatever the game is navigating to. Off: the game's own marker shows instead. /path pin", nil, 12, -30)
     check(p, "Hide when the game says you're there", "pinHideInArea", "The pin always steps aside in the tracked quest's objective area. This also hides it when the game says you've arrived, or within the distance below.", nil, COL2, -30)
-    check(p, "Show quest objectives", "pinObjectives", "The tracked quest's objectives on the pin's card.", nil, 12, -54)
-    check(p, "Show walking time", "pinWalk", "Roughly how long the walk is, beside the distance.", nil, COL2, -54)
-    check(p, "Show at the screen edge when off screen", "pinEdge", "When the spot is behind you or off screen, the pin waits at the edge with an arrow pointing the way.", nil, 12, -78)
+
+    local edit = W.Button(p, "Waypoint Editor", 140, function() if M.OpenWaypointEditor then M.OpenWaypointEditor() end end)
+    edit:SetPoint("TOPLEFT", 14, -56)
+    edit.tip = "Choose what the pin shows (card, label, title, objectives, marker, stem, distance, walking time, edge arrow) and how it looks, with a live preview. /path editor"
 
     local hl = W.Label(p, "", "GameFontHighlight")
-    hl:SetPoint("TOPLEFT", COL2 + 4, -82)
+    hl:SetPoint("TOPLEFT", COL2 + 4, -60)
     local function yardsLabel() hl:SetText(("Hide within %s%d yd|r"):format(C.gold, db.pinHideYards or 15)) end
     local minus = W.Button(p, "-", 24, function() db.pinHideYards = math.max(0, (db.pinHideYards or 15) - 5); yardsLabel() end)
     minus:SetPoint("LEFT", hl, "RIGHT", 10, 0)
@@ -2493,16 +2495,6 @@ local function buildOptions(page)
     plus:SetPoint("LEFT", minus, "RIGHT", 2, 0)
     minus.tip, plus.tip = "Nearer than this, the pin hides (0: never).", "Nearer than this, the pin hides (0: never)."
 
-    local sl = W.Label(p, "Size", "GameFontHighlight")
-    sl:SetPoint("TOPLEFT", 16, -106)
-    local SIZES = { { 0.8, "Small" }, { 1, "Normal" }, { 1.25, "Large" } }
-    local sizeBtns = {}
-    local function syncSize()
-        for _, b in ipairs(sizeBtns) do
-            local on = math.abs((db.pinScale or 1) - b.scale) < 0.01
-            b:SetText(on and (C.gold .. b.name .. "|r") or b.name)
-        end
-    end
     -- nudge: where the pin sits over the spot, in screen pixels
     local function nudge(label, key, x, y, upWord, downWord)
         local l = W.Label(p, "", "GameFontHighlight")
@@ -2520,24 +2512,18 @@ local function buildOptions(page)
         minus.tip, plus.tip, zero.tip = "Move it " .. downWord .. " 5 pixels.", "Move it " .. upWord .. " 5 pixels.", "Back to the spot."
         return show
     end
-    local showY = nudge("Up / down:", "pinOffsetY", 16, -132, "up", "down")
-    local showX = nudge("Left / right:", "pinOffsetX", COL2 + 4, -132, "right", "left")
+    local showY = nudge("Up / down:", "pinOffsetY", 16, -100, "up", "down")
+    local showX = nudge("Left / right:", "pinOffsetX", COL2 + 4, -100, "right", "left")
+    local syncSize = function() end
 
-    for i, sz in ipairs(SIZES) do
-        local b = W.Button(p, sz[2], 70, function() db.pinScale = sz[1]; syncSize() end)
-        b.scale, b.name = sz[1], sz[2]
-        b:SetPoint("LEFT", sl, "RIGHT", 10 + (i - 1) * 74, 0)
-        sizeBtns[i] = b
-    end
-
-    local k = card("Controls", -348, 76)
+    local k = card("Controls", -324, 76)
     local kl = W.Label(k, "", "GameFontHighlightSmall")
     kl:SetPoint("TOPLEFT", 12, -30)
     kl:SetPoint("RIGHT", k, "RIGHT", -12, 0)
     kl:SetJustifyV("TOP")
     if kl.SetSpacing then kl:SetSpacing(3) end
     kl:SetText(C.white .. "Key bindings|r " .. C.dim .. "(Game Menu > Options > Keybindings > AddOns > RUIN Pathfinder):|r next step, previous step, clear the route, show or hide the pin, open Pathfinder.\n"
-        .. C.white .. "Chat:|r " .. C.dim .. "/path next, /path prev, /path clear, /path pin, /path waypoint, /path nav|r")
+        .. C.white .. "Chat:|r " .. C.dim .. "/path next, /path prev, /path clear, /path pin, /path editor, /path waypoint, /path nav|r")
 
     page:SetScript("OnShow", function()
         for _, c in ipairs(checks) do c:Refresh() end
@@ -2653,7 +2639,7 @@ BINDING_NAME_RUIN_PATHFINDER_OPEN = "Open Pathfinder"
 BINDING_NAME_RUIN_PATHFINDER_NEXT = "Pathfinder: next step"
 BINDING_NAME_RUIN_PATHFINDER_PREV = "Pathfinder: previous step"
 
--- /path next | prev | tracker | arrow | record | rec | mark <note> | save | import | unfollow | clear | waypoint | pin | trainer
+-- /path next | prev | tracker | arrow | record | rec | mark <note> | save | import | unfollow | clear | waypoint | pin | editor | trainer
 --       | quests | draft | skip | questshare
 SLASH_RUINPATH1 = "/path"
 SLASH_RUINPATH2 = "/pathfinder"
@@ -2690,6 +2676,7 @@ SlashCmdList.RUINPATH = function(input)
     elseif msg == "unfollow" then M:Follow(nil)
     elseif msg == "clear" or msg == "stop" then M:ClearRoute()
     elseif msg == "nav" then M:NavReport()
+    elseif msg == "editor" or msg == "edit" then if M.OpenWaypointEditor then M.OpenWaypointEditor() end
     elseif msg == "pin" then
         db.pin = db.pin == false
         if M.RefreshPin then M.RefreshPin() end

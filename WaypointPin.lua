@@ -83,7 +83,7 @@ local function target()
 end
 
 local function objectives(qid)
-    if not (qid and opt("pinObjectives", true) and M.ObjectiveLines) then return "" end
+    if not (qid and M.ObjectiveLines) then return "" end
     return M.ObjectiveLines(qid, OBJ_LINES)
 end
 
@@ -93,56 +93,73 @@ local function fill(frame, layer, r, g, b, a)
     return t
 end
 
-local function build()
-    pin = CreateFrame("Frame", "RUIN_PathfinderPin", UIParent)
-    pin:SetSize(PIN, PIN)
-    pin:SetFrameStrata("LOW")
-    pin:EnableMouse(false)
-    pin:Hide()
+-- Show or hide (one call, so it works the same everywhere).
+local function vis(r, on) if on then r:Show() else r:Hide() end end
 
-    -- the marker: the RUIN emblem on a soft shadow
-    pin.shadow = pin:CreateTexture(nil, "BACKGROUND")
-    pin.shadow:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask")
-    pin.shadow:SetVertexColor(0, 0, 0, 0.55)
-    pin.shadow:SetPoint("CENTER", 0, -1); pin.shadow:SetSize(PIN + 8, PIN + 8)
-    pin.icon = pin:CreateTexture(nil, "ARTWORK")
-    pin.icon:SetTexture(MEDIA .. "EmblemIcon")
-    pin.icon:SetAllPoints()
-    pin.check = pin:CreateTexture(nil, "OVERLAY")
-    pin.check:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
-    pin.check:SetPoint("CENTER"); pin.check:SetSize(PIN - 12, PIN - 12)
-    pin.check:Hide()
+local DISC = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
+local TITLE_FONTS = { small = "GameFontHighlightSmall", normal = "GameFontHighlight", large = "GameFontHighlightLarge" }
+
+-- The look, from the Waypoint Editor's settings (all on to start).
+local function look()
+    return {
+        card = opt("pinShowCard", true), label = opt("pinShowLabel", true), title = opt("pinShowTitle", true),
+        objectives = opt("pinObjectives", true), marker = opt("pinShowMarker", true), stem = opt("pinShowStem", true),
+        distance = opt("pinShowDistance", true), walk = opt("pinWalk", true), edge = opt("pinEdge", true),
+        markerStyle = opt("pinMarkerStyle", "emblem"), textSize = opt("pinTextSize", "normal"),
+        cardAlpha = opt("pinCardAlpha", 0.86), size = opt("pinScale", 1) or 1,
+    }
+end
+M.PinLook = look
+
+-- One pin's frames. The live pin sits on UIParent; the Waypoint Editor
+-- builds another as its preview.
+local function build(parent, name)
+    local p = CreateFrame("Frame", name, parent)
+    p:SetSize(PIN, PIN)
+    if parent == UIParent then p:SetFrameStrata("LOW") end
+    p:EnableMouse(false)
+    p:Hide()
+
+    -- the marker: the RUIN emblem (or a plain gold dot) on a soft shadow
+    p.shadow = p:CreateTexture(nil, "BACKGROUND")
+    p.shadow:SetTexture(DISC)
+    p.shadow:SetVertexColor(0, 0, 0, 0.55)
+    p.icon = p:CreateTexture(nil, "ARTWORK")
+    p.check = p:CreateTexture(nil, "OVERLAY")
+    p.check:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+    p.check:SetPoint("CENTER"); p.check:SetSize(PIN - 12, PIN - 12)
+    p.check:Hide()
 
     -- a fine stem down to a small dot on the ground
-    pin.beam = pin:CreateTexture(nil, "BACKGROUND")
-    pin.beam:SetColorTexture(1, 1, 1, 1)
-    if pin.beam.SetGradient and CreateColor then
-        pin.beam:SetGradient("VERTICAL", CreateColor(GOLD[1], GOLD[2], GOLD[3], 0.15), CreateColor(GOLD[1], GOLD[2], GOLD[3], 0.85))
+    p.beam = p:CreateTexture(nil, "BACKGROUND")
+    p.beam:SetColorTexture(1, 1, 1, 1)
+    if p.beam.SetGradient and CreateColor then
+        p.beam:SetGradient("VERTICAL", CreateColor(GOLD[1], GOLD[2], GOLD[3], 0.15), CreateColor(GOLD[1], GOLD[2], GOLD[3], 0.85))
     else
-        pin.beam:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.5)
+        p.beam:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.5)
     end
-    pin.beam:SetSize(1, STEM)
-    pin.beam:SetPoint("TOP", pin, "BOTTOM", 0, 0)
-    pin.foot = pin:CreateTexture(nil, "BACKGROUND")
-    pin.foot:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask")
-    pin.foot:SetVertexColor(GOLD[1], GOLD[2], GOLD[3], 0.9)
-    pin.foot:SetSize(5, 5)
-    pin.foot:SetPoint("CENTER", pin.beam, "BOTTOM", 0, 0)
+    p.beam:SetSize(1, STEM)
+    p.beam:SetPoint("TOP", p, "BOTTOM", 0, 0)
+    p.foot = p:CreateTexture(nil, "BACKGROUND")
+    p.foot:SetTexture(DISC)
+    p.foot:SetVertexColor(GOLD[1], GOLD[2], GOLD[3], 0.9)
+    p.foot:SetSize(5, 5)
+    p.foot:SetPoint("CENTER", p.beam, "BOTTOM", 0, 0)
 
     -- the edge arrow, when the spot is off screen
-    pin.arrow = pin:CreateTexture(nil, "OVERLAY")
-    if not (pin.arrow.SetAtlas and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo("Navigation-Tracked-Arrow")
-            and pin.arrow:SetAtlas("Navigation-Tracked-Arrow") ~= false) then
-        pin.arrow:SetTexture("Interface\\Minimap\\MinimapArrow")
+    p.arrow = p:CreateTexture(nil, "OVERLAY")
+    if not (p.arrow.SetAtlas and C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo("Navigation-Tracked-Arrow")
+            and p.arrow:SetAtlas("Navigation-Tracked-Arrow") ~= false) then
+        p.arrow:SetTexture("Interface\\Minimap\\MinimapArrow")
     end
-    pin.arrow:SetSize(EDGE_ARROW, EDGE_ARROW)
-    pin.arrow:SetVertexColor(GOLD[1], GOLD[2], GOLD[3])
-    pin.arrow:Hide()
+    p.arrow:SetSize(EDGE_ARROW, EDGE_ARROW)
+    p.arrow:SetVertexColor(GOLD[1], GOLD[2], GOLD[3])
+    p.arrow:Hide()
 
     -- the card above the marker: a dark panel with a gold rule along the top
-    local card = CreateFrame("Frame", nil, pin)
-    pin.card = card
-    card:SetPoint("BOTTOM", pin, "TOP", 0, 7)
+    local card = CreateFrame("Frame", nil, p)
+    p.card = card
+    card:SetPoint("BOTTOM", p, "TOP", 0, 7)
     card:SetSize(CARD_MIN, 40)
     card.bg = fill(card, "BACKGROUND", INK[1], INK[2], INK[3], 0.86); card.bg:SetAllPoints()
     card.top = fill(card, "BORDER", GOLD[1], GOLD[2], GOLD[3], 0.95)
@@ -152,50 +169,121 @@ local function build()
         if side == "BOTTOM" then e:SetPoint("BOTTOMLEFT"); e:SetPoint("BOTTOMRIGHT"); e:SetHeight(1)
         else e:SetPoint("TOP" .. side); e:SetPoint("BOTTOM" .. side); e:SetWidth(1) end
     end
-    pin.sub = W.Label(card, "", "GameFontNormalSmall")
-    pin.sub:SetPoint("TOPLEFT", PAD, -PAD + 1)
-    pin.sub:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
-    pin.sub:SetWordWrap(false)
-    pin.title = W.Label(card, "", "GameFontHighlight")
-    pin.title:SetPoint("TOPLEFT", pin.sub, "BOTTOMLEFT", 0, -3)
-    pin.title:SetWordWrap(false)
-    pin.rule = fill(card, "ARTWORK", 1, 1, 1, 0.10)
-    pin.rule:SetHeight(1)
-    pin.rule:SetPoint("TOPLEFT", pin.title, "BOTTOMLEFT", 0, -6)
-    pin.rule:SetPoint("RIGHT", card, "RIGHT", -PAD, 0)
-    pin.obj = W.Label(card, "", "GameFontHighlightSmall")
-    pin.obj:SetPoint("TOPLEFT", pin.rule, "BOTTOMLEFT", 0, -6)
-    pin.obj:SetJustifyV("TOP")
-    pin.obj:SetSpacing(3)
+    p.sub = W.Label(card, "", "GameFontNormalSmall")
+    p.sub:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
+    p.sub:SetWordWrap(false)
+    p.title = W.Label(card, "", "GameFontHighlight")
+    p.title:SetWordWrap(false)
+    p.rule = fill(card, "ARTWORK", 1, 1, 1, 0.10)
+    p.rule:SetHeight(1)
+    p.obj = W.Label(card, "", "GameFontHighlightSmall")
+    p.obj:SetJustifyV("TOP")
+    p.obj:SetSpacing(3)
 
     -- the distance, in a small pill under the dot
-    local tag = CreateFrame("Frame", nil, pin)
-    pin.tag = tag
+    local tag = CreateFrame("Frame", nil, p)
+    p.tag = tag
     tag:SetSize(80, 18)
     tag.bg = fill(tag, "BACKGROUND", INK[1], INK[2], INK[3], 0.80); tag.bg:SetAllPoints()
     tag.edge = fill(tag, "BORDER", GOLD[1], GOLD[2], GOLD[3], 0.30)
     tag.edge:SetPoint("BOTTOMLEFT"); tag.edge:SetPoint("BOTTOMRIGHT"); tag.edge:SetHeight(1)
-    pin.dist = W.Label(tag, "", "GameFontHighlightSmall")
-    pin.dist:SetPoint("CENTER", 0, 1)
-    pin.dist:SetJustifyH("CENTER")
+    p.dist = W.Label(tag, "", "GameFontHighlightSmall")
+    p.dist:SetPoint("CENTER", 0, 1)
+    p.dist:SetJustifyH("CENTER")
+    return p
 end
 
--- Sizes the card to its text, within limits.
-local function layoutCard(hasObj)
-    local card = pin.card
+-- The marker's style: the emblem, or a small gold dot.
+local function paintMarker(p, lk)
+    if p.markerStyle ~= lk.markerStyle then
+        p.markerStyle = lk.markerStyle
+        p.icon:ClearAllPoints(); p.shadow:ClearAllPoints()
+        if lk.markerStyle == "dot" then
+            p.icon:SetTexture(DISC); p.icon:SetVertexColor(GOLD[1], GOLD[2], GOLD[3], 1)
+            p.icon:SetPoint("CENTER"); p.icon:SetSize(14, 14)
+            p.shadow:SetPoint("CENTER", 0, -1); p.shadow:SetSize(20, 20)
+        else
+            p.icon:SetTexture(MEDIA .. "EmblemIcon"); p.icon:SetVertexColor(1, 1, 1, 1)
+            p.icon:SetAllPoints()
+            p.shadow:SetPoint("CENTER", 0, -1); p.shadow:SetSize(PIN + 8, PIN + 8)
+        end
+    end
+    vis(p.icon, lk.marker); vis(p.shadow, lk.marker)
+end
+
+-- Stacks the card's parts that are on (label, title, objectives) and sizes
+-- the card to its text, within limits. Returns false when nothing is on.
+local function layoutCard(p, lk, hasObj)
+    local card = p.card
+    local showSub, showTitle = lk.label and (p.sub:GetText() or "") ~= "", lk.title and (p.title:GetText() or "") ~= ""
+    hasObj = hasObj and lk.objectives
+    vis(p.sub, showSub); vis(p.title, showTitle); vis(p.obj, hasObj)
+    vis(p.rule, hasObj and (showSub or showTitle))
+    if not (showSub or showTitle or hasObj) then return false end
+    if p.titleFont ~= lk.textSize and p.title.SetFontObject then
+        p.titleFont = lk.textSize
+        p.title:SetFontObject(TITLE_FONTS[lk.textSize] or TITLE_FONTS.normal)
+    end
+    card.bg:SetColorTexture(INK[1], INK[2], INK[3], lk.cardAlpha or 0.86)
     local function w(fs) return (fs.GetStringWidth and fs:GetStringWidth()) or 0 end
-    local width = math.max(w(pin.sub), w(pin.title))
-    pin.obj:SetWidth(CARD_MAX - PAD * 2)
-    if hasObj then width = math.max(width, math.min(w(pin.obj), CARD_MAX - PAD * 2)) end
-    width = math.max(CARD_MIN, math.min(CARD_MAX, width + PAD * 2))
-    pin.title:SetWidth(width - PAD * 2)
-    pin.obj:SetWidth(width - PAD * 2)
     local function h(fs) return (fs.GetStringHeight and fs:GetStringHeight()) or 12 end
-    local height = PAD - 1 + h(pin.sub) + 3 + h(pin.title) + PAD
-    if hasObj then height = height - PAD + 6 + 1 + 6 + h(pin.obj) + PAD end
-    card:SetSize(width, height)
-    pin.rule:SetShown(hasObj)
-    pin.obj:SetShown(hasObj)
+    local width = math.max(showSub and w(p.sub) or 0, showTitle and w(p.title) or 0)
+    p.obj:SetWidth(CARD_MAX - PAD * 2)
+    if hasObj then width = math.max(width, math.min(w(p.obj), CARD_MAX - PAD * 2)) end
+    width = math.max(CARD_MIN, math.min(CARD_MAX, width + PAD * 2))
+    p.title:SetWidth(width - PAD * 2)
+    p.obj:SetWidth(width - PAD * 2)
+    local y = PAD - 1
+    local function place(fs, gap)
+        fs:ClearAllPoints()
+        fs:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, -y)
+        y = y + h(fs) + gap
+    end
+    if showSub then place(p.sub, 3) end
+    if showTitle then place(p.title, 6) end
+    if hasObj then
+        if showSub or showTitle then
+            p.rule:ClearAllPoints()
+            p.rule:SetPoint("TOPLEFT", card, "TOPLEFT", PAD, -y)
+            p.rule:SetPoint("RIGHT", card, "RIGHT", -PAD, 0)
+            y = y + 1 + 6
+        end
+        place(p.obj, 0)
+    end
+    card:SetSize(width, y + PAD - 2)
+    return true
+end
+
+-- What a pin shows, for a target: d = { title, sub, obj (text), yards,
+-- clamped, angle }. Positioning is the caller's; this sets what's visible.
+local function paint(p, d, lk, relayout)
+    paintMarker(p, lk)
+    p.tag:ClearAllPoints()
+    if d.clamped then
+        p.arrow:ClearAllPoints()
+        p.arrow:SetPoint("CENTER", p, "CENTER", math.cos(d.angle or 0) * (PIN * 0.82), math.sin(d.angle or 0) * (PIN * 0.82))
+        p.arrow:SetRotation((d.angle or 0) - math.pi / 2)
+        p.arrow:Show()
+        p.beam:Hide(); p.foot:Hide(); p.card:Hide()
+        p.tag:SetPoint("TOP", p, "BOTTOM", 0, -6)
+    else
+        p.arrow:Hide()
+        vis(p.beam, lk.stem); vis(p.foot, lk.stem)
+        p.tag:SetPoint("TOP", p.foot, "BOTTOM", 0, -4)
+        if relayout then
+            p.sub:SetText(d.sub or "")
+            p.title:SetText(d.title or "")
+            p.obj:SetText(d.obj or "")
+            p.hasCard = layoutCard(p, lk, (d.obj or "") ~= "")
+        end
+        vis(p.card, lk.card and p.hasCard and true or false)
+        p.card:SetAlpha((d.yards or 999) < NEAR and 0.35 or 1)
+    end
+    local yards = d.yards or 0
+    local walk = lk.walk and walkText(yards) or nil
+    p.dist:SetText(C.white .. yardsText(yards) .. "|r" .. (walk and ("   " .. C.dim .. walk .. "|r") or ""))
+    p.tag:SetWidth(math.max(56, ((p.dist.GetStringWidth and p.dist:GetStringWidth()) or 60) + 18))
+    vis(p.tag, lk.distance)
 end
 
 local function setGameMarker(hide)
@@ -219,7 +307,8 @@ local function update(_, elapsed)
     local yards = C_Navigation.GetDistance and C_Navigation.GetDistance() or 0
     local clamped = C_Navigation.WasClampedToScreen and C_Navigation.WasClampedToScreen()
     local title, sub, qid = target()
-    if clamped and not opt("pinEdge", true) then pin:Hide(); return end
+    local lk = look()
+    if clamped and not lk.edge then pin:Hide(); return end
     -- inside the quest's area the pin fades away over half a second (and back when you leave)
     local want = inArea(yards, qid) and 0 or 1
     local f = pin.fade or 0
@@ -230,54 +319,37 @@ local function update(_, elapsed)
     end
     if f <= 0 then pin:Hide(); return end
     pin:SetAlpha(f)
-    local size = opt("pinScale", 1) or 1
 
     pin:ClearAllPoints()
-    pin.tag:ClearAllPoints()
+    local d = { title = title, sub = sub, yards = yards, clamped = clamped }
     if clamped then
         -- at the edge: pull the marker in from the border and point the arrow at the spot
         local w, h = UIParent:GetWidth(), UIParent:GetHeight()
-        local angle = math.atan2(ny - h / 2, nx - w / 2)
+        d.angle = math.atan2(ny - h / 2, nx - w / 2)
         local ex = math.max(EDGE_INSET, math.min(w - EDGE_INSET, nx))
         local ey = math.max(EDGE_INSET, math.min(h - EDGE_INSET, ny))
-        local sc = 0.8 * size
+        local sc = 0.8 * lk.size
         pin:SetScale(sc)
         -- offsets are in the pin's own (scaled) units
         pin:SetPoint("CENTER", UIParent, "BOTTOMLEFT", ex / sc, ey / sc)
-        pin.arrow:ClearAllPoints()
-        pin.arrow:SetPoint("CENTER", pin, "CENTER", math.cos(angle) * (PIN * 0.82), math.sin(angle) * (PIN * 0.82))
-        pin.arrow:SetRotation(angle - math.pi / 2)
-        pin.arrow:Show()
-        pin.beam:Hide(); pin.foot:Hide(); pin.card:Hide()
-        pin.tag:SetPoint("TOP", pin, "BOTTOM", 0, -6)
     else
         -- the dot at the stem's foot sits on the spot, a touch above rather than below,
         -- plus the nudge from the options (screen pixels)
-        local sc = (yards > FAR and 0.85 or 1) * size
+        local sc = (yards > FAR and 0.85 or 1) * lk.size
         pin:SetScale(sc)
         local fx = nx + (opt("pinOffsetX", 0) or 0)
         local fy = ny + FOOT_LIFT + (opt("pinOffsetY", 0) or 0)
         pin:SetPoint("CENTER", UIParent, "BOTTOMLEFT", fx / sc, fy / sc + STEM + PIN / 2)
-        pin.arrow:Hide()
-        pin.beam:Show(); pin.foot:Show(); pin.card:Show()
-        pin.card:SetAlpha(yards < NEAR and 0.35 or 1)
-        pin.tag:SetPoint("TOP", pin.foot, "BOTTOM", 0, -4)
     end
-
-    local walk = opt("pinWalk", true) and walkText(yards) or nil
-    pin.dist:SetText(C.white .. yardsText(yards) .. "|r" .. (walk and ("   " .. C.dim .. walk .. "|r") or ""))
-    pin.tag:SetWidth(math.max(56, ((pin.dist.GetStringWidth and pin.dist:GetStringWidth()) or 60) + 18))
 
     objTick = objTick + (elapsed or 0)
-    if qid ~= lastQuest or objTick > 1 or title ~= lastText or M.pinDirty then
+    local relayout = qid ~= lastQuest or objTick > 1 or title ~= lastText or M.pinDirty
+    if relayout then
         M.pinDirty = nil
         objTick, lastQuest, lastText = 0, qid, title
-        pin.sub:SetText(sub or "")
-        pin.title:SetText(title or "")
-        local text = objectives(qid)
-        pin.obj:SetText(text)
-        layoutCard(text ~= "")
+        d.obj = objectives(qid)
     end
+    paint(pin, d, lk, relayout)
     pin:Show()
 end
 
@@ -285,7 +357,7 @@ end
 -- no OnUpdate, so an always-visible driver runs it. The driver also looks
 -- for the game's navigation frame twice a second, in case an event is missed.
 local driver = CreateFrame("Frame", nil, UIParent)
-local look = 0
+local lookTick = 0
 
 local function detach()
     navFrame = nil
@@ -299,7 +371,7 @@ local function attach()
     if not f then return detach() end
     if f ~= navFrame then
         navFrame = f
-        if not pin then build() end
+        if not pin then pin = build(UIParent, "RUIN_PathfinderPin") end
         pin.check:Hide()
         pin.icon:SetAlpha(1)
     end
@@ -307,9 +379,9 @@ local function attach()
 end
 
 driver:SetScript("OnUpdate", function(_, elapsed)
-    look = look + (elapsed or 0)
-    if look > 0.5 then
-        look = 0
+    lookTick = lookTick + (elapsed or 0)
+    if lookTick > 0.5 then
+        lookTick = 0
         local f = on() and C_Navigation.GetFrame() or nil
         if f ~= navFrame then if f then attach() else detach() end end
     end
@@ -354,3 +426,180 @@ M.Pin = { Update = function() if pin and navFrame then update(nil, 0) end end, F
             tostring(C_Navigation and C_Navigation.GetTargetState and C_Navigation.GetTargetState()),
             tostring(C_SuperTrack and C_SuperTrack.GetHighestPrioritySuperTrackingType and C_SuperTrack.GetHighestPrioritySuperTrackingType()))
     end }
+
+---------------------------------------------------------------------------
+-- Waypoint Editor: choose what the pin shows and how it looks, with a live
+-- preview of it on screen and at the screen edge. /path editor
+---------------------------------------------------------------------------
+local editor
+local SAMPLE = {
+    title = "Soothing Turtle Bisque", sub = "TRACKED QUEST", yards = 97,
+    obj = C.white .. "- 6/10 Turtle Meat|r\n" .. C.white .. "- 0/1 Soothing Spices|r",
+}
+-- the look's settings and their defaults (Reset puts these back)
+local LOOK_KEYS = { pinShowCard = true, pinShowLabel = true, pinShowTitle = true, pinObjectives = true,
+    pinShowMarker = true, pinShowStem = true, pinShowDistance = true, pinWalk = true, pinEdge = true,
+    pinMarkerStyle = "emblem", pinTextSize = "normal", pinCardAlpha = 0.86, pinScale = 1 }
+
+local function refreshEditor()
+    if not (editor and editor:IsShown()) then return end
+    local lk = look()
+    -- on screen: the dot near the bottom of the preview, as it would sit on the spot
+    local p = editor.preview
+    p:SetScale(lk.size)
+    p:ClearAllPoints()
+    p:SetPoint("CENTER", editor.area, "BOTTOM", 0, (64 / lk.size) + STEM + PIN / 2)
+    paint(p, SAMPLE, lk, true)
+    vis(p, true)
+    -- at the edge: the marker with the arrow pointing off to the right
+    local e = editor.edgePreview
+    e:SetScale(0.8 * lk.size)
+    e:ClearAllPoints()
+    e:SetPoint("CENTER", editor.edgeArea, "CENTER", -8 / (0.8 * lk.size), 6 / (0.8 * lk.size))
+    paint(e, { yards = 420, clamped = true, angle = 0 }, lk, true)
+    vis(e, lk.edge)
+    editor.edgeOff:SetText(lk.edge and "" or (C.dim .. "Off: the pin hides when the spot is off screen.|r"))
+    for _, c in ipairs(editor.checks) do c:Refresh() end
+    for _, row in ipairs(editor.choices) do row.sync() end
+end
+
+local function setLook(key, v)
+    if M.SetPinSetting then M.SetPinSetting(key, v) end
+    if M.RefreshPin then M.RefreshPin() end
+    refreshEditor()
+end
+
+local function buildEditor()
+    local f = CreateFrame("Frame", "RUIN_PathfinderWaypointEditor", UIParent)
+    editor = f
+    f:SetSize(660, 430)
+    f:SetPoint("CENTER")
+    f:SetFrameStrata("DIALOG")
+    f:SetClampedToScreen(true)
+    W.Skin(f, "bg", 0.96, "border")
+    f:EnableMouse(true)
+    f:SetMovable(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", function(self) self:StartMoving() end)
+    f:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
+    f:SetScript("OnShow", refreshEditor)
+    if UISpecialFrames then table.insert(UISpecialFrames, "RUIN_PathfinderWaypointEditor") end   -- Esc closes it
+    f:Hide()
+
+    local h = W.Header(f, "Waypoint Editor")
+    h:SetPoint("TOPLEFT", 14, -12)
+    local hint = W.Label(f, C.dim .. "What the RUIN pin shows, and how it looks.|r", "GameFontHighlightSmall")
+    hint:SetPoint("LEFT", h, "RIGHT", 10, 0)
+    local close = W.Button(f, "x", 22, function() f:Hide() end)
+    close:SetPoint("TOPRIGHT", -8, -8)
+    close.tip = "Close"
+
+    -- preview: a patch of "world" with the pin on it, and one at the screen edge
+    local area = CreateFrame("Frame", nil, f)
+    f.area = area
+    area:SetPoint("TOPLEFT", 14, -40)
+    area:SetSize(300, 290)
+    local sky = area:CreateTexture(nil, "BACKGROUND")
+    sky:SetAllPoints()
+    sky:SetColorTexture(1, 1, 1, 1)
+    if sky.SetGradient and CreateColor then
+        sky:SetGradient("VERTICAL", CreateColor(0.10, 0.14, 0.09, 1), CreateColor(0.13, 0.17, 0.22, 1))
+    else
+        sky:SetColorTexture(0.11, 0.15, 0.14, 1)
+    end
+    local spot = area:CreateTexture(nil, "BORDER")
+    spot:SetTexture(DISC)
+    spot:SetVertexColor(0, 0, 0, 0.35)
+    spot:SetSize(46, 14)
+    spot:SetPoint("CENTER", area, "BOTTOM", 0, 64)
+    local lbl = W.Label(area, C.dim .. "On screen|r", "GameFontHighlightSmall")
+    lbl:SetPoint("TOPLEFT", 6, -5)
+    f.preview = build(area)
+
+    local edgeArea = CreateFrame("Frame", nil, f)
+    f.edgeArea = edgeArea
+    edgeArea:SetPoint("TOPLEFT", area, "BOTTOMLEFT", 0, -6)
+    edgeArea:SetSize(300, 70)
+    local esky = edgeArea:CreateTexture(nil, "BACKGROUND")
+    esky:SetAllPoints()
+    esky:SetColorTexture(0.10, 0.12, 0.15, 1)
+    local elbl = W.Label(edgeArea, C.dim .. "Off screen (at the edge)|r", "GameFontHighlightSmall")
+    elbl:SetPoint("TOPLEFT", 6, -5)
+    f.edgeOff = W.Label(edgeArea, "", "GameFontHighlightSmall")
+    f.edgeOff:SetPoint("CENTER", 0, -6)
+    f.edgePreview = build(edgeArea)
+
+    -- the settings
+    f.checks, f.choices = {}, {}
+    local X0, y = 334, -44
+    local function section(text)
+        local s = W.Label(f, C.gold .. text .. "|r", "GameFontNormal")
+        s:SetPoint("TOPLEFT", X0, y)
+        y = y - 20
+    end
+    local function check(label, key, tip, indent)
+        local c = W.Check(f, label, function() return opt(key, LOOK_KEYS[key]) ~= false end, function(v) setLook(key, v) end)
+        c:SetPoint("TOPLEFT", X0 + (indent and 18 or 0), y)
+        c.tip = tip
+        f.checks[#f.checks + 1] = c
+        y = y - 22
+        return c
+    end
+    local function choice(label, key, options)
+        local l = W.Label(f, label, "GameFontHighlight")
+        l:SetPoint("TOPLEFT", X0 + 2, y - 4)
+        local btns = {}
+        local row = { sync = function()
+            local cur = opt(key, LOOK_KEYS[key])
+            for _, b in ipairs(btns) do
+                local on = (type(cur) == "number" and math.abs(cur - b.value) < 0.01) or cur == b.value
+                b:SetText(on and (C.gold .. b.name .. "|r") or b.name)
+            end
+        end }
+        for i, o in ipairs(options) do
+            local b = W.Button(f, o[2], 62, function() setLook(key, o[1]) end)
+            b.value, b.name = o[1], o[2]
+            b:SetPoint("TOPLEFT", X0 + 104 + (i - 1) * 66, y)
+            btns[i] = b
+        end
+        f.choices[#f.choices + 1] = row
+        y = y - 26
+        return row
+    end
+
+    section("Card")
+    check("Card above the marker", "pinShowCard", "The dark card with what you're heading to.")
+    check("Label (TRACKED QUEST, PATHFINDER...)", "pinShowLabel", "The small gold line saying what kind of target it is.", true)
+    check("Name", "pinShowTitle", "The quest's or step's name.", true)
+    check("Quest objectives", "pinObjectives", "A tracked quest's objectives, like the quest log.", true)
+    section("Marker")
+    check("Marker", "pinShowMarker", "The emblem (or dot) over the spot.")
+    check("Stem and ground dot", "pinShowStem", "The fine line down to the dot on the spot.")
+    check("Distance", "pinShowDistance", "How far it is, in the small tag under the dot.")
+    check("Walking time", "pinWalk", "Roughly how long the walk is, beside the distance.", true)
+    check("Show at the screen edge when off screen", "pinEdge", "When the spot is behind you or off screen, the pin waits at the edge with an arrow pointing the way.")
+    y = y - 4
+    choice("Marker style", "pinMarkerStyle", { { "emblem", "Emblem" }, { "dot", "Dot" } })
+    choice("Name size", "pinTextSize", { { "small", "Small" }, { "normal", "Normal" }, { "large", "Large" } })
+    choice("Card", "pinCardAlpha", { { 0.55, "Light" }, { 0.86, "Normal" }, { 1, "Solid" } })
+    choice("Pin size", "pinScale", { { 0.8, "Small" }, { 1, "Normal" }, { 1.25, "Large" } })
+
+    local reset = W.Button(f, "Reset", 80, function()
+        for k in pairs(LOOK_KEYS) do if M.SetPinSetting then M.SetPinSetting(k, nil) end end
+        if M.RefreshPin then M.RefreshPin() end
+        refreshEditor()
+    end)
+    reset:SetPoint("BOTTOMLEFT", 14, 12)
+    reset.tip = "Everything back to how the pin first looked."
+    local done = W.Button(f, "Done", 80, function() f:Hide() end)
+    done:SetPoint("BOTTOMRIGHT", -14, 12)
+    local where = W.Label(f, C.dim .. "Where it sits (nudges) and when it hides: Pathfinder > Options.|r", "GameFontHighlightSmall")
+    where:SetPoint("BOTTOM", 0, 18)
+end
+
+function M.OpenWaypointEditor()
+    if not editor then buildEditor() end
+    editor:Show()
+    refreshEditor()
+end
+M.WaypointEditor = function() return editor end

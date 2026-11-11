@@ -7,7 +7,7 @@
 -- leveling partner's route. Route authors record routes in game (the
 -- recorder is how RUIN collects real WoW Forever routes) and share them with
 -- RUIN or as copy-paste strings.
--- With Questie installed, Pathfinder reads its quest database (where quests
+-- Pathfinder reads RUIN Quest Data (where quests
 -- start and end, where their targets are, what's available in your zone),
 -- and RUIN members share their quest status with each other: who has the
 -- same quest, who is ready to hand it in, who has done it.
@@ -87,7 +87,7 @@ local function allRoutes()
     return list
 end
 
--- Dungeon quest routes, built from Questie when first asked for (id "dq:<name>")
+-- Dungeon quest routes, built from the quest database when first asked for (id "dq:<name>")
 local dqRoutes = {}
 local dqCache = {}     -- dungeon -> { t, list }: the Journal redraws often (loot, kills)
 local function dqKey(name) return (tostring(name or ""):lower():gsub("^the ", ""):gsub("[^%w]", "")) end
@@ -114,13 +114,13 @@ local function dungeonRoute(entry)
         steps[MAX_STEPS] = { act = "note", text = "The rest of this dungeon's quests didn't fit in one route." }
     end
     local r = { id = id, title = (entry.name .. " quests"):sub(1, 40), faction = UnitFactionGroup and UnitFactionGroup("player") or "Any",
-                author = "RUIN (from " .. (QB.Source() or "Questie") .. ")", steps = steps, dungeon = entry.name, levels = entry.levels,
+                author = "RUIN (from " .. (QB.Source() or "RUIN Quest Data") .. ")", steps = steps, dungeon = entry.name, levels = entry.levels,
                 quests = #quests }
     dqRoutes[id] = r
     return r
 end
 
--- Zone quest routes, built from Questie (id "zq:<area>:<part>"): a stub
+-- Zone quest routes, built from the quest database (id "zq:<area>:<part>"): a stub
 -- with the title and levels for the lists, the steps when it's opened.
 local zqRoutes = {}
 local function zoneStub(z)
@@ -130,7 +130,7 @@ local function zoneStub(z)
              title = (("%s %d-%d"):format(z.name, z.lo, z.hi) .. (several and (" (" .. z.part .. ")") or "")):sub(1, 40),
              faction = UnitFactionGroup and UnitFactionGroup("player") or "Any", zoneArea = z.area, part = z.part,
              zoneName = z.name, levels = z.lo .. "-" .. z.hi, quests = #z.quests, qids = z.quests,
-             author = "RUIN (from " .. (QB.Source() or "Questie") .. ")" }
+             author = "RUIN (from " .. (QB.Source() or "RUIN Quest Data") .. ")" }
 end
 local function zoneRoute(id)
     if zqRoutes[id] and zqRoutes[id].steps then return zqRoutes[id] end
@@ -260,8 +260,8 @@ local function questIdByTitle(title)
     end
 end
 
--- Where a step happens when the route gives no place: Questie's database
--- (see Questie.lua) by quest ID, else by finding the quest in your log.
+-- Where a step happens when the route gives no place: the quest database
+-- (see QuestDB.lua) by quest ID, else by finding the quest in your log.
 -- The quest a step is about: for a "complete" step shared by several
 -- quests, the first one that still needs work.
 local function workQid(s)
@@ -624,7 +624,7 @@ function M:OnQuests(d, sender)
     p.name = sender
     p.quests = parseIds(d.l)
     p.done = parseIds(d.d, "done")
-    p.questie = d.qz == 1
+    p.fromData = d.qz == 1
     p.level = tonumber(d.lv)
     p.qt = GetTime()
     peers[d.g] = p
@@ -670,11 +670,11 @@ local function nameList(list, max)
     return text
 end
 
--- Tooltip lines about a quest: Questie's details, then RUIN members.
+-- Tooltip lines about a quest: the database's details, then RUIN members.
 local function questTip(tip, qid)
     local info = QB.Quest(qid)
     if info then
-        tip:AddLine(((QB.Source() or "Questie") .. ": level %s%s"):format(tostring(info.level or "?"), info.req and (", needs " .. info.req) or ""), 0.55, 0.72, 0.85)
+        tip:AddLine(((QB.Source() or "RUIN Quest Data") .. ": level %s%s"):format(tostring(info.level or "?"), info.req and (", needs " .. info.req) or ""), 0.55, 0.72, 0.85)
         if info.starts[1] then tip:AddLine("Starts: " .. info.starts[1], 0.8, 0.8, 0.8) end
         if info.ends[1] then tip:AddLine("Ends: " .. info.ends[1], 0.8, 0.8, 0.8) end
         for i = 1, math.min(3, #info.objectives) do tip:AddLine("- " .. info.objectives[i], 0.8, 0.8, 0.8, true) end
@@ -772,7 +772,7 @@ local TRACKER_W, TRACKER_H, TRACKER_MAX_W = 320, 66, 640
 local SIDE = 22                 -- room for < and > on each side
 
 -- Are you in a quest's objective area? Near any place its objectives are
--- found (Questie's spawn points for its mobs, objects and drops), on your
+-- found (the database's spawn points for its mobs, objects and drops), on your
 -- map. Not for a quest that's ready to hand in: that's the turn-in NPC.
 M.QB = QB   -- for tests
 local AREA_YARDS = 60
@@ -1477,7 +1477,7 @@ end
 ---------------------------------------------------------------------------
 -- The atlas: where quests are really picked up, done and handed in on WoW
 -- Forever, learned as RUIN members play and shared with RUIN. It's RUIN's
--- own quest map: it fills in quests Questie doesn't know, corrects places
+-- own quest map: it fills in quests the database doesn't know, corrects places
 -- WoW Forever moved, and comes first when routes are planned.
 ---------------------------------------------------------------------------
 local ATLAS_NEAR = 60           -- yards: a sighting this close to the known spot refines it
@@ -1544,7 +1544,7 @@ local function atlasNote(kind, qid, map, x, y, mine)
 end
 M.AtlasNote = atlasNote
 
--- for Questie.lua: what the atlas knows, as spots
+-- for QuestDB.lua: what the atlas knows, as spots
 ns.AtlasSpots = function(qid, which)
     if not adb or not adb.atlas then return nil end
     local A = adb.atlas
@@ -1858,17 +1858,17 @@ function M:DungeonQuests(name)
 end
 function M:ForgetDungeonQuests() dqCache = {}; for k in pairs(zqRoutes) do zqRoutes[k] = nil end end
 
--- The route through a dungeon's quests, built from Questie (nil and why if it can't be).
+-- The route through a dungeon's quests, built from the quest database (nil and why if it can't be).
 function M:DungeonRoute(name)
     local entry = dqEntry(name)
     if not entry then return nil, "Pathfinder has no quest list for " .. tostring(name) .. "." end
-    if not QB.Has() then return nil, "Enable RUIN Quest Data (or install Questie) for dungeon quest routes." end
+    if not QB.Has() then return nil, "Enable RUIN Quest Data for dungeon quest routes." end
     local r = dungeonRoute(entry)
     if not r then return nil, "The quest database lists no quests in " .. entry.name .. " for your character." end
     return r
 end
 
--- What Questie knows about one quest (see QB.Quest), and whether you've done it.
+-- What the database knows about one quest (see QB.Quest), and whether you've done it.
 function M:QuestInfo(qid) return QB.Quest(qid) end
 function M:QuestDone(qid) return QB.Done(qid) end
 
@@ -2209,18 +2209,18 @@ local function refreshClassTrack()
 end
 
 ---------------------------------------------------------------------------
--- Quests page: your quest log with Questie's details, and who in RUIN has
+-- Quests page: your quest log with the database's details, and who in RUIN has
 -- the same quests (invite them, or put the quest on your map).
 ---------------------------------------------------------------------------
--- A route of the quests Questie lists for your zone and level.
-function M:DraftFromQuestie()
+-- A route of the quests the database lists for your zone and level.
+function M:DraftFromData()
     local map, x, y = R.Map:PlayerPos()
     if not map then return self:Print("Couldn't tell which zone you're in.") end
     local r, why = QB.DraftRoute(map, UnitLevel("player"), x, y)
     if not r then return self:Print("No draft: " .. tostring(why)) end
     local clean = cleanRoute(r)
     if not clean then return self:Print("No draft: no usable steps.") end
-    clean.author = (QB.Source() or "Questie") .. " draft"
+    clean.author = (QB.Source() or "RUIN Quest Data") .. " draft"
     addCustom(clean)
     self:Print(("Drafted %s (%d steps) from the quest database. It's on the Routes page; start it, or record a better one."):format(clean.title, #clean.steps))
     refreshPage()
@@ -2321,7 +2321,7 @@ local function buildQuests(page)
     ui.qInvite:SetPoint("LEFT", ui.qMap, "RIGHT", 6, 0)
     ui.qInvite.tip = "Invite the RUIN members who have this quest to your group."
 
-    -- Questie footer
+    -- database footer
     local foot = W.Card(page)
     foot:SetPoint("BOTTOMLEFT", 352, 0)
     foot:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -4, 0)
@@ -2332,7 +2332,7 @@ local function buildQuests(page)
     ui.qzText:SetPoint("TOPLEFT", 12, -27)
     ui.qzText:SetPoint("RIGHT", foot, "RIGHT", -150, 0)
     ui.qzText:SetWordWrap(true)
-    ui.qDraft = W.Button(foot, "Draft a route here", 134, function() M:DraftFromQuestie() end)
+    ui.qDraft = W.Button(foot, "Draft a route here", 134, function() M:DraftFromData() end)
     ui.qDraft:SetPoint("RIGHT", foot, "RIGHT", -10, 0)
 end
 
@@ -2376,11 +2376,11 @@ local function refreshQuests()
         ui.qInvite:SetEnabled(#have > 0)
     end
     if QB.Has() then
-        ui.qzHead:SetText(C.good .. (QB.Source() or "Questie") .. " found|r")
-        ui.qzText:SetText(C.dim .. "Givers, hand-ins and targets come from " .. (QB.Source() or "Questie") .. ". Draft a route of this zone's quests for your level.|r")
+        ui.qzHead:SetText(C.good .. (QB.Source() or "RUIN Quest Data") .. " found|r")
+        ui.qzText:SetText(C.dim .. "Givers, hand-ins and targets come from " .. (QB.Source() or "RUIN Quest Data") .. ". Draft a route of this zone's quests for your level.|r")
     else
         ui.qzHead:SetText(C.dim .. "No quest database|r")
-        ui.qzText:SetText(C.dim .. "Routes and sharing work without it. Enable RUIN Quest Data (or install Questie) and every step gets a place and you can draft routes.|r")
+        ui.qzText:SetText(C.dim .. "Routes and sharing work without it. Enable RUIN Quest Data and every step gets a place and you can draft routes.|r")
     end
     ui.qDraft:SetEnabled(QB.Has())
 end
@@ -2394,9 +2394,9 @@ local function buildLibrary(page)
         end)
     end)
     imp:SetPoint("TOPRIGHT", page, "TOPRIGHT", 0, 2)
-    ui.draftBtn = W.Button(page, "Draft from Questie", 140, function() M:DraftFromQuestie() end)
+    ui.draftBtn = W.Button(page, "Draft a route", 140, function() M:DraftFromData() end)
     ui.draftBtn:SetPoint("RIGHT", imp, "LEFT", -6, 0)
-    ui.draftBtn.tip = "Make a route of the quests Questie lists for your zone and level."
+    ui.draftBtn.tip = "Make a route of the quests the database lists for your zone and level."
     ui.library = W.List(page, 26, function(row)
         -- ticked: the route is in the Guide's "Choose a route" list
         -- on a section header it ticks or unticks the whole section
@@ -2487,7 +2487,7 @@ local function buildLibrary(page)
             row.tip = function(tip)
                 tip:AddLine(r.title, 1, 1, 1)
                 tip:AddLine(("Every quest %s has for your character at levels %s, with the quests from elsewhere that unlock them, nearest first. Built from %s."):format(
-                    r.zoneName or "this zone", r.levels or "?", QB.Source() or "Questie"), 0.8, 0.85, 0.95, true)
+                    r.zoneName or "this zone", r.levels or "?", QB.Source() or "RUIN Quest Data"), 0.8, 0.85, 0.95, true)
             end
             return
         end
@@ -2502,7 +2502,7 @@ local function buildLibrary(page)
             row.share:SetScript("OnClick", function() M:ShareRoute(r.id) end)
             row.tip = function(tip)
                 tip:AddLine(r.title, 1, 1, 1)
-                tip:AddLine("Every quest " .. r.dungeon .. " has for your character, the quests that unlock them, the run, and the hand-ins. Built from " .. (QB.Source() or "Questie") .. ".", 0.8, 0.85, 0.95, true)
+                tip:AddLine("Every quest " .. r.dungeon .. " has for your character, the quests that unlock them, the run, and the hand-ins. Built from " .. (QB.Source() or "RUIN Quest Data") .. ".", 0.8, 0.85, 0.95, true)
             end
             return
         end
@@ -2869,7 +2869,7 @@ SlashCmdList.RUINPATH = function(input)
         return M:Print("Trainer reminders " .. (db.trainer and "on." or "off."))
     end
     if msg == "quests" then M:OpenTab(); if ui.tabs then ui.tabs:Select(2) end; return end
-    if msg == "draft" then return M:DraftFromQuestie() end
+    if msg == "draft" then return M:DraftFromData() end
     if msg == "skip" then
         db.skipDone = not db.skipDone
         if db.skipDone then M:SkipDone() end

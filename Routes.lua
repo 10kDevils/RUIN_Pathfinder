@@ -5,19 +5,18 @@
 --
 -- Quest steps carry the quest ID (qid), so they tick off and find their spot
 -- even where a translated client names the quest differently, and RUIN
--- Pathfinder can ask Questie about them.
+-- Pathfinder can ask the quest database about them.
 --
 -- A step may carry a place:  at = { zone = "Elwynn Forest", x = 48.9, y = 41.6 }
 -- (map percentages). The tracker's arrow points there while you're in that zone.
 --
 -- Alliance 1-30 routes checked against the WoW Forever quest database (beta
 -- 1.60.1, merged from Wowhead Forever, wowforeverquests.com, foreverchanges.pro
--- and wowforever.ninja), cross-checked with QuestieDB's Forever data (nothing of
--- Questie's is copied here). Updated from the launch snapshot of 2026-11-05
+-- and wowforever.ninja). Updated from the launch snapshot of 2026-11-05
 -- (build 1.60.1.70790: ForeverChanges, ForeverDB): the new level-1 quests,
 -- Excavation Site and City of Dalaran pointers, zone quest counts. Givers and turn-ins sit where the Forever database
 -- puts them; Redridge uses Forever's redrawn map. "Do" steps without a place get
--- one from Questie in game. Record refinements in game (Pathfinder > Record).
+-- one from the quest database in game. Record refinements in game (Pathfinder > Record).
 local ADDON, ns = ...
 
 local function at(zone, x, y) return { zone = zone, x = x, y = y } end
@@ -220,7 +219,7 @@ ns.Routes = {
     {
         id = "teldrassil_1_12", title = "Teldrassil 1-12", faction = "Alliance", author = "RUIN+DB", zone = TELDRAS,
         steps = {
-            { act = "note",     text = "Night elves: WoW Forever adds a level-1 quest, The Goddess Provides. Take it in Shadowglen when it's offered (Questie shows the giver)." },
+            { act = "note",     text = "Night elves: WoW Forever adds a level-1 quest, The Goddess Provides. Take it in Shadowglen when it's offered (the quest marker shows the giver)." },
             { act = "accept",   quest = "The Balance of Nature", qid = 456, text = "Conservator Ilthalaine in Shadowglen.", at = at(TELDRAS, 58.7, 44.3) },
             { act = "complete", quest = "The Balance of Nature", qid = 456, text = "Young Nightsabers and Young Thistle Boars.", at = at(TELDRAS, 60.0, 43.0) },
             { act = "turnin",   quest = "The Balance of Nature", qid = 456, text = "Conservator Ilthalaine.", at = at(TELDRAS, 58.7, 44.3) },
@@ -277,12 +276,12 @@ ns.Routes = {
     {
         id = "zephras_1_12", title = "Zephras Isle 1-12", faction = "Alliance", author = "RUIN+DB", zone = ZEPHRAS,
         steps = {
-            { act = "note",     text = "Skyborne starter. Accept every quest at each village hub before leaving. Exact pins vary; follow on-screen markers and Questie if installed." },
-            { act = "accept",   quest = "Coming of Age", qid = 92460, text = "New level-1 quest on Zephras Isle. Questie shows the giver." },
+            { act = "note",     text = "Skyborne starter. Accept every quest at each village hub before leaving. Exact pins vary; follow the on-screen markers." },
+            { act = "accept",   quest = "Coming of Age", qid = 92460, text = "New level-1 quest on Zephras Isle. The quest marker shows the giver." },
             { act = "accept",   quest = "Harmony in Balance", qid = 92461, text = "Early hub." },
             { act = "accept",   quest = "Infestation Investigation", qid = 92462, text = "Early hub." },
             { act = "complete", quest = "Harmony in Balance", qid = 92461, text = "Starting island objectives." },
-            { act = "complete", quest = "Coming of Age", qid = 92460, text = "Questie marks the objective." },
+            { act = "complete", quest = "Coming of Age", qid = 92460, text = "The quest marker shows the objective." },
             { act = "complete", quest = "Infestation Investigation", qid = 92462, text = "Clear infestation mobs nearby." },
             { act = "turnin",   quest = "Harmony in Balance", qid = 92461, text = "Return to hub." },
             { act = "turnin",   quest = "Coming of Age", qid = 92460, text = "Back to the giver." },
@@ -623,7 +622,7 @@ ns.Routes = {
 ---------------------------------------------------------------------------
 -- Dungeon quest routes: which quests belong to each dungeon. The quests
 -- themselves (names, givers, levels, factions, prerequisites) come from
--- Questie or QuestieDB in game; this list only says where to look: the
+-- the quest database in game; this list only says where to look: the
 -- dungeon's zone (area) IDs, and quests filed under a city or zone that
 -- still belong to the run (from the WoW Forever dungeon lists,
 -- foreverchanges.pro, Oct 2026). Dungeons with no published quests yet

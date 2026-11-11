@@ -1,23 +1,18 @@
--- RUIN Pathfinder: quest database bridge
--- Pathfinder reads, in order: the standalone QuestieDB addon, RUIN Quest Data
--- (the quest database addon that ships with the suite), or Questie.
--- When the standalone QuestieDB addon (contract 4, e.g. the one that ships
--- with Ruinous Forever Planner) is installed, Pathfinder reads it; otherwise,
--- when Questie is installed, Pathfinder reads Questie's quest database at run time
--- (nothing of Questie's data is copied into RUIN): where a quest starts, where
--- it is handed in, where its targets are, its level and objectives, which
--- quests you have finished, and which quests are available in your zone.
--- Every call is guarded: if Questie is missing, still loading, or changes its
--- internals, these functions return nil and Pathfinder carries on without it.
+-- RUIN Pathfinder: the quest database
+-- Pathfinder reads RUIN Quest Data (the database addon that ships with the
+-- suite): where a quest starts, where it is handed in, where its targets are,
+-- its level and objectives, which quests you have finished, and which quests
+-- are available in your zone.
+-- Every call is guarded: if the database is missing, these functions return
+-- nil and Pathfinder carries on without it.
 --
--- Questie API used (Questie 11.x / 12.x):
---   QuestieLoader:ImportModule("QuestieDB" | "ZoneDB")
---   QuestieDB.GetQuest(id)  -> { name, level, requiredLevel, Starts = { NPC, GameObject },
---                               Finisher = { NPC, GameObject }, ObjectiveData, objectivesText, zoneOrSort }
---   QuestieDB:GetNPC(id) / QuestieDB:GetObject(id) / QuestieDB:GetItem(id) -> { name, spawns = { [areaId] = { {x, y}, ... } } }
---   QuestieDB.QuestPointers, QuestieDB.QueryQuestSingle(id, field), QuestieDB.IsDoable(id)
---   ZoneDB:GetUiMapIdByAreaId(areaId), ZoneDB:GetAreaIdByUiMapId(uiMapId)
---   Questie.db.char.complete[questId]
+-- The tables it reads (RUIN_QuestData.q / n / o / i, with the column names in
+-- RUIN_QuestData.fields) are turned into one shape here:
+--   DB.GetQuest(id)  -> { name, level, requiredLevel, Starts = { NPC, GameObject },
+--                         Finisher = { NPC, GameObject }, ObjectiveData, objectivesText, zoneOrSort }
+--   DB:GetNPC(id) / DB:GetObject(id) / DB:GetItem(id) -> { name, spawns = { [areaId] = { {x, y}, ... } } }
+--   DB.QuestPointers, DB.QueryQuestSingle(id, field), DB.IsDoable(id)
+--   Zone:GetUiMapIdByAreaId(areaId), Zone:GetAreaIdByUiMapId(uiMapId)
 local ADDON, ns = ...
 
 local QB = {}
@@ -26,34 +21,10 @@ ns.QB = QB
 local cache = { quest = {}, spot = {}, miss = {} }
 local modules
 
--- QuestieDB (the standalone database addon, contract 4) when it's installed:
--- the same shape as Questie's own modules, so everything below reads either.
-local function readMap(text)
-    if type(text) == "table" then return text end
-    if type(text) ~= "string" then return nil end
-    local load = loadstring or load
-    local okc, chunk = pcall(load, text)
-    if not okc or type(chunk) ~= "function" then return nil end
-    local okr, t = pcall(chunk)
-    return okr and type(t) == "table" and t or nil
-end
-
-local function zoneMaps(lib)
-    local support = type(lib.Support) == "table" and type(lib.Support.Get) == "function" and lib.Support.Get("ZoneDB")
-    local private = type(support) == "table" and support.private or {}
-    local function merged(baseKey, overrideKey)
-        local out = {}
-        for k, v in pairs(readMap(private[baseKey]) or {}) do out[k] = v end
-        for k, v in pairs(readMap(private[overrideKey]) or {}) do out[k] = v end
-        return out
-    end
-    return merged("areaIdToUiMapId", "areaIdToUiMapIdOverride"), merged("uiMapIdToAreaId", "uiMapIdToAreaIdOverride")
-end
-
-local OBJECTIVE_KINDS = { "monster", "object", "item" }     -- QuestieDB's positional objective groups 1-3
+local OBJECTIVE_KINDS = { "monster", "object", "item" }     -- the positional objective groups 1-3
 
 -- Quest, NPC, object and item tables that answer Get(id, field) and
--- Exists(id), as LibQuestieDB's do; the rest of Pathfinder reads the shape below.
+-- Exists(id); the rest of Pathfinder reads the shape below.
 local function adapt(Q, N, O, I, toMap, toArea, source)
     local function exists(E, id) return type(E) == "table" and type(id) == "number" and E.Exists(id) end
     local DB = {}
@@ -96,19 +67,8 @@ local function adapt(Q, N, O, I, toMap, toArea, source)
     return { DB = DB, Zone = Zone, source = source }
 end
 
-local function fromQuestieDB()
-    local lib = rawget(_G, "LibQuestieDB")
-    if type(lib) ~= "table" or type(lib.RequireContract) ~= "function" then return nil end
-    local okc, compatible = pcall(lib.RequireContract, 4)
-    if not okc or not compatible then return nil end
-    local Q = lib.Quest
-    if type(Q) ~= "table" or type(Q.Get) ~= "function" or type(Q.Exists) ~= "function" then return nil end
-    local toMap, toArea = zoneMaps(lib)
-    return adapt(Q, lib.Npc, lib.Object, lib.Item, toMap, toArea, "QuestieDB")
-end
-
--- RUIN Quest Data (the bundled database addon): positional rows, with the
--- field names in RUIN_QuestData.fields.
+-- RUIN Quest Data: positional rows, with the field names in
+-- RUIN_QuestData.fields.
 local function fromRUIN()
     local D = rawget(_G, "RUIN_QuestData")
     if type(D) ~= "table" or type(D.q) ~= "table" or type(D.fields) ~= "table" or next(D.q) == nil then return nil end
@@ -139,29 +99,18 @@ end
 
 local function db()
     if modules ~= nil then return modules or nil end
-    -- The standalone QuestieDB addon first (it can be newer), then RUIN's
-    -- own quest data, then Questie's database.
-    local ok, fromLib = pcall(fromQuestieDB)
-    if ok and fromLib then modules = fromLib; return modules end
-    local okr, fromData = pcall(fromRUIN)
-    if okr and fromData then modules = fromData; return modules end
-    if type(QuestieLoader) ~= "table" or type(QuestieLoader.ImportModule) ~= "function" then return nil end
-    local ok1, DB = pcall(QuestieLoader.ImportModule, QuestieLoader, "QuestieDB")
-    local ok2, ZoneDB = pcall(QuestieLoader.ImportModule, QuestieLoader, "ZoneDB")
-    if not (ok1 and type(DB) == "table" and type(DB.GetQuest) == "function" and ok2 and type(ZoneDB) == "table") then
-        return nil                                -- not ready yet; try again on the next call
-    end
-    modules = { DB = DB, Zone = ZoneDB, source = "Questie" }
-    return modules
+    local ok, fromData = pcall(fromRUIN)
+    if ok and fromData then modules = fromData; return modules end
+    return nil
 end
 
--- "QuestieDB", "RUIN Quest Data" or "Questie" (whichever Pathfinder reads), or nil.
+-- "RUIN Quest Data" when the database is loaded, or nil.
 function QB.Source()
     local m = db()
     return m and m.source or nil
 end
 
--- Is Questie installed and its database ready?
+-- Is the quest database loaded?
 function QB.Has()
     return db() ~= nil
 end
@@ -170,7 +119,7 @@ local zoneIndex      -- area ID -> { quest IDs }, built the first time a dungeon
 local zoneList       -- QB.Zones(), built once
 function QB.Forget() cache = { quest = {}, spot = {}, miss = {} }; modules = nil; zoneIndex = nil; zoneList = nil end
 
--- What Questie knows about a quest:
+-- What the database knows about a quest:
 -- { id, name, level, req, starts = { names }, ends = { names }, objectives = { text }, zone }
 function QB.Quest(qid)
     qid = tonumber(qid)
@@ -180,7 +129,7 @@ function QB.Quest(qid)
     local m = db()
     if not m then return nil end
     local ok, q = pcall(m.DB.GetQuest, qid)
-    if not ok or type(q) ~= "table" then return nil end      -- not cached: Questie may still be loading
+    if not ok or type(q) ~= "table" then return nil end      -- not in the database
     local function names(list, kind)
         local out = {}
         for _, id in ipairs(type(list) == "table" and list or {}) do
@@ -237,7 +186,7 @@ function QB.Spots(qid, which)
     local now = GetTime and GetTime() or 0
     if cache.miss[key] and now - cache.miss[key] < 30 then return {} end   -- the arrow asks often
     -- where RUIN members actually picked it up, did it and handed it in on
-    -- WoW Forever (Pathfinder's atlas) comes first; Questie fills the gaps
+    -- WoW Forever (Pathfinder's atlas) comes first; the database fills the gaps
     local seen = ns.AtlasSpots and ns.AtlasSpots(qid, which)
     if seen and #seen > 0 and (which ~= "objective" or #seen >= 3) then
         -- a pick-up or hand-in seen twice or more is where it is
@@ -313,7 +262,7 @@ function QB.Spot(qid, which, map, x, y)
 end
 
 ---------------------------------------------------------------------------
--- Quest status: works without Questie too (the game knows what you've done)
+-- Quest status: the game knows what you've done
 ---------------------------------------------------------------------------
 function QB.Done(qid)
     qid = tonumber(qid)
@@ -325,8 +274,7 @@ function QB.Done(qid)
         local ok, done = pcall(IsQuestFlaggedCompleted, qid)
         if ok and done then return true end
     end
-    local char = type(Questie) == "table" and type(Questie.db) == "table" and type(Questie.db.char) == "table" and Questie.db.char.complete
-    return type(char) == "table" and char[qid] and true or false
+    return false
 end
 
 -- Your quest log: { { id, title, ready }, ... }
@@ -358,7 +306,7 @@ function QB.InLog(qid)
 end
 
 ---------------------------------------------------------------------------
--- Drafting a route from Questie: the quests you can do in your zone at your
+-- Drafting a route from the database: the quests you can do in your zone at your
 -- level, in a nearest-first order (accept them all, do them, hand them in).
 ---------------------------------------------------------------------------
 local function near(list, map, x, y)
@@ -381,12 +329,12 @@ end
 -- Returns a route table, or nil and a reason.
 function QB.DraftRoute(uiMap, level, px, py)
     local m = db()
-    if not m then return nil, "No quest database is loaded (enable RUIN Quest Data, or install Questie)." end
+    if not m then return nil, "No quest database is loaded (enable RUIN Quest Data)." end
     if type(m.DB.QuestPointers) ~= "table" or type(m.DB.QueryQuestSingle) ~= "function" then
-        return nil, "this version of Questie doesn't offer its quest list."
+        return nil, "the quest database has no quest list."
     end
     local okA, areaId = pcall(m.Zone.GetAreaIdByUiMapId, m.Zone, uiMap)
-    if not okA or not areaId then return nil, "Questie doesn't know this zone." end
+    if not okA or not areaId then return nil, "The quest database doesn't know this zone." end
     level = level or 1
     local picks = {}
     for qid in pairs(m.DB.QuestPointers) do
@@ -403,7 +351,7 @@ function QB.DraftRoute(uiMap, level, px, py)
         end
         if #picks >= 30 then break end
     end
-    if #picks == 0 then return nil, "Questie lists no quests for your level here that you haven't done." end
+    if #picks == 0 then return nil, "The quest database lists no quests for your level here that you haven't done." end
     table.sort(picks, function(a, b) return a.info.level < b.info.level end)
     local zoneName
     local mi = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(uiMap)
@@ -427,17 +375,17 @@ function QB.DraftRoute(uiMap, level, px, py)
             x, y = s.at.x, s.at.y
         end
     end
-    return { title = (zoneName .. " (Questie draft)"):sub(1, 40), faction = UnitFactionGroup and UnitFactionGroup("player") or "Any",
-             author = "Questie draft", steps = steps, draft = true }
+    return { title = (zoneName .. " (draft)"):sub(1, 40), faction = UnitFactionGroup and UnitFactionGroup("player") or "Any",
+             author = "RUIN draft", steps = steps, draft = true }
 end
 
 ---------------------------------------------------------------------------
 -- Dungeon quests: every quest a dungeon has for your race and class, the
 -- quests you must do first to unlock them, and a route through them all.
 -- Which quests belong to a dungeon comes from ns.DungeonQuestIndex (its zone
--- IDs, plus quests filed under a city); the rest is Questie's.
+-- IDs, plus quests filed under a city); the rest is the database's.
 ---------------------------------------------------------------------------
--- One field of a quest (QuestieDB's canonical names), or nil.
+-- One field of a quest (the database's field names), or nil.
 function QB.Field(qid, field)
     local m = db()
     if not m or type(m.DB.QueryQuestSingle) ~= "function" then return nil end
@@ -568,7 +516,7 @@ function QB.StartItem(qid)
 end
 
 -- Does a quest have anything to do besides talking to someone (kill,
--- collect, use)? Delivery quests don't get a "Do" step. Questie leaves some
+-- collect, use)? Delivery quests don't get a "Do" step. The database leaves some
 -- new quests' objectives out; their text decides then.
 local DELIVERY = { "^deliver", "^bring ", "^take ", "^speak", "^talk", "^report", "^return", "^travel", "^seek",
                    "talk to ", "speak with ", "speak to ", "report to ", "deliver " }
@@ -616,12 +564,12 @@ function QB.AcceptText(qid)
         local src = from and (kind == "object" and (" (found on " .. from .. ")") or (" (drops from " .. from .. ")")) or ""
         return "Starts from " .. item .. src .. "."
     end
-    return "Questie doesn't say who gives this quest."
+    return "No giver is known for this quest yet."
 end
 function QB.TurninText(qid)
     local i = QB.Quest(qid)
     local who = i and firstOf(i.ends) or (giverHint(qid) and giverHint(qid).ends)
-    return who and (who .. ".") or "Questie doesn't say where this is handed in."
+    return who and (who .. ".") or "No hand-in place is known for this quest yet."
 end
 function QB.DoText(qid)
     if not hasObjectives(qid) then return "" end
@@ -637,9 +585,9 @@ end
 function QB.DungeonQuests(entry)
     if type(entry) ~= "table" then return nil, "unknown dungeon" end
     local m = db()
-    if not m then return nil, "No quest database is loaded (enable RUIN Quest Data, or install Questie)." end
+    if not m then return nil, "No quest database is loaded (enable RUIN Quest Data)." end
     local byArea = areaQuests()
-    if not byArea then return nil, "this version of Questie doesn't offer its quest list." end
+    if not byArea then return nil, "the quest database has no quest list." end
     local areas, list, seen = {}, {}, {}
     for _, a in ipairs(entry.areas or {}) do areas[a] = true end
     local function consider(qid)
@@ -761,7 +709,7 @@ end
 
 ---------------------------------------------------------------------------
 -- Zone quest routes: every zone the database has quests in, split into
--- routes of ZONE_CHUNK quests by level. Built from Questie in game, so a
+-- routes of ZONE_CHUNK quests by level. Built from the database in game, so a
 -- zone the hand-written routes don't cover still gets one.
 ---------------------------------------------------------------------------
 local ZONE_CHUNK = 18
@@ -883,9 +831,27 @@ local function yardsPer(map)
     end
     return m
 end
+-- A stop's place in the world (continent and yards), looked up once: two
+-- stops on different maps of one continent are as far apart as the world
+-- says (Elwynn's edge to Westfall's is a short walk, not a trip across the
+-- world); anything else counts as OTHER_MAP.
+local function place(at)
+    if at and at.wc == nil then
+        local Map = RUIN_API and RUIN_API.Map
+        local c, wx, wy
+        if Map and Map.WorldPos then c, wx, wy = Map:WorldPos(at.map, at.x, at.y) end
+        if c then at.wc, at.wx, at.wy = c, wx, wy else at.wc = false end
+    end
+end
 local function dist(a, b)
     if not (a and b) then return 0 end                -- a stop we can't place costs nothing to reach
-    if a.map ~= b.map then return OTHER_MAP end
+    if a.map ~= b.map then
+        if a.wc and a.wc == b.wc then
+            local dx, dy = a.wx - b.wx, a.wy - b.wy
+            return math.min(OTHER_MAP * 2, math.sqrt(dx * dx + dy * dy))
+        end
+        return OTHER_MAP
+    end
     local s = yardsPer(a.map)
     return math.sqrt(((a.x - b.x) * s[1]) ^ 2 + ((a.y - b.y) * s[2]) ^ 2)
 end
@@ -1032,6 +998,8 @@ local function buildTasks(qids, here)
             end
         end
     end
+    for _, t in ipairs(tasks) do place(t.at) end
+    place(here)
     -- earlier quests in the set are handed in before a quest is picked up
     for _, q in ipairs(qids) do
         for _, p in ipairs(QB.Prereqs(q)) do
@@ -1067,6 +1035,7 @@ end
 -- First pass: always the nearest allowed stop. At the same stop, pick-ups
 -- before objectives before hand-ins, and a hand-in before the pick-up it opens.
 local KIND_RANK = { turnin = 1, accept = 2, complete = 3 }
+local ANNEAL_PER_STOP, ANNEAL_MAX = 400, 24000      -- moves tried per stop, and at most
 local function greedy(tasks, here)
     local done, order, pos = {}, {}, here
     for _ = 1, #tasks do
@@ -1140,6 +1109,46 @@ local function improve(tasks, order, here, budget)
     return order, routeLength(tasks, order, here)
 end
 
+-- Third pass: simulated annealing over the order. A random stop is moved to
+-- a random place; a shorter walk is always kept, a longer one sometimes (less
+-- and less as it cools), and only orders the quest rules allow are tried. It
+-- starts from the best order found so far and never returns anything longer.
+-- A fixed seed makes the same set of quests give the same route every time.
+local function anneal(tasks, order, here, iterations)
+    local n = #order
+    if n < 4 then return order, routeLength(tasks, order, here) end
+    local seed = 12345 + n
+    local function rnd(m)
+        seed = (seed * 1103515245 + 12345) % 2147483648
+        return 1 + math.floor(seed / 2147483648 * m)
+    end
+    local function unit() seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648 end
+    local cur, curL = order, routeLength(tasks, order, here)
+    local best, bestL = cur, curL
+    local temp = math.max(curL / n / 3, 1)
+    local cool = (1 / temp) ^ (1 / iterations)           -- cools to a temperature of 1 yard
+    for _ = 1, iterations do
+        local i, j = rnd(n), rnd(n)
+        if i ~= j then
+            local cand = {}
+            for k = 1, n do cand[k] = cur[k] end
+            local v = table.remove(cand, i)
+            table.insert(cand, j, v)
+            if allowed(tasks, cand) then
+                local L = routeLength(tasks, cand, here)
+                if L < curL or unit() < math.exp((curL - L) / temp) then
+                    cur, curL = cand, L
+                    if L < bestL then best, bestL = cand, L end
+                end
+            end
+        end
+        temp = temp * cool
+    end
+    return best, bestL
+end
+
+QB.Planner = { build = buildTasks, length = routeLength, allowed = allowed, greedy = greedy, improve = improve, anneal = anneal, dist = dist }
+
 -- Plans a set of quests from where you stand: the ordered tasks, and the walk in yards.
 function QB.Plan(qids, here)
     local tasks = buildTasks(qids, here)
@@ -1148,6 +1157,14 @@ function QB.Plan(qids, here)
     local before = routeLength(tasks, order, here)
     local budget = #tasks > 60 and 6 or 40               -- big sets: fewer passes, still most of the gain
     local better, length = improve(tasks, order, here, budget)
+    -- then a search over the whole order, within a fixed amount of work
+    local iterations = math.min(ANNEAL_MAX, ANNEAL_PER_STOP * #tasks, math.floor(1500000 / #tasks))   -- about the same work however big the set
+    if iterations >= 200 then
+        local a, aLength = anneal(tasks, better, here, iterations)
+        if aLength < length then
+            better, length = improve(tasks, a, here, 6)
+        end
+    end
     local out = {}
     for _, i in ipairs(better) do out[#out + 1] = tasks[i] end
     return out, length, before

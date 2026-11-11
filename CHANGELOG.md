@@ -8,6 +8,7 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.5.3 — 2026-11-09
 
+- Plays nicer with the game's objective tracker: Pathfinder never changes what the game tracks during combat (it catches up when combat ends), stops tracking your quest when you untrack it in the game instead of re-tracking it a few seconds later, ignores its own tracking changes when deciding what you picked, and only retries a waypoint on the Route tab when the step has a place.
 - The tracker shows all of a step's or quest's text: it widens first, and past its widest it grows taller instead of cutting the text off. On Tracked, each objective has its own line, and the tracker grows taller to fit them.
 - The step's pin on the minimap and world map is the round RUIN emblem on a soft shadow, matching the waypoint pin.
 - Waypoint Editor (Options > RUIN pin, or `/path editor`): turn each part of the pin on or off (the card, its label, the name, the quest objectives, the marker, the stem and ground dot, the distance, the walking time, the edge arrow) and pick the marker style (emblem or dot), the name size, the card's darkness and the pin's size, with a live preview of the pin on screen and at the screen edge. Without the marker the card sits on top of the stem, and without both it sits right where the ground dot would be. The card is only as wide as its text. Reset puts it back. The nudges and hide settings stay in Options.

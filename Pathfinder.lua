@@ -293,6 +293,12 @@ end
 -- distance under it) and its map pin. Only a waypoint Pathfinder placed is
 -- ever moved or cleared; one you place yourself is left alone until the
 -- next step.
+-- When Pathfinder itself last changed what the game tracks: tracking events
+-- right after that are Pathfinder's, not yours.
+local selfChangeAt = -10
+local function selfChange() selfChangeAt = GetTime() end
+M.SelfChanged = function() return GetTime() - selfChangeAt < 0.75 end
+
 local placedWp
 local function sameSpot(a, b)
     return a and b and a.map == b.map and math.abs(a.x - b.x) < 0.0005 and math.abs(a.y - b.y) < 0.0005
@@ -306,6 +312,7 @@ local function currentWaypoint()
 end
 local function clearWaypoint()
     if placedWp and C_Map and C_Map.ClearUserWaypoint and sameSpot(currentWaypoint(), placedWp) then
+        selfChange()
         C_Map.ClearUserWaypoint()
     end
     placedWp = nil
@@ -347,6 +354,7 @@ M.UserQuest = userQuest
 local function superTrackQuest(q)
     if not (C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID) then return false end
     settingQuest = q
+    selfChange()
     local ok = pcall(C_SuperTrack.SetSuperTrackedQuestID, q)
     settingQuest = nil
     return ok
@@ -363,7 +371,12 @@ end
 local function noteWp(why, map, x, y, err)
     db.navLast = { t = time and time() or 0, route = db.route, step = db.step, why = why, map = map, x = x, y = y, err = err and tostring(err) }
 end
+local combatPending
 local function updateWaypoint(map, x, y, s)
+    -- never change the game's tracking in combat (the objective tracker's
+    -- quest item buttons are protected then); catch up when combat ends
+    if InCombatLockdown and InCombatLockdown() then combatPending = true; return end
+    combatPending = nil
     -- the Tracked tab: the world pin follows your tracked quest, not the route
     local uq = userQuest()
     if uq and (db.trackerTab == "tracked" or not currentRoute()) then
@@ -378,6 +391,7 @@ local function updateWaypoint(map, x, y, s)
         clearWaypoint()
         if placedQuest ~= s.qid then releaseQuest() end
         settingQuest = s.qid
+        selfChange()
         local ok, err = pcall(C_SuperTrack.SetSuperTrackedQuestID, s.qid)
         settingQuest = nil
         if not ok then
@@ -403,6 +417,7 @@ local function updateWaypoint(map, x, y, s)
         clearWaypoint()
         return noteWp("map doesn't take waypoints", map, x, y)
     end
+    selfChange()
     local ok, err = pcall(C_Map.SetUserWaypoint, UiMapPoint.CreateFromCoordinates(map, x, y))
     if not ok then return noteWp("SetUserWaypoint failed", map, x, y, err) end
     placedWp = want
@@ -695,8 +710,10 @@ local function arrowTick(nav, elapsed)
             questNoNav[placedQuest] = true
             placedQuest = nil
             updateStepPin()
-        elseif not placedWp and not placedQuest then
-            updateStepPin()
+        elseif not placedWp and not placedQuest and not combatPending and db.waypoint ~= false
+                and not (db.trackerTab == "tracked" and userQuest()) then
+            local _, map = navStep()
+            if map then updateStepPin() end
         end
     end
     local arrow, dist = tracker.arrow, tracker.dist
@@ -1098,19 +1115,27 @@ do
     local pending
     ev:SetScript("OnEvent", function(_, event)
         if not db then return end
-        if event == "SUPER_TRACKING_CHANGED" then
+        if event == "PLAYER_REGEN_ENABLED" then
+            if combatPending then updateStepPin() end
+            return
+        end
+        if event == "SUPER_TRACKING_CHANGED" and not M.SelfChanged() then
             local q = C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID()
             if q and q > 0 and q ~= settingQuest and q ~= placedQuest and q ~= db.userQuest then
+                -- you picked a quest: it's yours, and Tracked shows it
                 db.userQuest = q
                 db.trackerTab = "tracked"
                 updateStepPin()
+            elseif (not q or q == 0) and db.userQuest and settingQuest == nil then
+                -- you stopped tracking it in the game: so does Pathfinder (never tracked again behind your back)
+                db.userQuest = nil
             end
         end
         if pending then return end
         pending = true
         C_Timer.After(0.2, function() pending = nil; updateTracker() end)
     end)
-    for _, e in ipairs({ "SUPER_TRACKING_CHANGED", "QUEST_LOG_UPDATE", "QUEST_WATCH_UPDATE" }) do pcall(ev.RegisterEvent, ev, e) end
+    for _, e in ipairs({ "SUPER_TRACKING_CHANGED", "QUEST_LOG_UPDATE", "QUEST_WATCH_UPDATE", "PLAYER_REGEN_ENABLED" }) do pcall(ev.RegisterEvent, ev, e) end
 end
 
 ---------------------------------------------------------------------------

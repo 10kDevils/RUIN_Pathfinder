@@ -22,7 +22,7 @@ local FOOT_LIFT = 4            -- the dot sits this far above the spot
 local FADE = 0.5              -- seconds to fade out in the quest's area
 local NEAR = 12                -- fade the card when you're on top of it
 local OBJ_LINES = 5
-local CARD_MIN, CARD_MAX, PAD = 150, 250, 10
+local CARD_MIN, CARD_MAX, PAD = 40, 250, 10   -- the card hugs its text, up to the max
 local GOLD = { 0.90, 0.72, 0.38 }
 local INK = { 0.035, 0.045, 0.075 }
 local MEDIA = "Interface\\AddOns\\RUIN_Core\\Media\\"
@@ -230,7 +230,7 @@ local function layoutCard(p, lk, hasObj)
     local width = math.max(showSub and w(p.sub) or 0, showTitle and w(p.title) or 0)
     p.obj:SetWidth(CARD_MAX - PAD * 2)
     if hasObj then width = math.max(width, math.min(w(p.obj), CARD_MAX - PAD * 2)) end
-    width = math.max(CARD_MIN, math.min(CARD_MAX, width + PAD * 2))
+    width = math.max(CARD_MIN, math.min(CARD_MAX, math.ceil(width) + 2 + PAD * 2))
     p.title:SetWidth(width - PAD * 2)
     p.obj:SetWidth(width - PAD * 2)
     local y = PAD - 1

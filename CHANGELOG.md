@@ -8,6 +8,8 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.5.3 — 2026-11-09
 
+- The tracker shows all of a step's or quest's text: it widens first, and past its widest it grows taller instead of cutting the text off.
+- The step's pin on the minimap and world map is the round RUIN emblem on a soft shadow, matching the waypoint pin.
 - Waypoint Editor (Options > RUIN pin, or `/path editor`): turn each part of the pin on or off (the card, its label, the name, the quest objectives, the marker, the stem and ground dot, the distance, the walking time, the edge arrow) and pick the marker style (emblem or dot), the name size, the card's darkness and the pin's size, with a live preview of the pin on screen and at the screen edge. Reset puts it back. The nudges and hide settings stay in Options.
 - The pin's dot now sits on the spot (a touch above rather than below), at every pin size: the size setting had been shifting it. Options > RUIN pin has Up / down and Left / right nudges (5 pixels a click, 0 to reset) to fine-tune where it sits.
 - The tracker has two tabs above it, like the chat window's, that fade in while the mouse is over it: Route (the route) and Tracked (the quest you picked in the objective tracker, with its objectives). A tab with nothing to show is greyed out and can't be picked. The world pin follows the selected tab: the route's step on Route, your quest on Tracked; picking a quest in the objective tracker opens Tracked.

@@ -473,7 +473,7 @@ local function updateStepPin()
     local s, map, x, y = navStep()
     updateWaypoint(s and map, x, y, s)
     if map and db.arrow then
-        R.Map:SetPin("Pathfinder", "step", { map = map, x = x, y = y, icon = "Interface\\Icons\\INV_Misc_Map_01",
+        R.Map:SetPin("Pathfinder", "step", { map = map, x = x, y = y, icon = "Interface\\AddOns\\RUIN_Core\\Media\\EmblemIcon", plain = true, shadow = true,
             color = W.MARKERS[ACT_MARKER[s.act] or "waypoint"], title = "Pathfinder: " .. (ACT_LABEL[s.act] or s.act) .. (s.quest and (" " .. s.quest) or ""),
             text = s.text or "" })
     else
@@ -867,27 +867,28 @@ local function anchorTracker()
     db.trackerPos = { point = point, rel = "BOTTOMLEFT", x = x, y = top }
 end
 
--- Width to fit the text in the fixed height (wider before taller).
+-- Width to fit all the text in two lines (wider first); past the widest the
+-- tracker grows taller instead, so nothing is ever cut off.
 local function fitTracker()
     local lineH = 14
     local maxLines = math.max(1, math.floor((TRACKER_H - 28 - 8) / lineH))
     local pad = SIDE * 2 + 8 + 26      -- the sides, plus room for the arrow at the right
-    local width = TRACKER_W
-    local function fits(w)
-        tracker.step:SetWidth(w - pad)
-        local h = tracker.step.GetStringHeight and tracker.step:GetStringHeight() or lineH
-        return h <= maxLines * lineH + 2
+    local step = tracker.step
+    if step.SetMaxLines then step:SetMaxLines(0) end   -- measure the whole text
+    local function height(w)
+        step:SetWidth(w - pad)
+        return step.GetStringHeight and step:GetStringHeight() or lineH
     end
-    while width < TRACKER_MAX_W and not fits(width) do width = width + 20 end
-    if width >= TRACKER_MAX_W then width = TRACKER_MAX_W; fits(width) end
+    local width = TRACKER_W
+    while width < TRACKER_MAX_W and height(width) > maxLines * lineH + 2 do width = width + 20 end
+    width = math.min(width, TRACKER_MAX_W)
     local titleW = (tracker.title.GetStringWidth and tracker.title:GetStringWidth() or 0)
                  + (tracker.dist.GetStringWidth and tracker.dist:GetStringWidth() or 0) + pad + 40
     width = math.min(TRACKER_MAX_W, math.max(width, titleW))
-    tracker.step:SetWidth(width - pad)
-    if tracker.step.SetMaxLines then tracker.step:SetMaxLines(maxLines) end
-    if math.abs((tracker:GetWidth() or 0) - width) > 0.5 then
+    local newH = math.max(TRACKER_H, math.ceil(26 + height(width) + 10))
+    if math.abs((tracker:GetWidth() or 0) - width) > 0.5 or math.abs((tracker:GetHeight() or 0) - newH) > 0.5 then
         anchorTracker()
-        tracker:SetWidth(width)
+        tracker:SetSize(width, newH)
     end
 end
 
@@ -1079,10 +1080,11 @@ updateTracker = function()
         tracker.step:SetText(s and stepText(s) or (C.good .. "Route complete!|r"))
         tracker.prev.tip, tracker.next.tip = "Previous step.", "Next step."
     end
-    tracker:SetHeight(TRACKER_H)
     tracker:Show()
     fitTracker()
 end
+
+M.UpdateTracker = function() updateTracker() end   -- for tests
 
 -- The tracker follows the game: you pick a quest in the objective tracker
 -- (it becomes your tracked quest and the Tracked tab opens), objectives
@@ -1684,7 +1686,7 @@ function M:ShowQuestOnMap(qid, which)
     end
     local info = QB.Quest(qid)
     local label = which == "start" and "Pick up" or which == "finish" and "Hand in" or "Do"
-    R.Map:SetPin("Pathfinder", "quest", { map = spot.map, x = spot.x, y = spot.y, icon = "Interface\\Icons\\INV_Misc_Map_01",
+    R.Map:SetPin("Pathfinder", "quest", { map = spot.map, x = spot.x, y = spot.y, icon = "Interface\\AddOns\\RUIN_Core\\Media\\EmblemIcon", plain = true, shadow = true,
         color = W.MARKERS[which == "finish" and "turnin" or "quest"], title = "Pathfinder: " .. ((info and info.name) or "quest"),
         text = label .. ": " .. (spot.name or "") })
     local open = rawget(_G, "OpenWorldMap")
@@ -2088,7 +2090,7 @@ local function buildQuests(page)
         local map, x, y = R.Map:PlayerPos()
         local spot = QB.Spot(q, ready and "finish" or "objective", map, x, y) or QB.Spot(q, "finish", map, x, y)
         if not spot then return M:Print("Questie doesn't have a place for this quest.") end
-        R.Map:SetPin("Pathfinder", "quest", { map = spot.map, x = spot.x, y = spot.y, icon = "Interface\\Icons\\INV_Misc_Map_01",
+        R.Map:SetPin("Pathfinder", "quest", { map = spot.map, x = spot.x, y = spot.y, icon = "Interface\\AddOns\\RUIN_Core\\Media\\EmblemIcon", plain = true, shadow = true,
             color = W.MARKERS[ready and "turnin" or "quest"], title = "Pathfinder: " .. (C_QuestLog and C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(q) or "quest"),
             text = ready and ("Hand in: " .. (spot.name or "")) or (spot.name or "") })
         M:Print("Marked on your map: " .. (spot.name or "the quest") .. ".")

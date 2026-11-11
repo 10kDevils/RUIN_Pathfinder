@@ -8,6 +8,8 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.5.3 — 2026-11-09
 
+- The tracker has two tabs above it, like the chat window's, that fade in while the mouse is over it: Route (the route, as before) and Tracked (the quest you're tracking, with its objectives and distance; < and > pick the previous or next quest in your log, Clear stops tracking, Open shows it on the Quests tab). < and > sit in the corners, Clear and Open side by side in the middle, and the RUIN members on your step show under the step.
+- The pin always hides inside the tracked quest's objective area (near the places its objectives are found, from Questie), and fades out over half a second rather than vanishing.
 - The pin steps aside once you're inside the area of the quest you're tracking (or nearer than a distance you choose, 15 yards to start).
 - New Options tab: the tracker (show it, its arrow and map pin, skip done quests, say waypoints in chat), the waypoint (on each step, track quest steps the game's way, turn on In-Game Navigation), and the RUIN pin (on or off, hide in the quest's area, hide distance, objectives, walking time, edge arrow, size). The Guide's "Arrow + pin" box is now "Waypoint", which turns the step waypoints on or off; the waypoint no longer depends on the tracker arrow.
 - Key bindings under Keybindings > AddOns > RUIN Pathfinder: next step, previous step, clear the route, show or hide the pin, open Pathfinder.

@@ -17,6 +17,7 @@ local C = W.COLORS
 local PIN, EDGE_ARROW, EDGE_INSET = 38, 18, 44
 local RUN_SPEED = 7            -- yards per second on foot
 local FAR = 600                -- shrink a little beyond this
+local FADE = 0.5              -- seconds to fade out in the quest's area
 local NEAR = 12                -- fade the card when you're on top of it
 local OBJ_LINES = 5
 local CARD_MIN, CARD_MAX, PAD = 150, 250, 10
@@ -39,6 +40,8 @@ end
 -- In the area: the game says you're there (in range), or you're nearer than
 -- the chosen distance.
 local function inArea(yards, qid)
+    -- in the tracked quest's objective area: always out of the way
+    if qid and M.InQuestArea and M.InQuestArea(qid) then return true end
     if not opt("pinHideInArea", true) then return false end
     local states = Enum and Enum.NavigationState
     if states and states.InRange and C_Navigation.GetTargetState and C_Navigation.GetTargetState() == states.InRange then return true end
@@ -80,18 +83,8 @@ local function target()
 end
 
 local function objectives(qid)
-    if not (qid and C_QuestLog.GetQuestObjectives and opt("pinObjectives", true)) then return "" end
-    local list = C_QuestLog.GetQuestObjectives(qid)
-    if type(list) ~= "table" then return "" end
-    local out = {}
-    for _, o in ipairs(list) do
-        if o.text and o.text ~= "" then
-            out[#out + 1] = o.finished and (DOT .. "  " .. C.good .. o.text .. "|r") or (RING .. "  " .. C.white .. o.text .. "|r")
-            if #out >= OBJ_LINES then break end
-        end
-    end
-    if #out == 0 and C_QuestLog.IsComplete and C_QuestLog.IsComplete(qid) then out[1] = DOT .. "  " .. C.good .. "Ready to turn in|r" end
-    return table.concat(out, "\n")
+    if not (qid and opt("pinObjectives", true) and M.ObjectiveLines) then return "" end
+    return M.ObjectiveLines(qid, OBJ_LINES)
 end
 
 local function fill(frame, layer, r, g, b, a)
@@ -226,7 +219,17 @@ local function update(_, elapsed)
     local yards = C_Navigation.GetDistance and C_Navigation.GetDistance() or 0
     local clamped = C_Navigation.WasClampedToScreen and C_Navigation.WasClampedToScreen()
     local title, sub, qid = target()
-    if inArea(yards, qid) or (clamped and not opt("pinEdge", true)) then pin:Hide(); return end
+    if clamped and not opt("pinEdge", true) then pin:Hide(); return end
+    -- inside the quest's area the pin fades away over half a second (and back when you leave)
+    local want = inArea(yards, qid) and 0 or 1
+    local f = pin.fade or 0
+    if f ~= want then
+        local step = (elapsed or 0) / FADE
+        f = want > f and math.min(want, f + step) or math.max(want, f - step)
+        pin.fade = f
+    end
+    if f <= 0 then pin:Hide(); return end
+    pin:SetAlpha(f)
     local size = opt("pinScale", 1) or 1
 
     pin:ClearAllPoints()

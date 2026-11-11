@@ -334,10 +334,28 @@ local function trackableQuest(s)
     return s and s.qid and (s.act == "complete" or s.act == "turnin") and not questNoNav[s.qid]
         and C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID and inLog(s.qid)
 end
+-- The quest YOU chose to track (clicked in the objective tracker, or picked
+-- on the tracker's Tracked tab), kept apart from the quests Pathfinder
+-- tracks for route steps. The world pin follows it while the tracker is on
+-- the Tracked tab.
+local settingQuest            -- a quest Pathfinder is tracking right now (its event isn't yours)
+local function userQuest()
+    local q = db and db.userQuest
+    if q and inLog(q) then return q end
+end
+M.UserQuest = userQuest
+local function superTrackQuest(q)
+    if not (C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID) then return false end
+    settingQuest = q
+    local ok = pcall(C_SuperTrack.SetSuperTrackedQuestID, q)
+    settingQuest = nil
+    return ok
+end
+
 local function releaseQuest()
     if placedQuest and C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID
-            and C_SuperTrack.GetSuperTrackedQuestID() == placedQuest and C_SuperTrack.SetSuperTrackedQuestID then
-        pcall(C_SuperTrack.SetSuperTrackedQuestID, 0)
+            and C_SuperTrack.GetSuperTrackedQuestID() == placedQuest and placedQuest ~= userQuest() then
+        superTrackQuest(0)
     end
     placedQuest = nil
 end
@@ -346,11 +364,22 @@ local function noteWp(why, map, x, y, err)
     db.navLast = { t = time and time() or 0, route = db.route, step = db.step, why = why, map = map, x = x, y = y, err = err and tostring(err) }
 end
 local function updateWaypoint(map, x, y, s)
+    -- the Tracked tab: the world pin follows your tracked quest, not the route
+    local uq = userQuest()
+    if uq and (db.trackerTab == "tracked" or not currentRoute()) then
+        clearWaypoint()
+        placedQuest = nil
+        if not (C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID() == uq) then superTrackQuest(uq) end
+        ensureNavigation()
+        return noteWp("following your tracked quest " .. uq)
+    end
     if db.waypoint ~= false and db.trackQuests ~= false and trackableQuest(s) then
         if placedQuest == s.qid and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID() == s.qid then return end
         clearWaypoint()
         if placedQuest ~= s.qid then releaseQuest() end
+        settingQuest = s.qid
         local ok, err = pcall(C_SuperTrack.SetSuperTrackedQuestID, s.qid)
+        settingQuest = nil
         if not ok then
             questNoNav[s.qid] = true
             noteWp("quest tracking failed", nil, nil, nil, err)
@@ -435,7 +464,7 @@ function M:NavReport()
         .. ", in-game navigation " .. v(GetCVar and GetCVar("showInGameNavigation")))
     local n = db.navLast
     if n then self:Print("  last waypoint try: " .. v(n.why, n.map, n.x, n.y, n.err)) end
-    self:Print("  tracked quest: " .. v(placedQuest, C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID()))
+    self:Print("  tracked quest: Pathfinder's " .. v(placedQuest) .. ", yours " .. v(userQuest()) .. ", the game's " .. v(C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID()) .. ", tab " .. v(db.trackerTab))
     if M.Pin then self:Print("  RUIN pin: " .. M.Pin.State()) end
 end
 
@@ -670,7 +699,7 @@ local function arrowTick(nav, elapsed)
         end
     end
     local arrow, dist = tracker.arrow, tracker.dist
-    if db.trackerTab == "tracked" then
+    if db.trackerTab == "tracked" and userQuest() or not currentRoute() then
         -- the Tracked tab: how far the game's navigation says the quest is
         arrow:Hide()
         local q = C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID()
@@ -700,18 +729,11 @@ local function arrowTick(nav, elapsed)
     dist:SetText(yards < 15 and (C.good .. "here|r") or ("%d yards"):format(yards))
 end
 
-local TRACKER_W, TRACKER_MIN_H = 340, 92
+local TRACKER_W, TRACKER_H, TRACKER_MAX_W = 320, 66, 640
+local SIDE = 24                 -- room for < and > on each side
 local PIP = "Interface\\AddOns\\RUIN_Core\\Media\\Pip"
 local PIP_DONE = "|T" .. PIP .. ":9:9:0:0:64:32:0:32:0:32|t"
 local PIP_OPEN = "|T" .. PIP .. ":9:9:0:0:64:32:32:64:0:32|t"
-
--- The quest the game is tracking (clicked in the objective tracker, or
--- tracked by Pathfinder), or nil.
-local function trackedQuest()
-    local q = C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID()
-    if q and q > 0 then return q end
-end
-M.TrackedQuest = trackedQuest
 
 -- Are you in a quest's objective area? Near any place its objectives are
 -- found (Questie's spawn points for its mobs, objects and drops), on your
@@ -777,37 +799,111 @@ local function logQuests()
     return out
 end
 
-local function trackerTab() return db.trackerTab == "tracked" and "tracked" or "route" end
+-- Which tab shows: the one picked, unless it has nothing (then the other).
+local function trackerTab()
+    local hasRoute, hasQuest = currentRoute() ~= nil, userQuest() ~= nil
+    local want = db.trackerTab == "tracked" and "tracked" or "route"
+    if want == "tracked" and not hasQuest and hasRoute then want = "route" end
+    if want == "route" and not hasRoute and hasQuest then want = "tracked" end
+    return want, hasRoute, hasQuest
+end
 
--- Tracked tab: < and > move through your quest log; Clear stops tracking.
+local function selectTab(key)
+    db.trackerTab = key
+    updateStepPin()
+    updateTracker()
+    if M.RefreshPin then M.RefreshPin() end
+end
+
+-- Tracked tab: < and > move through your quest log.
 local function stepTracked(dir)
     local list = logQuests()
     if #list == 0 then return end
-    local cur, at = trackedQuest(), 0
+    local cur, at = userQuest(), 0
     for i, q in ipairs(list) do if q == cur then at = i end end
-    local nxt = list[((at - 1 + dir) % #list) + 1]
-    if at == 0 then nxt = list[dir > 0 and 1 or #list] end
-    if C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID then C_SuperTrack.SetSuperTrackedQuestID(nxt) end
-    updateTracker()
+    local nxt = at == 0 and list[dir > 0 and 1 or #list] or list[((at - 1 + dir) % #list) + 1]
+    db.userQuest = nxt
+    selectTab("tracked")
 end
 
-local function openTracked()
+-- The little x: leaves the route, or stops tracking your quest.
+local function closeTab()
+    if trackerTab() == "tracked" then
+        db.userQuest = nil
+        superTrackQuest(0)
+        selectTab("route")
+    else
+        M:ClearRoute()
+    end
+end
+
+-- Double-click: Pathfinder on the Guide (Route) or on this quest (Tracked).
+local function openFromTracker()
     M:OpenTab()
-    local q = trackedQuest()
-    if q then ui.qSel = q end
-    if ui.tabs then ui.tabs:Select(2) end
+    if trackerTab() == "tracked" then
+        ui.qSel = userQuest()
+        if ui.tabs then ui.tabs:Select(2) end
+    elseif ui.tabs then
+        ui.tabs:Select(1)
+    end
     refreshPage()
+end
+M.OpenFromTracker = openFromTracker
+
+-- Keeps the side nearest the screen edge still while the width changes:
+-- left third grows rightward, right third leftward, the middle both ways.
+local function anchorTracker()
+    if not (tracker.GetLeft and tracker:GetLeft()) then return end
+    local ratio = (tracker:GetEffectiveScale() or 1) / (UIParent:GetEffectiveScale() or 1)
+    local screenW = (UIParent:GetWidth() or 0) / ratio
+    local left, right, top = tracker:GetLeft(), tracker:GetRight(), tracker:GetTop()
+    if not (left and right and top and screenW > 0) then return end
+    local center = (left + right) / 2
+    local point, x
+    if center < screenW / 3 then point, x = "TOPLEFT", left
+    elseif center > screenW * 2 / 3 then point, x = "TOPRIGHT", right
+    else point, x = "TOP", center end
+    tracker:ClearAllPoints()
+    tracker:SetPoint(point, UIParent, "BOTTOMLEFT", x, top)
+    db.trackerPos = { point = point, rel = "BOTTOMLEFT", x = x, y = top }
+end
+
+-- Width to fit the text in the fixed height (wider before taller).
+local function fitTracker()
+    local lineH = 14
+    local maxLines = math.max(1, math.floor((TRACKER_H - 28 - 8) / lineH))
+    local pad = SIDE * 2 + 8 + 26      -- the sides, plus room for the arrow at the right
+    local width = TRACKER_W
+    local function fits(w)
+        tracker.step:SetWidth(w - pad)
+        local h = tracker.step.GetStringHeight and tracker.step:GetStringHeight() or lineH
+        return h <= maxLines * lineH + 2
+    end
+    while width < TRACKER_MAX_W and not fits(width) do width = width + 20 end
+    if width >= TRACKER_MAX_W then width = TRACKER_MAX_W; fits(width) end
+    local titleW = (tracker.title.GetStringWidth and tracker.title:GetStringWidth() or 0)
+                 + (tracker.dist.GetStringWidth and tracker.dist:GetStringWidth() or 0) + pad + 40
+    width = math.min(TRACKER_MAX_W, math.max(width, titleW))
+    tracker.step:SetWidth(width - pad)
+    if tracker.step.SetMaxLines then tracker.step:SetMaxLines(maxLines) end
+    if math.abs((tracker:GetWidth() or 0) - width) > 0.5 then
+        anchorTracker()
+        tracker:SetWidth(width)
+    end
 end
 
 -- Tabs above the tracker, like the chat window's: they fade in while the
--- mouse is over the tracker and out again when it leaves.
+-- mouse is over the tracker and out again when it leaves. A tab with
+-- nothing to show is greyed out and can't be picked.
 local TAB_FADE = 0.15
+local function over(f) return f and f.IsMouseOver and f:IsMouseOver() end
 local function buildTrackerTabs()
     tracker.tabs = {}
-    local function tab(key, label, x)
+    local function tab(key, label)
         local t = CreateFrame("Button", nil, tracker)
         t.key = key
         t:SetHeight(20)
+        t:SetFrameLevel((tracker:GetFrameLevel() or 1) + 5)
         t.bg = t:CreateTexture(nil, "BACKGROUND")
         t.bg:SetAllPoints()
         t.top = t:CreateTexture(nil, "BORDER")
@@ -816,21 +912,19 @@ local function buildTrackerTabs()
         t.text = W.Label(t, label, "GameFontNormalSmall")
         t.text:SetPoint("CENTER", 0, 0)
         t:SetWidth(((t.text.GetStringWidth and t.text:GetStringWidth()) or 40) + 24)
-        t:SetPoint("BOTTOMLEFT", tracker, "TOPLEFT", x, -1)
-        t:SetScript("OnClick", function(self) db.trackerTab = self.key; updateTracker() end)
+        t:SetScript("OnClick", function(self) if self.ok then selectTab(self.key) end end)
         tracker.tabs[#tracker.tabs + 1] = t
         return t
     end
-    local a = tab("route", "Route", 8)
-    local b = tab("tracked", "Tracked", 0)
-    b:ClearAllPoints()
+    local a = tab("route", "Route")
+    a:SetPoint("BOTTOMLEFT", tracker, "TOPLEFT", 8, -1)
+    local b = tab("tracked", "Tracked")
     b:SetPoint("BOTTOMLEFT", a, "BOTTOMRIGHT", 2, 0)
     tracker.tabAlpha = 0
     for _, t in ipairs(tracker.tabs) do t:SetAlpha(0) end
     tracker.tabFader = CreateFrame("Frame", nil, tracker)
     tracker.tabFader:SetScript("OnUpdate", function(_, elapsed)
-        local over = MouseIsOver and (MouseIsOver(tracker) or MouseIsOver(tracker.tabs[1]) or MouseIsOver(tracker.tabs[2]))
-        local want = over and 1 or 0
+        local want = (over(tracker) or over(tracker.tabs[1]) or over(tracker.tabs[2])) and 1 or 0
         local a0 = tracker.tabAlpha or 0
         if a0 == want then return end
         local step = (elapsed or 0) / TAB_FADE
@@ -840,63 +934,79 @@ local function buildTrackerTabs()
     end)
 end
 
-local function paintTrackerTabs()
-    local cur = trackerTab()
+local function paintTrackerTabs(cur, hasRoute, hasQuest)
     for _, t in ipairs(tracker.tabs) do
         local on = t.key == cur
-        t.bg:SetColorTexture(on and 0.07 or 0.035, on and 0.085 or 0.045, on and 0.13 or 0.075, on and 0.92 or 0.75)
+        t.ok = (t.key == "route" and hasRoute) or (t.key == "tracked" and hasQuest)
+        t.bg:SetColorTexture(on and 0.07 or 0.035, on and 0.085 or 0.045, on and 0.13 or 0.075, on and 0.94 or 0.80)
         t.top:SetShown(on)
-        t.text:SetTextColor(on and 1 or 0.62, on and 0.86 or 0.66, on and 0.55 or 0.74)
+        if not t.ok then t.text:SetTextColor(0.40, 0.40, 0.42)
+        elseif on then t.text:SetTextColor(1, 0.86, 0.55)
+        else t.text:SetTextColor(0.70, 0.73, 0.80) end
+        if t.text.SetDesaturated then t.text:SetDesaturated(not t.ok) end
+        t:SetEnabled(t.ok and true or false)
     end
+end
+
+-- A small square button for < and >, centered on the tracker's sides.
+local function sideButton(label, onClick)
+    local b = W.Button(tracker, label, 18, onClick)
+    b:SetHeight(30)
+    return b
 end
 
 updateTracker = function()
     if not db then return end
     local s, r = currentStep()
-    local tq = trackedQuest()
-    if not db.tracker or not (r or tq) then
+    local cur, hasRoute, hasQuest = trackerTab()
+    if not db.tracker or not (hasRoute or hasQuest) then
         if tracker then tracker:Hide() end
         return
     end
     if not tracker then
         tracker = W.HudFrame("RUIN_PathfinderTracker", "Pathfinder", db, "trackerPos", { "RIGHT", UIParent, "RIGHT", -40, 140 })
-        tracker:SetSize(TRACKER_W, TRACKER_MIN_H)
+        tracker:SetSize(TRACKER_W, TRACKER_H)
         tracker.title = W.Label(tracker, "", "GameFontNormalSmall")
-        tracker.title:SetPoint("TOPLEFT", 10, -9)
-        tracker.title:SetPoint("RIGHT", tracker, "RIGHT", -122, 0)
+        tracker.title:SetPoint("TOPLEFT", SIDE + 4, -9)
         tracker.title:SetWordWrap(false)
         tracker.step = W.Label(tracker, "")
-        tracker.step:SetPoint("TOPLEFT", 10, -26)
-        tracker.step:SetWidth(TRACKER_W - 62)
+        tracker.step:SetPoint("TOPLEFT", SIDE + 4, -26)
         tracker.step:SetJustifyV("TOP")
+        tracker.step:SetWidth(TRACKER_W - SIDE * 2 - 34)
         if tracker.step.SetSpacing then tracker.step:SetSpacing(2) end
-        tracker.peers = W.Label(tracker, "", "GameFontHighlightSmall")
-        tracker.peers:SetPoint("TOPLEFT", tracker.step, "BOTTOMLEFT", 0, -5)
-        tracker.peers:SetWidth(TRACKER_W - 62)
-        tracker.peers:SetWordWrap(false)
-        -- < and > in the corners, Clear and Open side by side in the middle
-        tracker.prev = W.Button(tracker, "<", 26, function()
+        -- < and > centered on the sides
+        tracker.prev = sideButton("<", function()
             if trackerTab() == "tracked" then stepTracked(-1) else M:Advance(-1) end
         end)
-        tracker.prev:SetPoint("BOTTOMLEFT", 6, 4)
-        tracker.next = W.Button(tracker, ">", 26, function()
+        tracker.prev:SetPoint("LEFT", 4, 0)
+        tracker.next = sideButton(">", function()
             if trackerTab() == "tracked" then stepTracked(1) else M:Advance(1) end
         end)
-        tracker.next:SetPoint("BOTTOMRIGHT", -6, 4)
-        tracker.clear = W.Button(tracker, "Clear", 64, function()
-            if trackerTab() == "tracked" then
-                if C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID then C_SuperTrack.SetSuperTrackedQuestID(0) end
-                updateTracker()
-            else
-                M:ClearRoute()
+        tracker.next:SetPoint("RIGHT", -4, 0)
+        -- a little x in the top-right corner
+        tracker.clear = CreateFrame("Button", nil, tracker)
+        tracker.clear:SetSize(14, 14)
+        tracker.clear:SetPoint("TOPRIGHT", -6, -6)
+        tracker.clear.icon = tracker.clear:CreateTexture(nil, "ARTWORK")
+        tracker.clear.icon:SetTexture("Interface\\FriendsFrame\\ClearBroadcastIcon")
+        tracker.clear.icon:SetAllPoints()
+        tracker.clear.icon:SetAlpha(0.7)
+        tracker.clear:SetScript("OnClick", function() closeTab() end)
+        tracker.clear:SetScript("OnEnter", function(self)
+            self.icon:SetAlpha(1)
+            if GameTooltip then
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(trackerTab() == "tracked" and "Stop tracking this quest" or "Leave this route")
+                GameTooltip:Show()
             end
         end)
-        tracker.clear:SetPoint("BOTTOMRIGHT", tracker, "BOTTOM", -3, 4)
-        tracker.open = W.Button(tracker, "Open", 64, function()
-            if trackerTab() == "tracked" then openTracked()
-            else M:OpenTab(); if ui.tabs then ui.tabs:Select(1) end end
-        end)
-        tracker.open:SetPoint("BOTTOMLEFT", tracker, "BOTTOM", 3, 4)
+        tracker.clear:SetScript("OnLeave", function(self) self.icon:SetAlpha(0.7); if GameTooltip then GameTooltip:Hide() end end)
+        -- the zone (or distance) at the top right, beside the x
+        tracker.dist = W.Label(tracker, "", "GameFontHighlightSmall")
+        tracker.dist:SetPoint("TOPRIGHT", -24, -9)
+        tracker.dist:SetJustifyH("RIGHT")
+        tracker.dist:SetWordWrap(false)
+        tracker.title:SetPoint("RIGHT", tracker.dist, "LEFT", -8, 0)
         -- Waypoint arrow: points where the step happens and turns as you turn.
         tracker.arrow = tracker:CreateTexture(nil, "ARTWORK")
         -- the game's navigation arrow when the client has it, else the minimap arrow
@@ -904,61 +1014,67 @@ updateTracker = function()
                 and tracker.arrow:SetAtlas("Navigation-Tracked-Arrow") ~= false) then
             tracker.arrow:SetTexture("Interface\\Minimap\\MinimapArrow")
         end
-        tracker.arrow:SetSize(30, 30)
-        tracker.arrow:SetPoint("TOPRIGHT", -12, -26)
+        tracker.arrow:SetSize(22, 22)
+        tracker.arrow:SetPoint("RIGHT", tracker.next, "LEFT", -4, -6)
         tracker.arrow:Hide()
-        -- the zone (or distance) sits in the top-right corner, right-justified
-        tracker.dist = W.Label(tracker, "", "GameFontHighlightSmall")
-        tracker.dist:SetPoint("TOPRIGHT", -10, -9)
-        tracker.dist:SetWidth(110)
-        tracker.dist:SetJustifyH("RIGHT")
-        tracker.dist:SetWordWrap(false)
         tracker.nav = CreateFrame("Frame", nil, tracker)
         tracker.nav:SetScript("OnUpdate", arrowTick)
+        -- double-click opens Pathfinder on the right page (a drag doesn't count)
+        tracker:HookScript("OnMouseUp", function(self, button)
+            if button ~= "LeftButton" then return end
+            if self.justMoved then anchorTracker(); return end
+            local now = GetTime()
+            if self.lastClick and now - self.lastClick < 0.4 then
+                self.lastClick = nil
+                openFromTracker()
+            else
+                self.lastClick = now
+            end
+        end)
         buildTrackerTabs()
+        tracker.prev.tip, tracker.next.tip = "Previous", "Next"
     end
-    paintTrackerTabs()
-    local line = ""
-    if trackerTab() == "tracked" then
+    paintTrackerTabs(cur, hasRoute, hasQuest)
+    if cur == "tracked" then
+        local tq = userQuest()
         local title = tq and C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(tq)
         tracker.title:SetText("Tracked" .. (title and ("  ·  " .. title) or ""))
         local body = tq and M.ObjectiveLines(tq) or ""
-        if not tq then body = C.dim .. "No quest tracked. Click a quest in your objective tracker, or use < and > to pick one from your log.|r"
-        elseif body == "" then body = C.dim .. "No objectives to show.|r" end
+        body = body:gsub("\n", "     ")
+        if body == "" then body = C.dim .. "No objectives to show.|r" end
         tracker.step:SetText(body)
-        tracker.clear.tip = "Stop tracking this quest."
-        tracker.open.tip = "Open Pathfinder's Quests tab on this quest."
         tracker.prev.tip, tracker.next.tip = "Track the previous quest in your log.", "Track the next quest in your log."
     else
-        if r then
-            tracker.title:SetText(("Pathfinder  ·  %s  %d/%d"):format(r.title, math.min(db.step, #r.steps), #r.steps))
-            tracker.step:SetText(s and stepText(s) or (C.good .. "Route complete!|r"))
-        else
-            tracker.title:SetText("Pathfinder")
-            tracker.step:SetText(C.dim .. "No route. Pick one with Open, on the Guide.|r")
-        end
         local n = #sameStepPeers()
         local follow = db.follow and peers[db.follow]
-        line = follow and (C.gold .. "Following " .. R.Util.ShortName(follow.name) .. "|r  ") or ""
-        if n > 0 then line = line .. C.good .. n .. " RUIN member" .. (n > 1 and "s" or "") .. " on this step|r" end
-        tracker.clear.tip = "Leave this route. The tracker and map pin go away until you start one again."
-        tracker.open.tip = "Open Pathfinder: the Guide, the route list and the rest."
+        local extra = (follow and ("  " .. C.gold .. "· following " .. R.Util.ShortName(follow.name) .. "|r") or "")
+            .. (n > 0 and ("  " .. C.good .. "· " .. n .. " RUIN here|r") or "")
+        tracker.title:SetText(("Pathfinder  ·  %s  %d/%d"):format(r.title, math.min(db.step, #r.steps), #r.steps) .. extra)
+        tracker.step:SetText(s and stepText(s) or (C.good .. "Route complete!|r"))
         tracker.prev.tip, tracker.next.tip = "Previous step.", "Next step."
     end
-    tracker.peers:SetText(line)
-    -- grow to fit the text so it never runs under the buttons
-    local textH = tracker.step.GetStringHeight and tracker.step:GetStringHeight() or 14
-    local peersH = line ~= "" and 17 or 0
-    tracker:SetHeight(math.max(TRACKER_MIN_H, math.ceil(26 + textH + peersH + 8 + 28)))
+    tracker:SetHeight(TRACKER_H)
     tracker:Show()
+    fitTracker()
 end
 
--- The Tracked tab follows the game: a new tracked quest, objective progress.
+-- The tracker follows the game: you pick a quest in the objective tracker
+-- (it becomes your tracked quest and the Tracked tab opens), objectives
+-- progress, quests come and go.
 do
     local ev = CreateFrame("Frame")
     local pending
-    ev:SetScript("OnEvent", function()
-        if pending or not db then return end
+    ev:SetScript("OnEvent", function(_, event)
+        if not db then return end
+        if event == "SUPER_TRACKING_CHANGED" then
+            local q = C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID()
+            if q and q > 0 and q ~= settingQuest and q ~= placedQuest and q ~= db.userQuest then
+                db.userQuest = q
+                db.trackerTab = "tracked"
+                updateStepPin()
+            end
+        end
+        if pending then return end
         pending = true
         C_Timer.After(0.2, function() pending = nil; updateTracker() end)
     end)
@@ -2326,7 +2442,7 @@ local function buildOptions(page)
     local COL2 = 300
 
     local t = card("Tracker", 0, 84)
-    check(t, "Show the tracker", "tracker", "The small window with the current step, < and >, Open and Clear.", nil, 12, -30)
+    check(t, "Show the tracker", "tracker", "The small window with the Route and Tracked tabs: < and > on its sides, the x to clear, double-click to open Pathfinder.", nil, 12, -30)
     check(t, "Tracker arrow and map pin", "arrow", "The arrow on the tracker pointing to the step, and the step's pin on the world map.", nil, COL2, -30)
     check(t, "Skip done quests", "skipDone", "Steps for quests you've already done, or already have, tick themselves off.", nil, 12, -54)
     check(t, "Say each new waypoint in chat", "announce", "\"Waypoint set: ... (N yards)\" when you move to a step.", nil, COL2, -54)

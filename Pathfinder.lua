@@ -47,7 +47,11 @@ local ACT_MARKER = { accept = "quest", complete = "quest", turnin = "turnin", go
                      class = "class", trainer = "trainer" }
 local ACT_GLYPH = { accept = "!", complete = "!", turnin = "?", go = ">", note = "i", class = "!", trainer = "T" }
 local DEFAULTS = { route = nil, step = 1, tracker = true, trackerPos = nil, follow = nil, arrow = true,
-                   trainer = true, lastTrainer = 0, recBadgePos = nil, skipDone = true, shareQuests = true }
+                   trainer = true, lastTrainer = 0, recBadgePos = nil, skipDone = true, shareQuests = true,
+                   -- waypoint and pin settings (Options tab)
+                   waypoint = true, trackQuests = true, autoNav = true, announce = true,
+                   pin = true, pinHideInArea = true, pinHideYards = 15, pinObjectives = true, pinWalk = true,
+                   pinScale = 1, pinEdge = true }
 local ACCOUNT_DEFAULTS = { custom = {}, inbox = {}, official = {}, rec = { on = false, title = "", steps = {} } }
 -- Officer routes carry this badge wherever they're listed.
 local OFFICER_ICON = "|TInterface\\GroupFrame\\UI-Group-AssistantIcon:14:14|t"
@@ -308,6 +312,7 @@ local function clearWaypoint()
 end
 -- The world pin only draws with the game's In-Game Navigation option on.
 local function ensureNavigation()
+    if db.autoNav == false then return end
     if GetCVar and SetCVar and GetCVar("showInGameNavigation") == "0" and not (InCombatLockdown and InCombatLockdown()) then
         if pcall(SetCVar, "showInGameNavigation", "1") and not db.navTurnedOn then
             db.navTurnedOn = true
@@ -341,7 +346,7 @@ local function noteWp(why, map, x, y, err)
     db.navLast = { t = time and time() or 0, route = db.route, step = db.step, why = why, map = map, x = x, y = y, err = err and tostring(err) }
 end
 local function updateWaypoint(map, x, y, s)
-    if db.arrow and db.waypoint ~= false and trackableQuest(s) then
+    if db.waypoint ~= false and db.trackQuests ~= false and trackableQuest(s) then
         if placedQuest == s.qid and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID() == s.qid then return end
         clearWaypoint()
         if placedQuest ~= s.qid then releaseQuest() end
@@ -359,7 +364,7 @@ local function updateWaypoint(map, x, y, s)
     if not (C_Map and C_Map.SetUserWaypoint and UiMapPoint and UiMapPoint.CreateFromCoordinates) then
         return noteWp("no waypoint API (C_Map.SetUserWaypoint " .. tostring(C_Map and C_Map.SetUserWaypoint ~= nil) .. ", UiMapPoint " .. tostring(UiMapPoint ~= nil) .. ")")
     end
-    if not (map and db.arrow and db.waypoint ~= false) then
+    if not (map and db.waypoint ~= false) then
         clearWaypoint()
         return noteWp(not map and "step has no spot" or "turned off")
     end
@@ -381,6 +386,8 @@ local function updateWaypoint(map, x, y, s)
 end
 
 function M.PinOn() return db and db.pin ~= false end
+-- the pin's settings, read live by WaypointPin.lua
+function M.PinSetting(key) return db and db[key] end
 
 -- What the RUIN pin should call the current target, when it's Pathfinder's.
 function M.PinInfo()
@@ -816,7 +823,7 @@ end
 -- "[RUIN] Pathfinder: Waypoint set: The Forgotten Heirloom (252 yards)"
 local function announceWaypoint()
     local s, map, x, y = navStep()
-    if not (s and db.arrow) then return end
+    if not (s and db.waypoint ~= false and db.announce ~= false) then return end
     if not map then return end
     local _, _, yards = R.Map:Offset(map, x, y)
     M:Print(("Waypoint set: %s%s"):format(s.quest or (s.text ~= "" and s.text) or ACT_LABEL[s.act] or "next step",
@@ -1507,13 +1514,13 @@ local function buildCurrent(page)
     local trackCheck = W.Check(page, "Tracker", function() return db.tracker end,
         function(v) db.tracker = v; updateTracker() end)
     trackCheck:SetPoint("LEFT", start, "RIGHT", 10, 0)
-    local arrowCheck = W.Check(page, "Arrow + pin", function() return db.arrow end,
-        function(v) db.arrow = v; updateStepPin() end)
+    local arrowCheck = W.Check(page, "Waypoint", function() return db.waypoint ~= false end,
+        function(v) db.waypoint = v; updateStepPin(); if M.RefreshPin then M.RefreshPin() end end)
     arrowCheck:SetPoint("LEFT", trackCheck, "RIGHT", 64, 0)
-    arrowCheck.tip = "The tracker's arrow, the map pin, and the game's waypoint on the step: a pin in the world with the distance under it. /path waypoint turns just the world pin off or on."
+    arrowCheck.tip = "Put a waypoint on each step (or track its quest the game's way) so the RUIN pin leads you there. More in the Options tab."
     local skipCheck = W.Check(page, "Skip done quests", function() return db.skipDone end,
         function(v) db.skipDone = v; if v then M:SkipDone() end end)
-    skipCheck:SetPoint("LEFT", arrowCheck, "RIGHT", 90, 0)
+    skipCheck:SetPoint("LEFT", arrowCheck, "RIGHT", 76, 0)
     skipCheck.tip = "Steps for quests you've already done, or already have, tick themselves off. Going back with < pauses this until you pass that step again."
 
     -- Steps as a checklist: a box, the step's marker, the quest and where.
@@ -2076,13 +2083,111 @@ local function buildRecorder(page)
     ui.recList.frame:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -24, 0)
 end
 
+-- Key bindings (Bindings.xml): Game Menu > Options > Keybindings > AddOns.
+BINDING_HEADER_RUIN_PATHFINDER = "RUIN Pathfinder"
+BINDING_NAME_RUIN_PATH_NEXT = "Next step"
+BINDING_NAME_RUIN_PATH_PREV = "Previous step"
+BINDING_NAME_RUIN_PATH_CLEAR = "Clear the route"
+BINDING_NAME_RUIN_PATH_PIN = "Show or hide the RUIN pin"
+BINDING_NAME_RUIN_PATH_OPEN = "Open Pathfinder"
+function RUIN_PathfinderBinding(cmd)
+    if cmd == "open" then M:OpenTab(); if ui.tabs then ui.tabs:Select(1) end; return end
+    if SlashCmdList and SlashCmdList.RUINPATH then SlashCmdList.RUINPATH(cmd) end
+end
+
+-- Options: the tracker, waypoints and the RUIN pin.
+local function buildOptions(page)
+    local checks = {}
+    local function check(parent, label, key, tip, after, x, y)
+        local c = W.Check(parent, label, function() return db[key] ~= false end, function(v)
+            db[key] = v
+            updateTracker(); updateStepPin()
+            if M.RefreshPin then M.RefreshPin() end
+        end)
+        c:SetPoint("TOPLEFT", x, y)
+        c.tip = tip
+        checks[#checks + 1] = c
+        return c
+    end
+    local function card(title, top, height)
+        local c = W.Card(page)
+        c:SetPoint("TOPLEFT", 0, top)
+        c:SetPoint("RIGHT", page, "RIGHT", 0, 0)
+        c:SetHeight(height)
+        local h = W.Header(c, title)
+        h:SetPoint("TOPLEFT", 10, -8)
+        return c
+    end
+    local COL2 = 300
+
+    local t = card("Tracker", 0, 84)
+    check(t, "Show the tracker", "tracker", "The small window with the current step, < and >, Open and Clear.", nil, 12, -30)
+    check(t, "Tracker arrow and map pin", "arrow", "The arrow on the tracker pointing to the step, and the step's pin on the world map.", nil, COL2, -30)
+    check(t, "Skip done quests", "skipDone", "Steps for quests you've already done, or already have, tick themselves off.", nil, 12, -54)
+    check(t, "Say each new waypoint in chat", "announce", "\"Waypoint set: ... (N yards)\" when you move to a step.", nil, COL2, -54)
+
+    local w = card("Waypoint", -92, 84)
+    check(w, "Put a waypoint on each step", "waypoint", "The game's waypoint on the step's spot, so the pin (and the game's navigation) leads you there. /path waypoint", nil, 12, -30)
+    check(w, "Track quest steps the game's way", "trackQuests", "For a quest in your log, track the quest itself (like clicking it in the objective tracker) so the pin follows its objective or turn-in.", nil, COL2, -30)
+    check(w, "Turn on In-Game Navigation when needed", "autoNav", "The game draws nothing in the world while its In-Game Navigation option is off. Pathfinder turns it on when it places a waypoint.", nil, 12, -54)
+
+    local p = card("RUIN pin", -184, 132)
+    check(p, "Show the RUIN pin", "pin", "RUIN's marker over whatever the game is navigating to. Off: the game's own marker shows instead. /path pin", nil, 12, -30)
+    check(p, "Hide inside the quest's area", "pinHideInArea", "Once you're in the area of the quest you're tracking, or within the distance below of a waypoint, the pin steps aside.", nil, COL2, -30)
+    check(p, "Show quest objectives", "pinObjectives", "The tracked quest's objectives on the pin's card.", nil, 12, -54)
+    check(p, "Show walking time", "pinWalk", "Roughly how long the walk is, beside the distance.", nil, COL2, -54)
+    check(p, "Show at the screen edge when off screen", "pinEdge", "When the spot is behind you or off screen, the pin waits at the edge with an arrow pointing the way.", nil, 12, -78)
+
+    local hl = W.Label(p, "", "GameFontHighlight")
+    hl:SetPoint("TOPLEFT", COL2 + 4, -82)
+    local function yardsLabel() hl:SetText(("Hide within %s%d yd|r"):format(C.gold, db.pinHideYards or 15)) end
+    local minus = W.Button(p, "-", 24, function() db.pinHideYards = math.max(0, (db.pinHideYards or 15) - 5); yardsLabel() end)
+    minus:SetPoint("LEFT", hl, "RIGHT", 10, 0)
+    local plus = W.Button(p, "+", 24, function() db.pinHideYards = math.min(100, (db.pinHideYards or 15) + 5); yardsLabel() end)
+    plus:SetPoint("LEFT", minus, "RIGHT", 2, 0)
+    minus.tip, plus.tip = "Nearer than this, the pin hides (0: never).", "Nearer than this, the pin hides (0: never)."
+
+    local sl = W.Label(p, "Size", "GameFontHighlight")
+    sl:SetPoint("TOPLEFT", 16, -106)
+    local SIZES = { { 0.8, "Small" }, { 1, "Normal" }, { 1.25, "Large" } }
+    local sizeBtns = {}
+    local function syncSize()
+        for _, b in ipairs(sizeBtns) do
+            local on = math.abs((db.pinScale or 1) - b.scale) < 0.01
+            b:SetText(on and (C.gold .. b.name .. "|r") or b.name)
+        end
+    end
+    for i, sz in ipairs(SIZES) do
+        local b = W.Button(p, sz[2], 70, function() db.pinScale = sz[1]; syncSize() end)
+        b.scale, b.name = sz[1], sz[2]
+        b:SetPoint("LEFT", sl, "RIGHT", 10 + (i - 1) * 74, 0)
+        sizeBtns[i] = b
+    end
+
+    local k = card("Controls", -324, 76)
+    local kl = W.Label(k, "", "GameFontHighlightSmall")
+    kl:SetPoint("TOPLEFT", 12, -30)
+    kl:SetPoint("RIGHT", k, "RIGHT", -12, 0)
+    kl:SetJustifyV("TOP")
+    if kl.SetSpacing then kl:SetSpacing(3) end
+    kl:SetText(C.white .. "Key bindings|r " .. C.dim .. "(Game Menu > Options > Keybindings > AddOns > RUIN Pathfinder):|r next step, previous step, clear the route, show or hide the pin, open Pathfinder.\n"
+        .. C.white .. "Chat:|r " .. C.dim .. "/path next, /path prev, /path clear, /path pin, /path waypoint, /path nav|r")
+
+    page:SetScript("OnShow", function()
+        for _, c in ipairs(checks) do c:Refresh() end
+        yardsLabel(); syncSize()
+    end)
+    ui.optionChecks = checks
+end
+
 local function buildPage(panel)
     ui.panel = panel
-    ui.tabs = W.SubTabs(panel, { "Guide", "Quests", "Routes", "Record" }, function() refreshPage() end)
+    ui.tabs = W.SubTabs(panel, { "Guide", "Quests", "Routes", "Record", "Options" }, function() refreshPage() end)
     buildCurrent(ui.tabs.pages[1])
     buildQuests(ui.tabs.pages[2])
     buildLibrary(ui.tabs.pages[3])
     buildRecorder(ui.tabs.pages[4])
+    buildOptions(ui.tabs.pages[5])
 
     refreshPage = function()
         if not ui.panel:IsVisible() then return end

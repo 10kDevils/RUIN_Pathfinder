@@ -30,6 +30,23 @@ local GAME_PARTS = { "Icon", "Arrow", "DistanceText", "IconBorder" }
 local pin, navFrame, hidGame
 local events = CreateFrame("Frame")
 
+local function opt(key, default)
+    local v = M.PinSetting and M.PinSetting(key)
+    if v == nil then return default end
+    return v
+end
+
+-- In the area: the game says you're there (in range), or you're nearer than
+-- the chosen distance.
+local function inArea(yards, qid)
+    if not opt("pinHideInArea", true) then return false end
+    local states = Enum and Enum.NavigationState
+    if states and states.InRange and C_Navigation.GetTargetState and C_Navigation.GetTargetState() == states.InRange then return true end
+    local near = opt("pinHideYards", 15) or 0
+    return near > 0 and yards <= near
+end
+M.PinInArea = inArea
+
 local function on()
     return M.PinOn and M.PinOn() and C_Navigation and C_Navigation.GetFrame and C_SuperTrack ~= nil
 end
@@ -63,7 +80,7 @@ local function target()
 end
 
 local function objectives(qid)
-    if not (qid and C_QuestLog.GetQuestObjectives) then return "" end
+    if not (qid and C_QuestLog.GetQuestObjectives and opt("pinObjectives", true)) then return "" end
     local list = C_QuestLog.GetQuestObjectives(qid)
     if type(list) ~= "table" then return "" end
     local out = {}
@@ -209,6 +226,8 @@ local function update(_, elapsed)
     local yards = C_Navigation.GetDistance and C_Navigation.GetDistance() or 0
     local clamped = C_Navigation.WasClampedToScreen and C_Navigation.WasClampedToScreen()
     local title, sub, qid = target()
+    if inArea(yards, qid) or (clamped and not opt("pinEdge", true)) then pin:Hide(); return end
+    local size = opt("pinScale", 1) or 1
 
     pin:ClearAllPoints()
     pin.tag:ClearAllPoints()
@@ -224,23 +243,24 @@ local function update(_, elapsed)
         pin.arrow:SetRotation(angle - math.pi / 2)
         pin.arrow:Show()
         pin.beam:Hide(); pin.foot:Hide(); pin.card:Hide()
-        pin:SetScale(0.8)
+        pin:SetScale(0.8 * size)
         pin.tag:SetPoint("TOP", pin, "BOTTOM", 0, -6)
     else
         pin:SetPoint("CENTER", UIParent, "BOTTOMLEFT", nx, ny + 32)
         pin.arrow:Hide()
         pin.beam:Show(); pin.foot:Show(); pin.card:Show()
-        pin:SetScale(yards > FAR and 0.85 or 1)
+        pin:SetScale((yards > FAR and 0.85 or 1) * size)
         pin.card:SetAlpha(yards < NEAR and 0.35 or 1)
         pin.tag:SetPoint("TOP", pin.foot, "BOTTOM", 0, -4)
     end
 
-    local walk = walkText(yards)
+    local walk = opt("pinWalk", true) and walkText(yards) or nil
     pin.dist:SetText(C.white .. yardsText(yards) .. "|r" .. (walk and ("   " .. C.dim .. walk .. "|r") or ""))
     pin.tag:SetWidth(math.max(56, ((pin.dist.GetStringWidth and pin.dist:GetStringWidth()) or 60) + 18))
 
     objTick = objTick + (elapsed or 0)
-    if qid ~= lastQuest or objTick > 1 or title ~= lastText then
+    if qid ~= lastQuest or objTick > 1 or title ~= lastText or M.pinDirty then
+        M.pinDirty = nil
         objTick, lastQuest, lastText = 0, qid, title
         pin.sub:SetText(sub or "")
         pin.title:SetText(title or "")
@@ -308,17 +328,19 @@ for _, e in ipairs({ "NAVIGATION_FRAME_CREATED", "NAVIGATION_FRAME_DESTROYED", "
 end
 
 function M.RefreshPin()
+    M.pinDirty = true
     if C_Navigation and C_Navigation.GetFrame and C_Navigation.GetFrame() then attach() else detach() end
 end
 
 M.Pin = { Update = function() if pin and navFrame then update(nil, 0) end end, Frame = function() return pin end,
     Driver = driver,
     State = function()
-        return ("pin %s, attached %s, shown %s, nav frame %s, on screen %s, clamped %s, distance %s, tracking type %s"):format(
+        return ("pin %s, attached %s, shown %s, nav frame %s, on screen %s, clamped %s, distance %s, nav state %s (2 = in range), tracking type %s"):format(
             tostring(M.PinOn and M.PinOn()), tostring(navFrame ~= nil), tostring(pin and pin:IsShown() or false),
             tostring(C_Navigation and C_Navigation.GetFrame and C_Navigation.GetFrame() ~= nil),
             tostring(C_Navigation and C_Navigation.HasValidScreenPosition and C_Navigation.HasValidScreenPosition()),
             tostring(C_Navigation and C_Navigation.WasClampedToScreen and C_Navigation.WasClampedToScreen()),
             tostring(C_Navigation and C_Navigation.GetDistance and C_Navigation.GetDistance()),
+            tostring(C_Navigation and C_Navigation.GetTargetState and C_Navigation.GetTargetState()),
             tostring(C_SuperTrack and C_SuperTrack.GetHighestPrioritySuperTrackingType and C_SuperTrack.GetHighestPrioritySuperTrackingType()))
     end }

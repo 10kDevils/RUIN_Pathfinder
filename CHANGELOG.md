@@ -8,6 +8,9 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.5.3 — 2026-11-09
 
+- The pin steps aside once you're inside the area of the quest you're tracking (or nearer than a distance you choose, 15 yards to start).
+- New Options tab: the tracker (show it, its arrow and map pin, skip done quests, say waypoints in chat), the waypoint (on each step, track quest steps the game's way, turn on In-Game Navigation), and the RUIN pin (on or off, hide in the quest's area, hide distance, objectives, walking time, edge arrow, size). The Guide's "Arrow + pin" box is now "Waypoint", which turns the step waypoints on or off; the waypoint no longer depends on the tracker arrow.
+- Key bindings under Keybindings > AddOns > RUIN Pathfinder: next step, previous step, clear the route, show or hide the pin, open Pathfinder.
 - New RUIN waypoint pin over whatever the game is navigating to (the quest you select in the objective tracker, a map pin, or Pathfinder's step): the RUIN emblem on a fine stem to a dot on the ground, a dark card above it with the label, the name and a tracked quest's objectives (filled pips for finished ones), and the distance and walking time in a small tag below. Off screen it waits at the edge with an arrow pointing the way; it shows a check when you arrive. It replaces the game's own marker while it's on; `/path pin` switches back.
 - Quest steps whose quest is in your log are tracked the game's own way, like clicking the quest in the objective tracker, so the pin follows its objective or turn-in. A quest the game can't place falls back to a waypoint on Pathfinder's spot.
 - Publish shows only to officers and up, and only on routes an officer (or higher) made; built-in routes and members' routes no longer have it. Approving a member's shared route from the inbox is unchanged.

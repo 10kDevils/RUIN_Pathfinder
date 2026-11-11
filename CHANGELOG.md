@@ -6,7 +6,7 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
-## 0.5.3 — 2026-11-09
+## 0.6.0 — 2026-11-11
 
 - Plays nicer with the game's objective tracker: Pathfinder never changes what the game tracks during combat (it catches up when combat ends), stops tracking your quest when you untrack it in the game instead of re-tracking it a few seconds later, ignores its own tracking changes when deciding what you picked, and only retries a waypoint on the Route tab when the step has a place.
 - The tracker shows all of a step's or quest's text: it widens first, and past its widest it grows taller instead of cutting the text off. On Tracked, each objective has its own line, and the tracker grows taller to fit them.
@@ -26,7 +26,7 @@ Versioning: the third number counts the meaningful changes made since the second
 - The world pin needs the game's In-Game Navigation option, which can be off; Pathfinder turns it on when it places a waypoint and says so once.
 - `/path nav` prints each link from the step to the arrow and the world pin (the step's spot, your position, world positions, facing, the waypoint), to find where it breaks. The waypoint is retried every few seconds until it can be placed, and the arrow uses the game's navigation arrow art when the client has it.
 - The step gets the game's own waypoint: a pin in the world over the spot with the distance under it, plus its map pin. It moves with each step and goes away when you clear the route; a waypoint you place yourself is only replaced at the next step. Part of the Arrow + pin option; `/path waypoint` turns just the world pin off or on.
-- The tracker's arrow works on WoW Forever's client (it never showed before) and points to steps in neighbouring zones too (needs RUIN Core 0.5.5). When the step is on another continent, the corner names its zone.
+- The tracker's arrow works on WoW Forever's client (it never showed before) and points to steps in neighbouring zones too (needs RUIN Core 0.6.0). When the step is on another continent, the corner names its zone.
 - The tracker is wider and grows taller to fit a long step, so the text no longer runs under the Clear, Open, < and > buttons. The zone (or distance) sits in the top-right corner, right-justified, with the arrow below it.
 
 ## 0.5.2 — 2026-11-08

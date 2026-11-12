@@ -964,7 +964,10 @@ end
 
 -- tasks: { kind = "accept" | "complete" | "turnin", qid, qids (a shared
 -- "complete": every quest done there), at = spot, after = { task indexes } }
-local function buildTasks(qids, here)
+-- have (optional): quests already in your log, qid -> "log" or "ready" (no
+-- pick-up for those; nothing left to do but the hand-in for "ready" ones)
+local function buildTasks(qids, here, have)
+    have = have or {}
     local tasks, index = {}, {}
     local inSet = {}
     for _, q in ipairs(qids) do inSet[q] = true end
@@ -974,10 +977,11 @@ local function buildTasks(qids, here)
         return #tasks
     end
     local withDo = {}
-    for _, q in ipairs(qids) do if QB.DoText(q) ~= "" then withDo[#withDo + 1] = q end end
+    for _, q in ipairs(qids) do if have[q] ~= "ready" and QB.DoText(q) ~= "" then withDo[#withDo + 1] = q end end
     local group, members = doGroups(withDo)
     for _, q in ipairs(qids) do
-        local a = add("accept", q, QB.Spot(q, "start", here and here.map, here and here.x, here and here.y))
+        local a
+        if not have[q] then a = add("accept", q, QB.Spot(q, "start", here and here.map, here and here.x, here and here.y)) end
         local prev = a
         if group[q] then
             local g = group[q]
@@ -989,11 +993,11 @@ local function buildTasks(qids, here)
                 tasks[d].at = groupSpot(list, here)
             end
             index["complete" .. q] = d
-            tasks[d].after[#tasks[d].after + 1] = a
+            if a then tasks[d].after[#tasks[d].after + 1] = a end
             prev = d
         end
         local t = add("turnin", q, QB.Spot(q, "finish", here and here.map, here and here.x, here and here.y))
-        tasks[t].after[#tasks[t].after + 1] = prev
+        if prev then tasks[t].after[#tasks[t].after + 1] = prev end
     end
     -- a stop we can't place stands where the quest's previous stop was
     for k, t in ipairs(tasks) do
@@ -1011,8 +1015,8 @@ local function buildTasks(qids, here)
     -- earlier quests in the set are handed in before a quest is picked up
     for _, q in ipairs(qids) do
         for _, p in ipairs(QB.Prereqs(q)) do
-            if inSet[p] then
-                local a, t = index["accept" .. q], index["turnin" .. p]
+            local a, t = index["accept" .. q], index["turnin" .. p]
+            if inSet[p] and a and t then
                 tasks[a].after[#tasks[a].after + 1] = t
             end
         end
@@ -1158,8 +1162,8 @@ end
 QB.Planner = { build = buildTasks, length = routeLength, allowed = allowed, greedy = greedy, improve = improve, anneal = anneal, dist = dist }
 
 -- Plans a set of quests from where you stand: the ordered tasks, and the walk in yards.
-function QB.Plan(qids, here)
-    local tasks = buildTasks(qids, here)
+function QB.Plan(qids, here, have)
+    local tasks = buildTasks(qids, here, have)
     if #tasks == 0 then return {}, 0 end
     local order = greedy(tasks, here)
     local before = routeLength(tasks, order, here)
@@ -1227,4 +1231,51 @@ function QB.ZoneRoute(qids)
     if #before > 0 then emit((QB.Plan(before, here))) end
     emit((QB.Plan(qids, here)))
     return steps
+end
+
+-- The quests in your log, in the shortest order from where you stand: what's
+-- left to do for each, then its hand-in (ready ones go straight to the hand-in).
+-- Quests the database doesn't know are handed in where you are, at the end.
+function QB.LogRoute(log)
+    log = log or QB.Log()
+    local qids, have, titles, unknown = {}, {}, {}, {}
+    for _, q in ipairs(log) do
+        titles[q.id] = q.title
+        if QB.Quest(q.id) then
+            qids[#qids + 1] = q.id
+            have[q.id] = q.ready and "ready" or "log"
+        else
+            unknown[#unknown + 1] = q
+        end
+    end
+    if #qids == 0 and #unknown == 0 then return nil end
+    local here
+    if RUIN_API and RUIN_API.Map and RUIN_API.Map.PlayerPos then
+        local map, px, py = RUIN_API.Map:PlayerPos()
+        if map then here = { map = map, x = px, y = py } end
+    end
+    local steps = {}
+    local function name(qid) local i = QB.Quest(qid); return (i and i.name) or titles[qid] or ("Quest " .. qid) end
+    local plan, yards = {}, 0
+    if #qids > 0 then plan, yards = QB.Plan(qids, here, have) end
+    for _, t in ipairs(plan) do
+        if t.qids then
+            local names, texts = {}, {}
+            for _, q in ipairs(t.qids) do
+                names[#names + 1] = name(q)
+                local d = QB.DoText(q)
+                if d ~= "" then texts[#texts + 1] = d end
+            end
+            steps[#steps + 1] = { act = "complete", quest = table.concat(names, " + "):sub(1, 60), qid = t.qids[1],
+                                  qids = { unpack(t.qids) }, text = table.concat(texts, "; "):sub(1, 120) }
+        else
+            local text = t.kind == "accept" and QB.AcceptText(t.qid) or t.kind == "turnin" and QB.TurninText(t.qid) or QB.DoText(t.qid)
+            steps[#steps + 1] = { act = t.kind, quest = name(t.qid), qid = t.qid, text = (text or ""):sub(1, 120) }
+        end
+    end
+    for _, q in ipairs(unknown) do
+        steps[#steps + 1] = { act = "turnin", quest = q.title, qid = q.id,
+                              text = "Not in RUIN Quest Data: see the quest log for where to go." }
+    end
+    return steps, yards, #qids + #unknown
 end

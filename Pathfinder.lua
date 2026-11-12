@@ -55,11 +55,13 @@ local DEFAULTS = { route = nil, step = 1, tracker = true, trackerPos = nil, foll
                    waypoint = true, trackQuests = true, autoNav = true, announce = true,
                    pin = true, pinHideInArea = true, pinHideYards = 15, pinObjectives = true, pinWalk = true,
                    pinScale = 1, pinEdge = true, pinOffsetX = 0, pinOffsetY = 0,
+                   pinEdgeTop = 0, pinEdgeBottom = 0, pinEdgeLeft = 0, pinEdgeRight = 0,
                    remindPickups = true, remindArea = true }
 local ACCOUNT_DEFAULTS = { custom = {}, inbox = {}, official = {}, rec = { on = false, title = "", steps = {} } }
 -- Officer routes carry this badge wherever they're listed.
 local OFFICER_ICON = "|TInterface\\GroupFrame\\UI-Group-AssistantIcon:14:14|t"
 local MAX_STEPS = 200
+local TAB_QUESTS, TAB_GUIDE = 1, 2      -- Pathfinder's tabs: Quests, Guide, Routes, Record, Options
 
 local db           -- per character: route, step, tracker
 local adb          -- account: custom routes, shared-route inbox, recorder
@@ -167,6 +169,36 @@ local function zoneRoutes()
     return out
 end
 
+-- The quests in your log as one route (id "log"): planned when it's picked
+-- or started, and kept as planned (db.logRoute) so the steps stay put while
+-- you follow it, across reloads too.
+local LOG_ID = "log"
+local function logStub()
+    local n = #QB.Log()
+    return { id = LOG_ID, title = "Quests in your log", faction = "Any", author = "RUIN (your quest log)",
+             logRoute = true, quests = n }
+end
+local function buildLogRoute()
+    if not QB.Has() then return nil end
+    local steps, yards, n = QB.LogRoute()
+    if not steps or #steps == 0 then return nil end
+    if #steps > MAX_STEPS then
+        for i = #steps, MAX_STEPS, -1 do steps[i] = nil end
+        steps[MAX_STEPS] = { act = "note", text = "The rest of your quests didn't fit in one route." }
+    end
+    db.logRoute = { steps = steps, yards = math.floor((yards or 0) + 0.5), quests = n, t = time and time() or 0 }
+    return db.logRoute
+end
+local function logRoute(rebuild)
+    local saved = not rebuild and type(db.logRoute) == "table" and type(db.logRoute.steps) == "table" and db.logRoute
+    saved = saved or buildLogRoute()
+    if not saved then return nil end
+    local r = logStub()
+    r.steps, r.quests, r.yards = saved.steps, saved.quests or r.quests, saved.yards
+    return r
+end
+M.LogRoute = function(rebuild) return logRoute(rebuild) end
+
 local function isBuiltInRoute(id)
     for _, r in ipairs(ns.Routes) do if r.id == id then return true end end
     return false
@@ -174,6 +206,7 @@ end
 
 local function routeById(id)
     if not id then return nil end
+    if id == LOG_ID then return logRoute() end
     if type(id) == "string" and id:sub(1, 3) == "zq:" then return zoneRoute(id) end
     if type(id) == "string" and id:sub(1, 3) == "dq:" then
         if dqRoutes[id] then return dqRoutes[id] end
@@ -1012,9 +1045,9 @@ local function openFromTracker()
     M:OpenTab()
     if trackerTab() == "tracked" then
         ui.qSel = userQuest()
-        if ui.tabs then ui.tabs:Select(2) end
+        if ui.tabs then ui.tabs:Select(TAB_QUESTS) end
     elseif ui.tabs then
-        ui.tabs:Select(1)
+        ui.tabs:Select(TAB_GUIDE)
     end
     refreshPage()
 end
@@ -1426,6 +1459,9 @@ function M:Advance(delta)
 end
 
 function M:StartRoute(id)
+    if id == LOG_ID and not logRoute(true) then
+        return self:Print(QB.Has() and "No quests in your log to route." or "The log route needs RUIN Quest Data.")
+    end
     if not routeById(id) then return end
     db.route, db.step = id, 1
     holdUntil = nil
@@ -2025,7 +2061,7 @@ function M:OpenDungeonRoute(name)
     if not r then self:Print(why); return nil end
     self:StartRoute(r.id)
     self:OpenTab()
-    if ui.tabs then ui.tabs:Select(1) end
+    if ui.tabs then ui.tabs:Select(TAB_GUIDE) end
     self:Print(("Started %s: %d steps, %d quests."):format(r.title, #r.steps, r.quests or 0))
     return r
 end
@@ -2157,6 +2193,7 @@ M.SetRouteHidden = function(_, id, v) setHidden(id, v) end
 -- route always stays so it can be seen)
 local function pickerRoutes()
     local ids = {}
+    if QB.Has() and #QB.Log() > 0 then ids[1] = LOG_ID end
     for _, sec in ipairs(routeLibrary()) do
         for _, r in ipairs(sec.routes) do
             if not hiddenRoute(r.id) or r.id == db.route then ids[#ids + 1] = r.id end
@@ -2175,6 +2212,9 @@ end
 
 -- the picker labels zone and dungeon routes without building their steps
 local function pickerLabel(id)
+    if id == LOG_ID then
+        return "Quests in your log  " .. C.dim .. "best order · " .. #QB.Log() .. " quests|r"
+    end
     if type(id) == "string" and id:sub(1, 3) == "zq:" then
         local r = zqRoutes[id]
         return r and (r.title .. "  " .. C.dim .. "zone · " .. r.quests .. " quests|r") or id
@@ -2215,7 +2255,11 @@ local function buildCurrent(page)
     W.AttachMenu(ui.pick, { width = 270,
         items = function() return pickerRoutes() end,
         label = function(id) return pickerLabel(id) end,
-        current = function() return ui.pickId end, pick = function(id) ui.pickId = id; refreshPage() end })
+        current = function() return ui.pickId end, pick = function(id)
+            ui.pickId = id
+            if id == LOG_ID and db.route ~= LOG_ID then logRoute(true) end
+            refreshPage()
+        end })
     local start = W.Button(page, "Start this route", 130, function() if ui.pickId then M:StartRoute(ui.pickId) end end)
     start:SetPoint("LEFT", ui.pick, "RIGHT", 6, 0)
     local trackCheck = W.Check(page, "Tracker", function() return db.tracker end,
@@ -2628,7 +2672,7 @@ local function buildLibrary(page)
                 r.quests or 0, r.levels or "?", db.route == r.id and ("  " .. C.good .. "current|r") or ""))
             row.add:Hide(); row.del:Hide(); row.pub:Hide()
             row.start:Show(); row.export:Show(); row.share:Show()
-            row.start:SetScript("OnClick", function() M:StartRoute(r.id); ui.tabs:Select(1) end)
+            row.start:SetScript("OnClick", function() M:StartRoute(r.id); ui.tabs:Select(TAB_GUIDE) end)
             row.export:SetScript("OnClick", function() M:ExportRoute(r.id) end)
             row.share:SetScript("OnClick", function() M:ShareRoute(r.id) end)
             row.tip = function(tip)
@@ -2644,7 +2688,7 @@ local function buildLibrary(page)
                 r.quests or 0, #r.steps, r.levels or "?", db.route == r.id and ("  " .. C.good .. "current|r") or ""))
             row.add:Hide(); row.del:Hide(); row.pub:Hide()
             row.start:Show(); row.export:Show(); row.share:Show()
-            row.start:SetScript("OnClick", function() M:StartRoute(r.id); ui.tabs:Select(1) end)
+            row.start:SetScript("OnClick", function() M:StartRoute(r.id); ui.tabs:Select(TAB_GUIDE) end)
             row.export:SetScript("OnClick", function() M:ExportRoute(r.id) end)
             row.share:SetScript("OnClick", function() M:ShareRoute(r.id) end)
             row.tip = function(tip)
@@ -2713,7 +2757,7 @@ local function buildLibrary(page)
         row.pub:SetPoint("RIGHT", row.start, "LEFT", -2, 0)
         row.pub:SetScript("OnClick", function() M:PublishRoute(r.id) end)
         row.start:Show(); row.export:Show(); row.share:Show()
-        row.start:SetScript("OnClick", function() M:StartRoute(r.id); ui.tabs:Select(1) end)
+        row.start:SetScript("OnClick", function() M:StartRoute(r.id); ui.tabs:Select(TAB_GUIDE) end)
         row.export:SetScript("OnClick", function() M:ExportRoute(r.id) end)
         row.share:SetScript("OnClick", function() M:ShareRoute(r.id) end)
         row.del:SetText(official and "Withdraw" or "Delete")
@@ -2794,7 +2838,7 @@ end
 BINDING_NAME_RUIN_PATH_CLEAR = "Pathfinder: clear the route"
 BINDING_NAME_RUIN_PATH_PIN = "Pathfinder: show or hide the RUIN pin"
 function RUIN_PathfinderBinding(cmd)
-    if cmd == "open" then M:OpenTab(); if ui.tabs then ui.tabs:Select(1) end; return end
+    if cmd == "open" then M:OpenTab(); if ui.tabs then ui.tabs:Select(TAB_GUIDE) end; return end
     if SlashCmdList and SlashCmdList.RUINPATH then SlashCmdList.RUINPATH(cmd) end
 end
 
@@ -2823,15 +2867,15 @@ local function buildOptions(page)
     end
     local COL2 = 300
 
-    local t = card("Tracker", 0, 114)
+    local t = card("Tracker", 0, 104)
     check(t, "Show the tracker", "tracker", "The small window with the Route and Tracked tabs: < and > on its sides, the x to clear, double-click to open Pathfinder.", nil, 12, -30)
     check(t, "Tracker arrow and map pin", "arrow", "The arrow on the tracker pointing to the step, and the step's pin on the world map.", nil, COL2, -30)
-    check(t, "Skip done quests", "skipDone", "Steps for quests you've already done, or already have, tick themselves off.", nil, 12, -54)
-    check(t, "Say each new waypoint in chat", "announce", "\"Waypoint set: ... (N yards)\" when you move to a step.", nil, COL2, -54)
-    check(t, "Remind me of pick-ups I walk past", "remindPickups", "When you come near the giver of a quest your route picks up next and leave without taking it.", nil, 12, -78)
-    check(t, "Remind me at a quest I don't have", "remindArea", "When you walk into the area where a quest's targets are and you could take that quest but don't have it (your route's, or this zone's for your level).", nil, COL2, -78)
+    check(t, "Skip done quests", "skipDone", "Steps for quests you've already done, or already have, tick themselves off.", nil, 12, -52)
+    check(t, "Say each new waypoint in chat", "announce", "\"Waypoint set: ... (N yards)\" when you move to a step.", nil, COL2, -52)
+    check(t, "Remind me of pick-ups I walk past", "remindPickups", "When you come near the giver of a quest your route picks up next and leave without taking it.", nil, 12, -74)
+    check(t, "Remind me at a quest I don't have", "remindArea", "When you walk into the area where a quest's targets are and you could take that quest but don't have it (your route's, or this zone's for your level).", nil, COL2, -74)
 
-    local w = card("Waypoint", -122, 84)
+    local w = card("Waypoint", -112, 84)
     check(w, "Put a waypoint on each step", "waypoint", "The game's waypoint on the step's spot, so the pin (and the game's navigation) leads you there. /path waypoint", nil, 12, -30)
     check(w, "Track quest steps the game's way", "trackQuests", "For a quest in your log, track the quest itself (like clicking it in the objective tracker) so the pin follows its objective or turn-in.", nil, COL2, -30)
     check(w, "Turn on In-Game Navigation when needed", "autoNav", "The game draws nothing in the world while its In-Game Navigation option is off. Pathfinder turns it on when it places a waypoint.", nil, 12, -54)
@@ -2840,7 +2884,7 @@ local function buildOptions(page)
     share.tip = "Pathfinder's atlas: where you pick up, do and hand in quests, shared with RUIN so routes follow where things really are on WoW Forever. Only quest numbers and map spots. /path atlas"
     checks[#checks + 1] = share
 
-    local p = card("RUIN pin", -214, 132)
+    local p = card("RUIN pin", -204, 132)
     check(p, "Show the RUIN pin", "pin", "RUIN's marker over whatever the game is navigating to. Off: the game's own marker shows instead. /path pin", nil, 12, -30)
     check(p, "Hide when the game says you're there", "pinHideInArea", "The pin always steps aside in the tracked quest's objective area. This also hides it when the game says you've arrived, or within the distance below.", nil, COL2, -30)
 
@@ -2878,27 +2922,51 @@ local function buildOptions(page)
     local showX = nudge("Left / right:", "pinOffsetX", COL2 + 4, -100, "right", "left")
     local syncSize = function() end
 
-    local k = card("Controls", -354, 76)
+    -- edge boundaries: how near each side of the screen the spot may come
+    -- before the pin moves to the edge (percent of the screen, each side its own)
+    local e = card("Screen edge", -344, 58)
+    local el = W.Label(e, C.dim .. "The pin moves to the edge once the spot comes this close to that side of the screen (0%: only off screen).|r", "GameFontHighlightSmall")
+    el:SetPoint("TOPLEFT", 110, -11)
+    el:SetPoint("RIGHT", e, "RIGHT", -12, 0)
+    el:SetJustifyH("LEFT")
+    local function bound(label, key, x)
+        local l = W.Label(e, "", "GameFontHighlight")
+        l:SetPoint("TOPLEFT", x, -34)
+        local function show()
+            l:SetText(("%s %s%d%%|r"):format(label, C.gold, db[key] or 0))
+            if M.RefreshPin then M.RefreshPin() end
+        end
+        local minus = W.Button(e, "-", 24, function() db[key] = math.max(0, (db[key] or 0) - 5); show() end)
+        minus:SetPoint("TOPLEFT", x + 96, -30)
+        local plus = W.Button(e, "+", 24, function() db[key] = math.min(45, (db[key] or 0) + 5); show() end)
+        plus:SetPoint("LEFT", minus, "RIGHT", 2, 0)
+        minus.tip, plus.tip = "Closer to that side (5% of the screen; 0%: only when it's off screen that way).", "Farther from that side (5% of the screen)."
+        return show
+    end
+    local edgeShows = { bound("Top:", "pinEdgeTop", 16), bound("Bottom:", "pinEdgeBottom", 196),
+                        bound("Left:", "pinEdgeLeft", 376), bound("Right:", "pinEdgeRight", 556) }
+
+    local k = card("Controls", -410, 48)
     local kl = W.Label(k, "", "GameFontHighlightSmall")
-    kl:SetPoint("TOPLEFT", 12, -30)
+    kl:SetPoint("TOPLEFT", 12, -28)
     kl:SetPoint("RIGHT", k, "RIGHT", -12, 0)
-    kl:SetJustifyV("TOP")
-    if kl.SetSpacing then kl:SetSpacing(3) end
-    kl:SetText(C.white .. "Key bindings|r " .. C.dim .. "(Game Menu > Options > Keybindings > AddOns > RUIN Pathfinder):|r next step, previous step, clear the route, show or hide the pin, open Pathfinder.\n"
-        .. C.white .. "Chat:|r " .. C.dim .. "/path next, /path prev, /path clear, /path pin, /path editor, /path waypoint, /path nav, /path remind|r")
+    kl:SetWordWrap(false)
+    kl:SetText(C.white .. "Keys:|r " .. C.dim .. "Options > Keybindings > AddOns > RUIN Pathfinder.|r   "
+        .. C.white .. "Chat:|r " .. C.dim .. "/path next, prev, clear, pin, editor, waypoint, nav, remind|r")
 
     page:SetScript("OnShow", function()
         for _, c in ipairs(checks) do c:Refresh() end
         yardsLabel(); syncSize(); showY(); showX()
+        for _, f in ipairs(edgeShows) do f() end
     end)
     ui.optionChecks = checks
 end
 
 local function buildPage(panel)
     ui.panel = panel
-    ui.tabs = W.SubTabs(panel, { "Guide", "Quests", "Routes", "Record", "Options" }, function() refreshPage() end)
-    buildCurrent(ui.tabs.pages[1])
-    buildQuests(ui.tabs.pages[2])
+    ui.tabs = W.SubTabs(panel, { "Quests", "Guide", "Routes", "Record", "Options" }, function() refreshPage() end)
+    buildQuests(ui.tabs.pages[TAB_QUESTS])
+    buildCurrent(ui.tabs.pages[TAB_GUIDE])
     buildLibrary(ui.tabs.pages[3])
     buildRecorder(ui.tabs.pages[4])
     buildOptions(ui.tabs.pages[5])
@@ -2908,12 +2976,13 @@ local function buildPage(panel)
         ui.tabs:SetLabel(3, #adb.inbox > 0 and ("Routes " .. C.good .. "(" .. #adb.inbox .. " new)|r") or "Routes")
         ui.tabs:SetLabel(4, adb.rec.on and ("Record " .. C.bad .. "(on)|r") or "Record")
         local tab = ui.tabs.selected
-        if tab == 1 then
+        if tab == TAB_GUIDE then
             if not ui.pickId or not routeById(ui.pickId) then
-                ui.pickId = db.route or pickerRoutes()[1]
+                local list = pickerRoutes()
+                ui.pickId = db.route or (list[1] == LOG_ID and list[2]) or list[1]
             end
             local pr = routeById(ui.pickId)
-            ui.pick:SetText(pr and routeLabel(pr) or "No routes")
+            ui.pick:SetText(pr and pickerLabel(ui.pickId) or "No routes")    -- as it reads in the list
             local r = currentRoute()
             ui.list:SetItems(r and r.steps or {})
             ui.stepCount:SetText(r and (C.dim .. ("%d/%d done"):format(math.min(db.step - 1, #r.steps), #r.steps) .. "|r") or "")
@@ -2921,7 +2990,7 @@ local function buildPage(panel)
             if r then ui.clearBtn:Show() else ui.clearBtn:Hide() end
             refreshClassTrack()
             ui.peers:SetItems(livePeers())
-        elseif tab == 2 then
+        elseif tab == TAB_QUESTS then
             refreshQuests()
         elseif tab == 3 then
             ui.draftBtn:SetShown(QB.Has())
@@ -2948,7 +3017,7 @@ local function buildPage(panel)
         end
     end
     panel:SetScript("OnShow", function() refreshPage() end)
-    ui.tabs:Select(1)
+    ui.tabs:Select(db.route and TAB_GUIDE or TAB_QUESTS)
 end
 
 ---------------------------------------------------------------------------
@@ -3018,7 +3087,7 @@ SlashCmdList.RUINPATH = function(input)
         db.trainer = not db.trainer
         return M:Print("Trainer reminders " .. (db.trainer and "on." or "off."))
     end
-    if msg == "quests" then M:OpenTab(); if ui.tabs then ui.tabs:Select(2) end; return end
+    if msg == "quests" then M:OpenTab(); if ui.tabs then ui.tabs:Select(TAB_QUESTS) end; return end
     if msg == "draft" then return M:DraftFromData() end
     if msg == "skip" then
         db.skipDone = not db.skipDone

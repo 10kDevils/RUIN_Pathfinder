@@ -104,7 +104,7 @@ local function look()
     return {
         card = opt("pinShowCard", true), label = opt("pinShowLabel", true), title = opt("pinShowTitle", true),
         objectives = opt("pinObjectives", true), marker = opt("pinShowMarker", true), stem = opt("pinShowStem", true),
-        distance = opt("pinShowDistance", true), walk = opt("pinWalk", true), edge = opt("pinEdge", true),
+        distance = opt("pinShowDistance", true), walk = opt("pinWalk", true), edge = opt("pinEdge", true), edgeCard = opt("pinEdgeCard", true),
         markerStyle = opt("pinMarkerStyle", "emblem"), textSize = opt("pinTextSize", "normal"),
         cardAlpha = opt("pinCardAlpha", 0.86), size = opt("pinScale", 1) or 1,
     }
@@ -264,8 +264,18 @@ local function paint(p, d, lk, relayout)
         p.arrow:SetPoint("CENTER", p, "CENTER", math.cos(d.angle or 0) * (PIN * 0.82), math.sin(d.angle or 0) * (PIN * 0.82))
         p.arrow:SetRotation((d.angle or 0) - math.pi / 2)
         p.arrow:Show()
-        p.beam:Hide(); p.foot:Hide(); p.card:Hide()
+        p.beam:Hide(); p.foot:Hide()
         p.tag:SetPoint("TOP", p, "BOTTOM", 0, -6)
+        -- the card at the edge too: beside the marker, on the side toward the
+        -- middle of the screen, so it stays on screen
+        if relayout then
+            p.sub:SetText(d.sub or "")
+            p.title:SetText(d.title or "")
+            p.obj:SetText(d.obj or "")
+            p.hasCard = layoutCard(p, lk, (d.obj or "") ~= "")
+        end
+        vis(p.card, lk.edgeCard and lk.card and p.hasCard and true or false)
+        p.card:SetAlpha(1)
     else
         p.arrow:Hide()
         vis(p.beam, lk.stem); vis(p.foot, lk.stem)
@@ -288,8 +298,19 @@ local function paint(p, d, lk, relayout)
     local yards = d.yards or 0
     local walk = lk.walk and walkText(yards) or nil
     p.dist:SetText(C.white .. yardsText(yards) .. "|r" .. (walk and ("   " .. C.dim .. walk .. "|r") or ""))
-    p.tag:SetWidth(math.max(56, ((p.dist.GetStringWidth and p.dist:GetStringWidth()) or 60) + 18))
+    local tagW = math.max(56, ((p.dist.GetStringWidth and p.dist:GetStringWidth()) or 60) + 18)
+    p.tag:SetWidth(tagW)
     vis(p.tag, lk.distance)
+    if d.clamped then
+        -- beside the marker (clear of the arrow and the distance tag), on the
+        -- side toward the middle of the screen, so it stays on screen
+        local gap = math.max(EDGE_ARROW, (lk.distance and (tagW / 2 - PIN / 2) or 0) + 6)
+        p.card:ClearAllPoints()
+        if d.side == "right" then p.card:SetPoint("RIGHT", p, "LEFT", -gap, 0)
+        elseif d.side == "left" then p.card:SetPoint("LEFT", p, "RIGHT", gap, 0)
+        elseif d.side == "top" then p.card:SetPoint("TOP", lk.distance and p.tag or p, "BOTTOM", 0, -6)
+        else p.card:SetPoint("BOTTOM", p, "TOP", 0, 7) end
+    end
 end
 
 local function setGameMarker(hide)
@@ -299,6 +320,25 @@ local function setGameMarker(hide)
         local part = SuperTrackedFrame[key]
         if part and part.SetAlpha then part:SetAlpha(hide and 0 or 1) end
     end
+end
+
+-- The rectangle the pin stays inside: each side's boundary is a share of the
+-- screen (Options: pinEdgeTop/Bottom/Left/Right, in percent), never closer to
+-- the border than the edge pin needs.
+local function pct(key)
+    local v = tonumber(opt(key, 0)) or 0
+    return math.max(0, math.min(45, v)) / 100
+end
+function M.EdgeBounds(w, h)
+    return { left = math.max(EDGE_INSET, w * pct("pinEdgeLeft")), right = math.min(w - EDGE_INSET, w * (1 - pct("pinEdgeRight"))),
+             bottom = math.max(EDGE_INSET, h * pct("pinEdgeBottom")), top = math.min(h - EDGE_INSET, h * (1 - pct("pinEdgeTop"))) }
+end
+-- which boundary the edge pin sits on (where its card goes)
+function M.EdgeSide(x, y, b)
+    if x >= b.right - 1 then return "right" end
+    if x <= b.left + 1 then return "left" end
+    if y >= b.top - 1 then return "top" end
+    return "bottom"
 end
 
 local lastQuest, objTick, lastText = nil, 0, nil
@@ -314,6 +354,11 @@ local function update(_, elapsed)
     local clamped = C_Navigation.WasClampedToScreen and C_Navigation.WasClampedToScreen()
     local title, sub, qid = target()
     local lk = look()
+    -- the edge boundaries (Options): a spot this close to a side of the screen
+    -- already counts as off screen, and the edge pin waits at that line
+    local w, h = UIParent:GetWidth(), UIParent:GetHeight()
+    local b = M.EdgeBounds(w, h)
+    if not clamped and (nx < b.left or nx > b.right or ny < b.bottom or ny > b.top) then clamped = true end
     if clamped and not lk.edge then pin:Hide(); return end
     -- inside the quest's area the pin fades away over half a second (and back when you leave)
     local want = inArea(yards, qid) and 0 or 1
@@ -330,10 +375,10 @@ local function update(_, elapsed)
     local d = { title = title, sub = sub, yards = yards, clamped = clamped }
     if clamped then
         -- at the edge: pull the marker in from the border and point the arrow at the spot
-        local w, h = UIParent:GetWidth(), UIParent:GetHeight()
         d.angle = math.atan2(ny - h / 2, nx - w / 2)
-        local ex = math.max(EDGE_INSET, math.min(w - EDGE_INSET, nx))
-        local ey = math.max(EDGE_INSET, math.min(h - EDGE_INSET, ny))
+        local ex = math.max(b.left, math.min(b.right, nx))
+        local ey = math.max(b.bottom, math.min(b.top, ny))
+        d.side = M.EdgeSide(ex, ey, b)
         local sc = 0.8 * lk.size
         pin:SetScale(sc)
         -- offsets are in the pin's own (scaled) units
@@ -444,7 +489,7 @@ local SAMPLE = {
 }
 -- the look's settings and their defaults (Reset puts these back)
 local LOOK_KEYS = { pinShowCard = true, pinShowLabel = true, pinShowTitle = true, pinObjectives = true,
-    pinShowMarker = true, pinShowStem = true, pinShowDistance = true, pinWalk = true, pinEdge = true,
+    pinShowMarker = true, pinShowStem = true, pinShowDistance = true, pinWalk = true, pinEdge = true, pinEdgeCard = true,
     pinMarkerStyle = "emblem", pinTextSize = "normal", pinCardAlpha = 0.86, pinScale = 1 }
 
 local function refreshEditor()
@@ -461,8 +506,8 @@ local function refreshEditor()
     local e = editor.edgePreview
     e:SetScale(0.8 * lk.size)
     e:ClearAllPoints()
-    e:SetPoint("CENTER", editor.edgeArea, "CENTER", -8 / (0.8 * lk.size), 6 / (0.8 * lk.size))
-    paint(e, { yards = 420, clamped = true, angle = 0 }, lk, true)
+    e:SetPoint("RIGHT", editor.edgeArea, "RIGHT", -34 / (0.8 * lk.size), -8 / (0.8 * lk.size))
+    paint(e, { yards = 420, clamped = true, angle = 0, side = "right", title = SAMPLE.title, sub = SAMPLE.sub, obj = SAMPLE.obj }, lk, true)
     vis(e, lk.edge)
     editor.edgeOff:SetText(lk.edge and "" or (C.dim .. "Off: the pin hides when the spot is off screen.|r"))
     for _, c in ipairs(editor.checks) do c:Refresh() end
@@ -478,7 +523,7 @@ end
 local function buildEditor()
     local f = CreateFrame("Frame", "RUIN_PathfinderWaypointEditor", UIParent)
     editor = f
-    f:SetSize(660, 430)
+    f:SetSize(660, 456)
     f:SetPoint("CENTER")
     f:SetFrameStrata("DIALOG")
     f:SetClampedToScreen(true)
@@ -504,7 +549,7 @@ local function buildEditor()
     local area = CreateFrame("Frame", nil, f)
     f.area = area
     area:SetPoint("TOPLEFT", 14, -40)
-    area:SetSize(300, 290)
+    area:SetSize(300, 230)
     local sky = area:CreateTexture(nil, "BACKGROUND")
     sky:SetAllPoints()
     sky:SetColorTexture(1, 1, 1, 1)
@@ -525,7 +570,7 @@ local function buildEditor()
     local edgeArea = CreateFrame("Frame", nil, f)
     f.edgeArea = edgeArea
     edgeArea:SetPoint("TOPLEFT", area, "BOTTOMLEFT", 0, -6)
-    edgeArea:SetSize(300, 70)
+    edgeArea:SetSize(300, 124)
     local esky = edgeArea:CreateTexture(nil, "BACKGROUND")
     esky:SetAllPoints()
     esky:SetColorTexture(0.10, 0.12, 0.15, 1)
@@ -584,6 +629,7 @@ local function buildEditor()
     check("Distance", "pinShowDistance", "How far it is, in the small tag under the dot.")
     check("Walking time", "pinWalk", "Roughly how long the walk is, beside the distance.", true)
     check("Show at the screen edge when off screen", "pinEdge", "When the spot is behind you or off screen, the pin waits at the edge with an arrow pointing the way.")
+    check("Card at the edge too", "pinEdgeCard", "The card (with the parts ticked above) beside the pin while it waits at the screen edge.", true)
     y = y - 4
     choice("Marker style", "pinMarkerStyle", { { "emblem", "Emblem" }, { "dot", "Dot" } })
     choice("Name size", "pinTextSize", { { "small", "Small" }, { "normal", "Normal" }, { "large", "Large" } })
@@ -599,7 +645,7 @@ local function buildEditor()
     reset.tip = "Everything back to how the pin first looked."
     local done = W.Button(f, "Done", 80, function() f:Hide() end)
     done:SetPoint("BOTTOMRIGHT", -14, 12)
-    local where = W.Label(f, C.dim .. "Where it sits (nudges) and when it hides: Pathfinder > Options.|r", "GameFontHighlightSmall")
+    local where = W.Label(f, C.dim .. "Where it sits, when it moves to the edge, and when it hides: Pathfinder > Options.|r", "GameFontHighlightSmall")
     where:SetPoint("BOTTOM", 0, 18)
 end
 

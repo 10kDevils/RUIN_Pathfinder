@@ -54,7 +54,8 @@ local DEFAULTS = { route = nil, step = 1, tracker = true, trackerPos = nil, foll
                    -- waypoint and pin settings (Options tab)
                    waypoint = true, trackQuests = true, autoNav = true, announce = true,
                    pin = true, pinHideInArea = true, pinHideYards = 15, pinObjectives = true, pinWalk = true,
-                   pinScale = 1, pinEdge = true, pinOffsetX = 0, pinOffsetY = 0 }
+                   pinScale = 1, pinEdge = true, pinOffsetX = 0, pinOffsetY = 0,
+                   remindPickups = true, remindArea = true }
 local ACCOUNT_DEFAULTS = { custom = {}, inbox = {}, official = {}, rec = { on = false, title = "", steps = {} } }
 -- Officer routes carry this badge wherever they're listed.
 local OFFICER_ICON = "|TInterface\\GroupFrame\\UI-Group-AssistantIcon:14:14|t"
@@ -819,6 +820,127 @@ function M.InQuestArea(qid)
     areaCache.q, areaCache.t, areaCache.v = qid, now, v
     return v
 end
+
+---------------------------------------------------------------------------
+-- Pick-up reminders
+--   * walked past: a quest your route picks up next, whose giver you came
+--     near and then left without taking it;
+--   * targets here: you're in the objective area of a quest you could do but
+--     don't have (one your route picks up, or one of this zone's quests for
+--     your level whose earlier quests you've done).
+-- Each quest is mentioned once a session (per kind). Not in instances.
+---------------------------------------------------------------------------
+local REMIND_NEAR, REMIND_FAR = 40, 120          -- yards: came near the giver, then left
+local REMIND_AHEAD = 40                          -- route steps looked ahead
+local remind = { near = {}, past = {}, area = {}, zoneList = nil, zoneMap = nil, zoneAt = -999 }
+
+local function yardsTo(spots, pm, px, py)
+    local scale = yardsPerUnit(pm)
+    if not scale then return nil end
+    local best
+    for _, sp in ipairs(spots or {}) do
+        if sp.map == pm then
+            local dx, dy = (sp.x - px) * scale[1], (sp.y - py) * scale[2]
+            local d = math.sqrt(dx * dx + dy * dy)
+            if not best or d < best then best = d end
+        end
+    end
+    return best
+end
+
+local function haveOrDone(q) return QB.Done(q) or (QB.InLog(q)) end
+
+local function giverText(q)
+    local info = QB.Quest(q)
+    local who = info and info.starts and info.starts[1]
+    local sp = QB.Spot(q, "start")
+    local where = sp and ("%.0f, %.0f"):format(sp.x * 100, sp.y * 100) or nil
+    return (info and info.name or ("quest " .. q)), who, where
+end
+
+-- the route's upcoming pick-ups: { qid = step index }
+local function routeAccepts()
+    local r = currentRoute()
+    local out = {}
+    if not r then return out end
+    for i = db.step or 1, math.min(#r.steps, (db.step or 1) + REMIND_AHEAD) do
+        local st = r.steps[i]
+        if st and st.act == "accept" and st.qid and not haveOrDone(st.qid) then out[st.qid] = i end
+    end
+    return out
+end
+
+-- this zone's quests you could take now (level, earlier quests done)
+local function zoneCandidates(pm)
+    if remind.zoneMap == pm and GetTime() - remind.zoneAt < 30 and remind.zoneList then return remind.zoneList end
+    local list = {}
+    local area = QB.AreaOf and QB.AreaOf(pm)
+    local level = UnitLevel and UnitLevel("player") or 1
+    for _, e in ipairs(area and QB.ZoneQuests(area) or {}) do
+        local info = QB.Quest(e.id)
+        local req = info and (info.req or 1) or 99
+        if info and req <= level and (e.level or level) >= level - 5 and not haveOrDone(e.id) then
+            local ready = true
+            for _, p in ipairs(QB.Prereqs(e.id)) do if not QB.Done(p) then ready = false; break end end
+            if ready then list[#list + 1] = e.id end
+        end
+        if #list >= 60 then break end
+    end
+    remind.zoneList, remind.zoneMap, remind.zoneAt = list, pm, GetTime()
+    return list
+end
+
+local function sayReminder(msg)
+    M:Print(msg)
+    M:Toast(msg)
+    if PlaySound and SOUNDKIT and SOUNDKIT.UI_70_ARTIFACT_FORGE_TRAIT_FIRST_TRAIT then pcall(PlaySound, SOUNDKIT.UI_70_ARTIFACT_FORGE_TRAIT_FIRST_TRAIT) end
+end
+
+function M.CheckReminders()
+    if not (db and QB.Has and QB.Has()) then return end
+    if IsInInstance and IsInInstance() then return end
+    local pm, px, py = R.Map:PlayerPos()
+    if not (pm and px) then return end
+    local accepts = routeAccepts()
+    -- walked past a pick-up on your route
+    if db.remindPickups ~= false then
+        for q, idx in pairs(accepts) do
+            local d = yardsTo(QB.Spots(q, "start"), pm, px, py)
+            if d and d <= REMIND_NEAR then remind.near[q] = true
+            elseif d and d >= REMIND_FAR and remind.near[q] and not remind.past[q] then
+                remind.past[q] = true
+                local name, who, where = giverText(q)
+                sayReminder(("You walked past %s%s|r (route step %d): pick it up%s%s."):format(C.gold, name, idx,
+                    who and (" from " .. who) or "", where and (" at " .. where) or ""))
+            end
+        end
+    end
+    -- in the targets' area of a quest you don't have
+    if db.remindArea ~= false then
+        local seen = {}
+        local function try(q, onRoute)
+            if seen[q] or remind.area[q] then return end
+            seen[q] = true
+            local d = yardsTo(QB.Spots(q, "objective"), pm, px, py)
+            if d and d <= AREA_YARDS then
+                remind.area[q] = true
+                local name, who, where = giverText(q)
+                sayReminder(("%s%s|r's targets are here, but you don't have it%s: it's picked up%s%s."):format(C.gold, name,
+                    onRoute and " (it's on your route)" or "", who and (" from " .. who) or "", where and (" at " .. where) or ""))
+                return true
+            end
+        end
+        for q in pairs(accepts) do if try(q, true) then return end end
+        for _, q in ipairs(zoneCandidates(pm)) do if try(q, false) then return end end
+    end
+end
+
+-- forget the "came near" marks of quests you took, so a later pass is fresh
+local function remindAccepted(q)
+    if q then remind.near[q], remind.past[q], remind.area[q] = nil, nil, nil end
+    remind.zoneList = nil
+end
+M.ResetReminders = function() remind.near, remind.past, remind.area, remind.zoneList = {}, {}, {}, nil end
 
 -- A quest's objectives as lines with pips: filled for done, hollow for not.
 function M.ObjectiveLines(qid, max)
@@ -1642,6 +1764,7 @@ local function onAccepted(_, a1, a2)
     local title = questTitle(a2 or a1, a2 and a1 or nil)
     local s = currentStep()
     local qid = tonumber(a2 or a1)
+    remindAccepted(qid)
     -- the atlas: where it was picked up (not for quests started from an item)
     -- (only from an NPC or object: a quest a party member shared isn't where you stand)
     local fromNpc = UnitExists and UnitExists("npc") and not (UnitIsPlayer and UnitIsPlayer("npc"))
@@ -2700,13 +2823,15 @@ local function buildOptions(page)
     end
     local COL2 = 300
 
-    local t = card("Tracker", 0, 84)
+    local t = card("Tracker", 0, 114)
     check(t, "Show the tracker", "tracker", "The small window with the Route and Tracked tabs: < and > on its sides, the x to clear, double-click to open Pathfinder.", nil, 12, -30)
     check(t, "Tracker arrow and map pin", "arrow", "The arrow on the tracker pointing to the step, and the step's pin on the world map.", nil, COL2, -30)
     check(t, "Skip done quests", "skipDone", "Steps for quests you've already done, or already have, tick themselves off.", nil, 12, -54)
     check(t, "Say each new waypoint in chat", "announce", "\"Waypoint set: ... (N yards)\" when you move to a step.", nil, COL2, -54)
+    check(t, "Remind me of pick-ups I walk past", "remindPickups", "When you come near the giver of a quest your route picks up next and leave without taking it.", nil, 12, -78)
+    check(t, "Remind me at a quest I don't have", "remindArea", "When you walk into the area where a quest's targets are and you could take that quest but don't have it (your route's, or this zone's for your level).", nil, COL2, -78)
 
-    local w = card("Waypoint", -92, 84)
+    local w = card("Waypoint", -122, 84)
     check(w, "Put a waypoint on each step", "waypoint", "The game's waypoint on the step's spot, so the pin (and the game's navigation) leads you there. /path waypoint", nil, 12, -30)
     check(w, "Track quest steps the game's way", "trackQuests", "For a quest in your log, track the quest itself (like clicking it in the objective tracker) so the pin follows its objective or turn-in.", nil, COL2, -30)
     check(w, "Turn on In-Game Navigation when needed", "autoNav", "The game draws nothing in the world while its In-Game Navigation option is off. Pathfinder turns it on when it places a waypoint.", nil, 12, -54)
@@ -2715,7 +2840,7 @@ local function buildOptions(page)
     share.tip = "Pathfinder's atlas: where you pick up, do and hand in quests, shared with RUIN so routes follow where things really are on WoW Forever. Only quest numbers and map spots. /path atlas"
     checks[#checks + 1] = share
 
-    local p = card("RUIN pin", -184, 132)
+    local p = card("RUIN pin", -214, 132)
     check(p, "Show the RUIN pin", "pin", "RUIN's marker over whatever the game is navigating to. Off: the game's own marker shows instead. /path pin", nil, 12, -30)
     check(p, "Hide when the game says you're there", "pinHideInArea", "The pin always steps aside in the tracked quest's objective area. This also hides it when the game says you've arrived, or within the distance below.", nil, COL2, -30)
 
@@ -2753,14 +2878,14 @@ local function buildOptions(page)
     local showX = nudge("Left / right:", "pinOffsetX", COL2 + 4, -100, "right", "left")
     local syncSize = function() end
 
-    local k = card("Controls", -324, 76)
+    local k = card("Controls", -354, 76)
     local kl = W.Label(k, "", "GameFontHighlightSmall")
     kl:SetPoint("TOPLEFT", 12, -30)
     kl:SetPoint("RIGHT", k, "RIGHT", -12, 0)
     kl:SetJustifyV("TOP")
     if kl.SetSpacing then kl:SetSpacing(3) end
     kl:SetText(C.white .. "Key bindings|r " .. C.dim .. "(Game Menu > Options > Keybindings > AddOns > RUIN Pathfinder):|r next step, previous step, clear the route, show or hide the pin, open Pathfinder.\n"
-        .. C.white .. "Chat:|r " .. C.dim .. "/path next, /path prev, /path clear, /path pin, /path editor, /path waypoint, /path nav|r")
+        .. C.white .. "Chat:|r " .. C.dim .. "/path next, /path prev, /path clear, /path pin, /path editor, /path waypoint, /path nav, /path remind|r")
 
     page:SetScript("OnShow", function()
         for _, c in ipairs(checks) do c:Refresh() end
@@ -2858,6 +2983,7 @@ function M:OnEnable()
         -- ask officers for the RUIN routes published while you were away
         C_Timer.After(9, function() if R:IsConnected() then self:Send("ASK", {}, "ORG") end end)
     end)
+    C_Timer.NewTicker(2, function() pcall(M.CheckReminders) end)
     C_Timer.NewTicker(10, function()
         if db.route and GetTime() - lastShare >= SHARE_EVERY then share() end
         shareQuests()
@@ -2915,6 +3041,11 @@ SlashCmdList.RUINPATH = function(input)
     elseif msg == "unfollow" then M:Follow(nil)
     elseif msg == "clear" or msg == "stop" then M:ClearRoute()
     elseif msg == "nav" then M:NavReport()
+    elseif msg == "remind" then
+        local on = not (db.remindPickups ~= false or db.remindArea ~= false)
+        db.remindPickups, db.remindArea = on, on
+        M.ResetReminders()
+        M:Print("Pick-up reminders " .. (on and "on." or "off.") .. " (Options > Reminders for each kind.)")
     elseif msg == "atlas" then
         local n = M.AtlasCounts()
         M:Print(("Atlas: where %d quests are picked up, %d handed in, and the objectives of %d, from RUIN members playing WoW Forever. Sharing is %s."):format(

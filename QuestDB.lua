@@ -736,6 +736,14 @@ local function dungeonAreas()
     return out
 end
 
+-- The database's zone (area) for a game map, or nil.
+function QB.AreaOf(uiMap)
+    local m = db()
+    if not (m and m.Zone and uiMap) then return nil end
+    local ok, area = pcall(m.Zone.GetAreaIdByUiMapId, m.Zone, uiMap)
+    return ok and area or nil
+end
+
 function QB.AreaName(area)
     local name = C_Map and C_Map.GetAreaInfo and C_Map.GetAreaInfo(area)
     if type(name) == "string" and name ~= "" then return name end

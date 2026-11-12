@@ -8,6 +8,7 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.6.1 — 2026-11-11
 
+- **Pick-up reminders.** Walk near the giver of a quest your route picks up next and leave without taking it, and Pathfinder reminds you who gives it and where (route step and coordinates). Walk into the area where a quest's targets are while you don't have the quest (your route's, or one of this zone's for your level whose earlier quests you've done), and it tells you where to pick it up. Each quest once a session; not in instances. Options > Tracker has a switch for each, /path remind turns both on or off.
 - **Security:** quest-place sightings from others count once per player and place, so one player sending a sighting again and again can't move a quest giver. With quest log or quest place sharing off (RUIN Core), Pathfinder doesn't send them.
 - Pathfinder never changes the game's tracked quest or waypoint during combat, from any path (closing the tracker's Tracked tab or clearing the waypoint could still do it), and doesn't set the tracked quest again when it's already the one tracked. Whatever waited is caught up when combat ends.
 - Pathfinder has its own quest database now: RUIN Quest Data, a new addon in the suite with every WoW Forever quest and the NPCs, objects and items they use (see its NOTICE file for where the data comes from). Zone routes, dungeon quest routes, waypoints and quest tooltips all read from it, and Pathfinder no longer looks for any other quest addon.

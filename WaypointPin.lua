@@ -498,7 +498,8 @@ local SAMPLE = {
 local LOOK_KEYS = { pinShowCard = true, pinShowLabel = true, pinShowTitle = true, pinObjectives = true,
     pinShowMarker = true, pinShowStem = true, pinShowDistance = true, pinWalk = true, pinEdge = true, pinEdgeCard = true,
     pinMarkerStyle = "emblem", pinTextSize = "normal", pinCardAlpha = 0.86, pinScale = 1,
-    pinOffsetX = 0, pinOffsetY = 0 }
+    pinOffsetX = 0, pinOffsetY = 0, pinHideInArea = true, pinHideYards = 15,
+    pinEdgeTop = 0, pinEdgeBottom = 0, pinEdgeLeft = 0, pinEdgeRight = 0 }
 
 local function refreshEditor()
     if not (editor and editor:IsShown()) then return end
@@ -534,7 +535,7 @@ end
 local function buildEditor()
     local f = CreateFrame("Frame", "RUIN_PathfinderWaypointEditor", UIParent)
     editor = f
-    f:SetSize(660, 534)
+    f:SetSize(980, 520)
     f:SetPoint("CENTER")
     f:SetFrameStrata("DIALOG")
     f:SetClampedToScreen(true)
@@ -550,7 +551,7 @@ local function buildEditor()
 
     local h = W.Header(f, "Waypoint Editor")
     h:SetPoint("TOPLEFT", 14, -12)
-    local hint = W.Label(f, C.dim .. "What the RUIN pin shows, and how it looks.|r", "GameFontHighlightSmall")
+    local hint = W.Label(f, C.dim .. "What the RUIN Waypoint shows, how it looks, and where and when it shows.|r", "GameFontHighlightSmall")
     hint:SetPoint("LEFT", h, "RIGHT", 10, 0)
     local close = W.Button(f, "x", 22, function() f:Hide() end)
     close:SetPoint("TOPRIGHT", -8, -8)
@@ -560,7 +561,7 @@ local function buildEditor()
     local area = CreateFrame("Frame", nil, f)
     f.area = area
     area:SetPoint("TOPLEFT", 14, -40)
-    area:SetSize(300, 300)
+    area:SetSize(300, 290)
     local sky = area:CreateTexture(nil, "BACKGROUND")
     sky:SetAllPoints()
     sky:SetColorTexture(1, 1, 1, 1)
@@ -593,7 +594,7 @@ local function buildEditor()
 
     -- the settings
     f.checks, f.choices = {}, {}
-    local X0, y = 334, -44
+    local X0, y = 334, -44   -- the second column; the third starts at 660
     local function section(text)
         local s = W.Label(f, C.gold .. text .. "|r", "GameFontNormal")
         s:SetPoint("TOPLEFT", X0, y)
@@ -648,8 +649,9 @@ local function buildEditor()
     choice("Card", "pinCardAlpha", { { 0.55, "Light" }, { 0.86, "Normal" }, { 1, "Solid" } })
     choice("Pin size", "pinScale", { { 0.8, "Small" }, { 1, "Normal" }, { 1.25, "Large" } })
 
+    -- third column: where it sits, when it hides, when it moves to the edge
+    X0, y = 660, -44
     -- where the pin sits over the spot: nudges in screen pixels
-    y = y - 4
     section("Position")
     f.nudges = {}
     local function nudge(label, key, upWord, downWord)
@@ -673,6 +675,39 @@ local function buildEditor()
     nudge("Up / down:", "pinOffsetY", "up", "down")
     nudge("Left / right:", "pinOffsetX", "right", "left")
 
+    -- a number with - and + beside it
+    local function stepper(label, key, default, step, lo, hi, fmt, tip)
+        local l = W.Label(f, "", "GameFontHighlight")
+        l:SetPoint("TOPLEFT", X0 + 2, y - 4)
+        local function show() l:SetText(("%s %s" .. fmt .. "|r"):format(label, C.gold, opt(key, default) or default)) end
+        local function set(v) setLook(key, math.max(lo, math.min(hi, v))) end
+        local minus = W.Button(f, "-", 24, function() set((opt(key, default) or default) - step) end)
+        minus:SetPoint("TOPLEFT", X0 + 170, y)
+        local plus = W.Button(f, "+", 24, function() set((opt(key, default) or default) + step) end)
+        plus:SetPoint("LEFT", minus, "RIGHT", 2, 0)
+        minus.tip, plus.tip = tip, tip
+        f.nudges[#f.nudges + 1] = show
+        y = y - 26
+    end
+
+    y = y - 10
+    section("Hiding")
+    check("Hide when the game says you're there", "pinHideInArea", "The pin always steps aside in the tracked quest's objective area. This also hides it when the game says you've arrived, or within the distance below.")
+    stepper("Hide within", "pinHideYards", 15, 5, 0, 100, "%d yd", "Nearer than this, the pin hides (0: never).")
+
+    y = y - 10
+    section("Screen edge")
+    local el = W.Label(f, C.dim .. "The pin moves to the edge once the spot comes this close to that side of the screen (0%: only when it's off screen).|r", "GameFontHighlightSmall")
+    el:SetPoint("TOPLEFT", X0 + 2, y)
+    el:SetWidth(290)
+    el:SetJustifyH("LEFT")
+    y = y - 32
+    local edgeTip = "Each step is 5% of the screen; 0%: only when the spot is off screen that way."
+    stepper("Top:", "pinEdgeTop", 0, 5, 0, 45, "%d%%", edgeTip)
+    stepper("Bottom:", "pinEdgeBottom", 0, 5, 0, 45, "%d%%", edgeTip)
+    stepper("Left:", "pinEdgeLeft", 0, 5, 0, 45, "%d%%", edgeTip)
+    stepper("Right:", "pinEdgeRight", 0, 5, 0, 45, "%d%%", edgeTip)
+
     local reset = W.Button(f, "Reset", 80, function()
         for k in pairs(LOOK_KEYS) do if M.SetPinSetting then M.SetPinSetting(k, nil) end end
         if M.RefreshPin then M.RefreshPin() end
@@ -682,8 +717,6 @@ local function buildEditor()
     reset.tip = "Everything back to how the pin first looked."
     local done = W.Button(f, "Done", 80, function() f:Hide() end)
     done:SetPoint("BOTTOMRIGHT", -14, 12)
-    local where = W.Label(f, C.dim .. "When it moves to the edge and when it hides: Pathfinder > Options.|r", "GameFontHighlightSmall")
-    where:SetPoint("BOTTOM", 0, 18)
 end
 
 function M.OpenWaypointEditor()

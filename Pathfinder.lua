@@ -2881,59 +2881,23 @@ local function buildOptions(page)
     check(t, "Remind me of pick-ups I walk past", "remindPickups", "When you come near the giver of a quest your route picks up next and leave without taking it.", nil, 12, -82)
     check(t, "Remind me at a quest I don't have", "remindArea", "When you walk into the area where a quest's targets are and you could take that quest but don't have it (your route's, or this zone's for your level).", nil, COL2, -82)
 
-    local w = card("Waypoint", -118, 86)
-    check(w, "Put a waypoint on each step", "waypoint", "The game's waypoint on the step's spot, so the pin (and the game's navigation) leads you there. /path waypoint", nil, 12, -30)
-    check(w, "Track quest steps the game's way", "trackQuests", "For a quest in your log, track the quest itself (like clicking it in the objective tracker) so the pin follows its objective or turn-in.", nil, COL2, -30)
-    check(w, "Turn on In-Game Navigation", "autoNav", "The game draws nothing in the world while its In-Game Navigation option is off. Pathfinder turns it on when it places a waypoint.", nil, 12, -54)
+    local w = card("Waypoint", -118, 118)
+    -- first and biggest: the RUIN Waypoint itself, with its editor beside it
+    local pinCheck = check(w, "Show the RUIN Waypoint", "pin", "RUIN's marker over whatever the game is navigating to. Off: the game's own marker shows instead. /path pin", nil, 12, -30)
+    if pinCheck.label.SetFontObject then pinCheck.label:SetFontObject("GameFontNormalLarge") end
+    if pinCheck.SetHitRectInsets then pinCheck:SetHitRectInsets(0, -((pinCheck.label:GetStringWidth() or 160) + 6), 0, 0) end
+    local edit = W.Button(w, "Waypoint Editor", 140, function() if M.OpenWaypointEditor then M.OpenWaypointEditor() end end)
+    edit:SetPoint("LEFT", pinCheck.label, "RIGHT", 18, 0)
+    edit.tip = "What the RUIN Waypoint shows and how it looks, where it sits over the spot, when it hides and when it moves to the screen edge, with a live preview. /path editor"
+    check(w, "Put a waypoint on each step", "waypoint", "The game's waypoint on the step's spot, so the pin (and the game's navigation) leads you there. /path waypoint", nil, 12, -62)
+    check(w, "Track quest steps the game's way", "trackQuests", "For a quest in your log, track the quest itself (like clicking it in the objective tracker) so the pin follows its objective or turn-in.", nil, COL2, -62)
+    check(w, "Turn on In-Game Navigation", "autoNav", "The game draws nothing in the world while its In-Game Navigation option is off. Pathfinder turns it on when it places a waypoint.", nil, 12, -88)
     local share = W.Check(w, "Share quest locations with RUIN", function() return adb.atlasShare ~= false end, function(v) adb.atlasShare = v end)
-    share:SetPoint("TOPLEFT", COL2, -54)
+    share:SetPoint("TOPLEFT", COL2, -88)
     share.tip = "Pathfinder's atlas: where you pick up, do and hand in quests, shared with RUIN so routes follow where things really are on WoW Forever. Only quest numbers and map spots. /path atlas"
     checks[#checks + 1] = share
 
-    local p = card("RUIN pin", -212, 90)
-    check(p, "Show the RUIN pin", "pin", "RUIN's marker over whatever the game is navigating to. Off: the game's own marker shows instead. /path pin", nil, 12, -30)
-    check(p, "Hide when the game says you're there", "pinHideInArea", "The pin always steps aside in the tracked quest's objective area. This also hides it when the game says you've arrived, or within the distance below.", nil, COL2, -30)
-
-    local edit = W.Button(p, "Waypoint Editor", 140, function() if M.OpenWaypointEditor then M.OpenWaypointEditor() end end)
-    edit:SetPoint("TOPLEFT", 14, -56)
-    edit.tip = "Choose what the pin shows (card, label, title, objectives, marker, stem, distance, walking time, edge arrow), how it looks and where it sits over the spot, with a live preview. /path editor"
-
-    local hl = W.Label(p, "", "GameFontHighlight")
-    hl:SetPoint("TOPLEFT", COL2 + 4, -60)
-    local function yardsLabel() hl:SetText(("Hide within %s%d yd|r"):format(C.gold, db.pinHideYards or 15)) end
-    local minus = W.Button(p, "-", 24, function() db.pinHideYards = math.max(0, (db.pinHideYards or 15) - 5); yardsLabel() end)
-    minus:SetPoint("LEFT", hl, "RIGHT", 10, 0)
-    local plus = W.Button(p, "+", 24, function() db.pinHideYards = math.min(100, (db.pinHideYards or 15) + 5); yardsLabel() end)
-    plus:SetPoint("LEFT", minus, "RIGHT", 2, 0)
-    minus.tip, plus.tip = "Nearer than this, the pin hides (0: never).", "Nearer than this, the pin hides (0: never)."
-
-    local syncSize = function() end
-
-    -- edge boundaries: how near each side of the screen the spot may come
-    -- before the pin moves to the edge (percent of the screen, each side its own)
-    local e = card("Screen edge", -310, 62)
-    local el = W.Label(e, C.dim .. "The pin moves to the edge once the spot comes this close to that side of the screen (0%: only off screen).|r", "GameFontHighlightSmall")
-    el:SetPoint("TOPLEFT", 110, -11)
-    el:SetPoint("RIGHT", e, "RIGHT", -12, 0)
-    el:SetJustifyH("LEFT")
-    local function bound(label, key, x)
-        local l = W.Label(e, "", "GameFontHighlight")
-        l:SetPoint("TOPLEFT", x, -34)
-        local function show()
-            l:SetText(("%s %s%d%%|r"):format(label, C.gold, db[key] or 0))
-            if M.RefreshPin then M.RefreshPin() end
-        end
-        local minus = W.Button(e, "-", 24, function() db[key] = math.max(0, (db[key] or 0) - 5); show() end)
-        minus:SetPoint("TOPLEFT", x + 96, -30)
-        local plus = W.Button(e, "+", 24, function() db[key] = math.min(45, (db[key] or 0) + 5); show() end)
-        plus:SetPoint("LEFT", minus, "RIGHT", 2, 0)
-        minus.tip, plus.tip = "Closer to that side (5% of the screen; 0%: only when it's off screen that way).", "Farther from that side (5% of the screen)."
-        return show
-    end
-    local edgeShows = { bound("Top:", "pinEdgeTop", 16), bound("Bottom:", "pinEdgeBottom", 196),
-                        bound("Left:", "pinEdgeLeft", 376), bound("Right:", "pinEdgeRight", 556) }
-
-    local k = card("Controls", -380, 56)
+    local k = card("Controls", -244, 56)
     local kl = W.Label(k, "", "GameFontHighlightSmall")
     kl:SetPoint("TOPLEFT", 12, -28)
     kl:SetPoint("RIGHT", k, "RIGHT", -12, 0)
@@ -2943,8 +2907,6 @@ local function buildOptions(page)
 
     page:SetScript("OnShow", function()
         for _, c in ipairs(checks) do c:Refresh() end
-        yardsLabel(); syncSize()
-        for _, f in ipairs(edgeShows) do f() end
     end)
     ui.optionChecks = checks
 end

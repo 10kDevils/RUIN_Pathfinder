@@ -306,7 +306,14 @@ local function paint(p, d, lk, relayout)
         -- side toward the middle of the screen, so it stays on screen
         local gap = math.max(EDGE_ARROW, (lk.distance and (tagW / 2 - PIN / 2) or 0) + 6)
         p.card:ClearAllPoints()
-        if d.side == "right" then p.card:SetPoint("RIGHT", p, "LEFT", -gap, 0)
+        -- without the marker its place is empty: the card takes it, just above
+        -- the distance tag, and stops short of the arrow
+        local clear = PIN * 0.82 - EDGE_ARROW / 2 - 4        -- the arrow's inner edge, from the middle
+        local above = -PIN / 2 - 2                           -- just above the distance tag
+        if not lk.marker and d.side == "right" then p.card:SetPoint("BOTTOMRIGHT", p, "CENTER", clear, above)
+        elseif not lk.marker and d.side == "left" then p.card:SetPoint("BOTTOMLEFT", p, "CENTER", -clear, above)
+        elseif not lk.marker and d.side ~= "top" then p.card:SetPoint("BOTTOM", p, "CENTER", 0, above)
+        elseif d.side == "right" then p.card:SetPoint("RIGHT", p, "LEFT", -gap, 0)
         elseif d.side == "left" then p.card:SetPoint("LEFT", p, "RIGHT", gap, 0)
         elseif d.side == "top" then p.card:SetPoint("TOP", lk.distance and p.tag or p, "BOTTOM", 0, -6)
         else p.card:SetPoint("BOTTOM", p, "TOP", 0, 7) end
@@ -490,7 +497,8 @@ local SAMPLE = {
 -- the look's settings and their defaults (Reset puts these back)
 local LOOK_KEYS = { pinShowCard = true, pinShowLabel = true, pinShowTitle = true, pinObjectives = true,
     pinShowMarker = true, pinShowStem = true, pinShowDistance = true, pinWalk = true, pinEdge = true, pinEdgeCard = true,
-    pinMarkerStyle = "emblem", pinTextSize = "normal", pinCardAlpha = 0.86, pinScale = 1 }
+    pinMarkerStyle = "emblem", pinTextSize = "normal", pinCardAlpha = 0.86, pinScale = 1,
+    pinOffsetX = 0, pinOffsetY = 0 }
 
 local function refreshEditor()
     if not (editor and editor:IsShown()) then return end
@@ -499,7 +507,9 @@ local function refreshEditor()
     local p = editor.preview
     p:SetScale(lk.size)
     p:ClearAllPoints()
-    p:SetPoint("CENTER", editor.area, "BOTTOM", 0, (64 / lk.size) + STEM + PIN / 2)
+    -- the nudges move it off the shadow on the ground, as they would in the world
+    local ox, oy = opt("pinOffsetX", 0) or 0, opt("pinOffsetY", 0) or 0
+    p:SetPoint("CENTER", editor.area, "BOTTOM", ox / lk.size, ((64 + FOOT_LIFT + oy) / lk.size) + STEM + PIN / 2)
     paint(p, SAMPLE, lk, true)
     vis(p, true)
     -- at the edge: the marker with the arrow pointing off to the right
@@ -512,6 +522,7 @@ local function refreshEditor()
     editor.edgeOff:SetText(lk.edge and "" or (C.dim .. "Off: the pin hides when the spot is off screen.|r"))
     for _, c in ipairs(editor.checks) do c:Refresh() end
     for _, row in ipairs(editor.choices) do row.sync() end
+    for _, show in ipairs(editor.nudges or {}) do show() end
 end
 
 local function setLook(key, v)
@@ -523,7 +534,7 @@ end
 local function buildEditor()
     local f = CreateFrame("Frame", "RUIN_PathfinderWaypointEditor", UIParent)
     editor = f
-    f:SetSize(660, 456)
+    f:SetSize(660, 534)
     f:SetPoint("CENTER")
     f:SetFrameStrata("DIALOG")
     f:SetClampedToScreen(true)
@@ -549,7 +560,7 @@ local function buildEditor()
     local area = CreateFrame("Frame", nil, f)
     f.area = area
     area:SetPoint("TOPLEFT", 14, -40)
-    area:SetSize(300, 230)
+    area:SetSize(300, 300)
     local sky = area:CreateTexture(nil, "BACKGROUND")
     sky:SetAllPoints()
     sky:SetColorTexture(1, 1, 1, 1)
@@ -623,6 +634,7 @@ local function buildEditor()
     check("Label (TRACKED QUEST, PATHFINDER...)", "pinShowLabel", "The small gold line saying what kind of target it is.", true)
     check("Name", "pinShowTitle", "The quest's or step's name.", true)
     check("Quest objectives", "pinObjectives", "A tracked quest's objectives, like the quest log.", true)
+    y = y - 4
     section("Marker")
     check("Marker", "pinShowMarker", "The emblem (or dot) over the spot.")
     check("Stem and ground dot", "pinShowStem", "The fine line down to the dot on the spot.")
@@ -636,6 +648,31 @@ local function buildEditor()
     choice("Card", "pinCardAlpha", { { 0.55, "Light" }, { 0.86, "Normal" }, { 1, "Solid" } })
     choice("Pin size", "pinScale", { { 0.8, "Small" }, { 1, "Normal" }, { 1.25, "Large" } })
 
+    -- where the pin sits over the spot: nudges in screen pixels
+    y = y - 4
+    section("Position")
+    f.nudges = {}
+    local function nudge(label, key, upWord, downWord)
+        local l = W.Label(f, "", "GameFontHighlight")
+        l:SetPoint("TOPLEFT", X0 + 2, y - 4)
+        local function show()
+            local v = opt(key, 0) or 0
+            l:SetText(("%s %s%s|r"):format(label, C.gold, v == 0 and "centered" or (("%d %s"):format(math.abs(v), v > 0 and upWord or downWord))))
+        end
+        local function set(v) setLook(key, math.max(-150, math.min(150, v))) end
+        local minus = W.Button(f, "-", 24, function() set((opt(key, 0) or 0) - 5) end)
+        minus:SetPoint("TOPLEFT", X0 + 170, y)
+        local plus = W.Button(f, "+", 24, function() set((opt(key, 0) or 0) + 5) end)
+        plus:SetPoint("LEFT", minus, "RIGHT", 2, 0)
+        local zero = W.Button(f, "0", 24, function() set(0) end)
+        zero:SetPoint("LEFT", plus, "RIGHT", 2, 0)
+        minus.tip, plus.tip, zero.tip = "Move it " .. downWord .. " 5 pixels.", "Move it " .. upWord .. " 5 pixels.", "Back to the spot."
+        f.nudges[#f.nudges + 1] = show
+        y = y - 26
+    end
+    nudge("Up / down:", "pinOffsetY", "up", "down")
+    nudge("Left / right:", "pinOffsetX", "right", "left")
+
     local reset = W.Button(f, "Reset", 80, function()
         for k in pairs(LOOK_KEYS) do if M.SetPinSetting then M.SetPinSetting(k, nil) end end
         if M.RefreshPin then M.RefreshPin() end
@@ -645,7 +682,7 @@ local function buildEditor()
     reset.tip = "Everything back to how the pin first looked."
     local done = W.Button(f, "Done", 80, function() f:Hide() end)
     done:SetPoint("BOTTOMRIGHT", -14, 12)
-    local where = W.Label(f, C.dim .. "Where it sits, when it moves to the edge, and when it hides: Pathfinder > Options.|r", "GameFontHighlightSmall")
+    local where = W.Label(f, C.dim .. "When it moves to the edge and when it hides: Pathfinder > Options.|r", "GameFontHighlightSmall")
     where:SetPoint("BOTTOM", 0, 18)
 end
 

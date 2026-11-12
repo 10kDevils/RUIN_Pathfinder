@@ -941,9 +941,93 @@ local function zoneCandidates(pm)
     return list
 end
 
-local function sayReminder(msg)
+-- Pathfinder's alerts: a small window (movable; it remembers where you put
+-- it) holding the last few, newest on top, with a button to mark the quest's
+-- giver on the map. It closes itself after a while unless the mouse is on
+-- it. One copy goes to chat too, for the record.
+do
+local ALERT_KEEP, ALERT_SECONDS, ALERT_W = 3, 25, 340
+local alertWin, alerts = nil, {}
+local function markGiver(q)
+    local sp = q and QB.Spot(q, "start")
+    if not sp then return M:Print("The quest database doesn't have a place for this quest's giver.") end
+    local info = QB.Quest(q)
+    R.Map:SetPin("Pathfinder", "quest", { map = sp.map, x = sp.x, y = sp.y, icon = "Interface\\AddOns\\RUIN_Core\\Media\\EmblemIcon",
+        plain = true, shadow = true, color = W.MARKERS.quest, title = "Pathfinder: " .. ((info and info.name) or "quest"),
+        text = "Pick up: " .. ((info and info.starts and info.starts[1]) or "") })
+    M:Print("Marked the giver on your map.")
+end
+local function layoutAlerts()
+    local f = alertWin
+    local y = -26
+    for i = 1, ALERT_KEEP do
+        local row, a = f.rows[i], alerts[i]
+        if a then
+            row.text:SetText(a.msg)
+            row.mark:SetShown(a.qid ~= nil)
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", 10, y)
+            local h = math.max(18, (row.text:GetStringHeight() or 14)) + (a.qid and 26 or 4)
+            row:SetSize(ALERT_W - 20, h)
+            row:Show()
+            y = y - h - 6
+        else
+            row:Hide()
+        end
+    end
+    f:SetHeight(-y + 4)
+    f:SetShown(#alerts > 0)
+end
+local function buildAlertWin()
+    local f = W.HudFrame("RUIN_PathfinderAlerts", "Pathfinder", db, "alertPos", { "TOP", UIParent, "TOP", 0, -170 })
+    f:SetWidth(ALERT_W)
+    f:SetFrameStrata("HIGH")
+    local title = W.Label(f, C.gold .. "Pathfinder|r", "GameFontNormal")
+    title:SetPoint("TOPLEFT", 10, -8)
+    local x = W.Button(f, "x", 20, function() wipe(alerts); f:Hide() end)
+    x:SetPoint("TOPRIGHT", -5, -4)
+    x.tip = "Close (the alerts stay in chat)."
+    f.rows = {}
+    for i = 1, ALERT_KEEP do
+        local row = CreateFrame("Frame", nil, f)
+        row.text = W.Label(row, "", "GameFontHighlight")
+        row.text:SetPoint("TOPLEFT", 0, 0)
+        row.text:SetWidth(ALERT_W - 20)
+        row.text:SetJustifyH("LEFT")
+        if row.text.SetWordWrap then row.text:SetWordWrap(true) end
+        row.mark = W.Button(row, "Mark on map", 110, function() local a = alerts[i]; if a then markGiver(a.qid) end end)
+        row.mark:SetPoint("BOTTOMLEFT", 0, 0)
+        row.mark.tip = "Put a pin on your map where the quest is picked up."
+        f.rows[i] = row
+    end
+    -- closes itself after a while, but not under the mouse
+    f:SetScript("OnUpdate", function(self)
+        if self.IsMouseOver and self:IsMouseOver() then return end
+        local now, changed = GetTime(), false
+        for i = #alerts, 1, -1 do
+            if now - alerts[i].t > ALERT_SECONDS then table.remove(alerts, i); changed = true end
+        end
+        if changed then layoutAlerts() end
+    end)
+    return f
+end
+function M.Alert(msg, qid)
+    msg = tostring(msg)
     M:Print(msg)
-    M:Toast(msg)
+    -- the same alert again while it's still up is only refreshed
+    for i, a in ipairs(alerts) do
+        if a.msg == msg then table.remove(alerts, i); break end
+    end
+    table.insert(alerts, 1, { msg = msg, qid = qid, t = GetTime() })
+    for i = #alerts, ALERT_KEEP + 1, -1 do alerts[i] = nil end
+    alertWin = alertWin or buildAlertWin()
+    layoutAlerts()
+end
+M.Alerts = function() return alerts, alertWin end
+end
+
+local function sayReminder(msg, qid)
+    M.Alert(msg, qid)
     if PlaySound and SOUNDKIT and SOUNDKIT.UI_70_ARTIFACT_FORGE_TRAIT_FIRST_TRAIT then pcall(PlaySound, SOUNDKIT.UI_70_ARTIFACT_FORGE_TRAIT_FIRST_TRAIT) end
 end
 
@@ -962,7 +1046,7 @@ function M.CheckReminders()
                 remind.past[q] = true
                 local name, who, where = giverText(q)
                 sayReminder(("You walked past %s%s|r (route step %d): pick it up%s%s."):format(C.gold, name, idx,
-                    who and (" from " .. who) or "", where and (" at " .. where) or ""))
+                    who and (" from " .. who) or "", where and (" at " .. where) or ""), q)
             end
         end
     end
@@ -977,7 +1061,7 @@ function M.CheckReminders()
                 remind.area[q] = true
                 local name, who, where = giverText(q)
                 sayReminder(("%s%s|r's targets are here, but you don't have it%s: it's picked up%s%s."):format(C.gold, name,
-                    onRoute and " (it's on your route)" or "", who and (" from " .. who) or "", where and (" at " .. where) or ""))
+                    onRoute and " (it's on your route)" or "", who and (" from " .. who) or "", where and (" at " .. where) or ""), q)
                 return true
             end
         end
@@ -1857,7 +1941,7 @@ local function onLevelUp(_, level)
     if adb.rec.on then M:RecordStep("note", nil, "Reached level " .. level, { level = level }) end
     if db.trainer and level % 2 == 0 and level > (db.lastTrainer or 0) then
         db.lastTrainer = level
-        M:Toast(("Level %d: new spells and ranks at your class trainer."):format(level))
+        M.Alert(("Level %d: new spells and ranks at your class trainer."):format(level))
     end
     refreshPage()
 end
@@ -1924,7 +2008,7 @@ function M:OnRoute(d, sender)
     end
     table.insert(adb.inbox, 1, { from = sender, route = r, t = GetServerTime() })
     while #adb.inbox > 20 do table.remove(adb.inbox) end
-    self:Toast(("%s shared a route: %s (%d steps). Add it on the Pathfinder Routes page."):format(W.ClassName(sender), r.title, #r.steps))
+    M.Alert(("%s shared a route: %s (%d steps). Add it on the Pathfinder Routes page."):format(W.ClassName(sender), r.title, #r.steps))
     refreshPage()
 end
 
@@ -2001,7 +2085,7 @@ function M:OnOfficial(d, sender)
     r.official = { by = type(d.ob) == "string" and d.ob or sender, t = t, approved = d.oa == 1 }
     adb.official[d.id] = r
     if not cur then
-        self:Toast(("New RUIN route from %s: %s (%d steps), on the Pathfinder Routes page."):format(
+        M.Alert(("New RUIN route from %s: %s (%d steps), on the Pathfinder Routes page."):format(
             W.ClassName(r.official.by), r.title, #r.steps))
     end
     refreshPage()

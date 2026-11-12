@@ -333,7 +333,7 @@ end
 -- screen (Options: pinEdgeTop/Bottom/Left/Right, in percent), never closer to
 -- the border than the edge pin needs.
 local function pct(key)
-    local v = tonumber(opt(key, 0)) or 0
+    local v = tonumber(opt(key, 10)) or 10
     return math.max(0, math.min(45, v)) / 100
 end
 function M.EdgeBounds(w, h)
@@ -499,7 +499,7 @@ local LOOK_KEYS = { pinShowCard = true, pinShowLabel = true, pinShowTitle = true
     pinShowMarker = true, pinShowStem = true, pinShowDistance = true, pinWalk = true, pinEdge = true, pinEdgeCard = true,
     pinMarkerStyle = "emblem", pinTextSize = "normal", pinCardAlpha = 0.86, pinScale = 1,
     pinOffsetX = 0, pinOffsetY = 0, pinHideInArea = true, pinHideYards = 15,
-    pinEdgeTop = 0, pinEdgeBottom = 0, pinEdgeLeft = 0, pinEdgeRight = 0 }
+    pinEdgeTop = 10, pinEdgeBottom = 10, pinEdgeLeft = 10, pinEdgeRight = 10 }
 
 local function refreshEditor()
     if not (editor and editor:IsShown()) then return end
@@ -704,10 +704,10 @@ local function buildEditor()
     el:SetJustifyH("LEFT")
     y = y - 32
     local edgeTip = "Each step is 5% of the screen; 0%: only when the spot is off screen that way."
-    stepper("Top:", "pinEdgeTop", 0, 5, 0, 45, "%d%%", edgeTip)
-    stepper("Bottom:", "pinEdgeBottom", 0, 5, 0, 45, "%d%%", edgeTip)
-    stepper("Left:", "pinEdgeLeft", 0, 5, 0, 45, "%d%%", edgeTip)
-    stepper("Right:", "pinEdgeRight", 0, 5, 0, 45, "%d%%", edgeTip)
+    stepper("Top:", "pinEdgeTop", 10, 5, 0, 45, "%d%%", edgeTip)
+    stepper("Bottom:", "pinEdgeBottom", 10, 5, 0, 45, "%d%%", edgeTip)
+    stepper("Left:", "pinEdgeLeft", 10, 5, 0, 45, "%d%%", edgeTip)
+    stepper("Right:", "pinEdgeRight", 10, 5, 0, 45, "%d%%", edgeTip)
 
     local reset = W.Button(f, "Reset", 80, function()
         for k in pairs(LOOK_KEYS) do if M.SetPinSetting then M.SetPinSetting(k, nil) end end

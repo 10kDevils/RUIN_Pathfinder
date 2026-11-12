@@ -32,7 +32,7 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Pathfinder", { version = "0.6.1" })
+local M = R:RegisterModule("Pathfinder", { version = "0.7.0" })
 local QB = ns.QB
 
 -- What the player lets RUIN share about them (RUIN Core: Settings > Display)
@@ -55,7 +55,7 @@ local DEFAULTS = { route = nil, step = 1, tracker = true, trackerPos = nil, foll
                    waypoint = true, trackQuests = true, autoNav = true, announce = true,
                    pin = true, pinHideInArea = true, pinHideYards = 15, pinObjectives = true, pinWalk = true,
                    pinScale = 1, pinEdge = true, pinOffsetX = 0, pinOffsetY = 0,
-                   pinEdgeTop = 0, pinEdgeBottom = 0, pinEdgeLeft = 0, pinEdgeRight = 0,
+                   pinEdgeTop = 10, pinEdgeBottom = 10, pinEdgeLeft = 10, pinEdgeRight = 10,
                    remindPickups = true, remindArea = true }
 local ACCOUNT_DEFAULTS = { custom = {}, inbox = {}, official = {}, rec = { on = false, title = "", steps = {} } }
 -- Officer routes carry this badge wherever they're listed.
@@ -3083,6 +3083,13 @@ end
 function M:OnEnable()
     if type(RUIN_PathfinderCharDB) ~= "table" then RUIN_PathfinderCharDB = {} end
     db = RUIN_PathfinderCharDB
+    -- the edge boundaries start at 10% each side (they were 0 before 0.7.0 shipped them)
+    if not db.edgeDefaults10 then
+        for _, k in ipairs({ "pinEdgeTop", "pinEdgeBottom", "pinEdgeLeft", "pinEdgeRight" }) do
+            if db[k] == nil or db[k] == 0 then db[k] = 10 end
+        end
+        db.edgeDefaults10 = true
+    end
     for k, v in pairs(DEFAULTS) do if db[k] == nil then db[k] = v end end
     if type(RUIN_PathfinderDB) ~= "table" then RUIN_PathfinderDB = {} end
     adb = RUIN_PathfinderDB

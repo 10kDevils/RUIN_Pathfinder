@@ -4,7 +4,6 @@
 ## Author: RUIN
 ## Version: 0.6.1
 ## Dependencies: RUIN_Core
-## OptionalDeps: RUIN_QuestData
 ## SavedVariables: RUIN_PathfinderDB
 ## SavedVariablesPerCharacter: RUIN_PathfinderCharDB
 ## IconTexture: Interface\Icons\INV_Misc_Map_01
@@ -12,6 +11,8 @@
 ## Category: RUIN Gaming Companion App
 
 Routes.lua
+QuestData\Data.lua
+QuestData\Horde.lua
 QuestDB.lua
 Pathfinder.lua
 WaypointPin.lua

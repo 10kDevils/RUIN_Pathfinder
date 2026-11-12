@@ -2,7 +2,7 @@
 
 Questing routes, one step at a time, with a waypoint arrow, RUIN's own quest database, which RUIN members share your quests, and routes written and shared by RUIN's own route authors.
 
-Part of the **RUIN Gaming Companion App**. Requires **RUIN Core** (0.3.14 or later). Pathfinder reads **RUIN Quest Data**, the quest database addon that ships with the suite, for where quests start and end, where their targets are, their level and objectives, and the quests available in your zone. Route steps carry quest IDs, so this works for every built-in, recorded and shared route.
+Part of the **RUIN Gaming Companion App**. Requires **RUIN Core** (0.3.14 or later). Pathfinder carries **RUIN Quest Data**, its own quest database (the `QuestData` folder, GPLv3; see `QuestData/NOTICE.md` for the data's sources and credits), for where quests start and end, where their targets are, their level and objectives, and the quests available in your zone. Route steps carry quest IDs, so this works for every built-in, recorded and shared route.
 
 ## The experience
 - **Where it lives:** the Pathfinder tab in the RUIN window (Guide, Quests, Routes, Record), the on-screen tracker, a pin on the map, `/path`, and key bindings for next and previous step.

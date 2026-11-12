@@ -8,6 +8,7 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.6.1 — 2026-11-11
 
+- **RUIN Quest Data is part of Pathfinder now** (the `QuestData` folder, GPLv3; see its NOTICE.md), so there's no separate addon to install or enable. If the old RUIN_QuestData folder is still in your AddOns, Pathfinder says once that you can delete it.
 - **Quests in your log as a route.** The Guide's route list starts with "Quests in your log": the best order to finish every quest you have from where you stand, with what's left to do for each and its hand-in (ready quests go straight to the hand-in, no pick-ups). It's planned when you pick or start it and keeps its order while you follow it; start it again to plan it afresh. Quests the quest database doesn't know come last.
 - Pathfinder's tabs are in a new order: Quests, Guide, Routes, Record, Options. Pathfinder opens on the Guide while you're on a route, otherwise on Quests.
 - **The card at the screen edge.** While the pin waits at the edge, its card shows too (with the parts ticked in the Waypoint Editor), beside the marker on the side toward the middle of the screen. Waypoint Editor > Card at the edge too turns it off.

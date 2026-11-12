@@ -7,7 +7,7 @@
 -- leveling partner's route. Route authors record routes in game (the
 -- recorder is how RUIN collects real WoW Forever routes) and share them with
 -- RUIN or as copy-paste strings.
--- Pathfinder reads RUIN Quest Data (where quests
+-- Pathfinder carries RUIN Quest Data (QuestData/, GPLv3: where quests
 -- start and end, where their targets are, what's available in your zone),
 -- and RUIN members share their quest status with each other: who has the
 -- same quest, who is ready to hand it in, who has done it.
@@ -1460,7 +1460,7 @@ end
 
 function M:StartRoute(id)
     if id == LOG_ID and not logRoute(true) then
-        return self:Print(QB.Has() and "No quests in your log to route." or "The log route needs RUIN Quest Data.")
+        return self:Print(QB.Has() and "No quests in your log to route." or "The log route needs Pathfinder's quest data, which didn't load: reinstall Pathfinder.")
     end
     if not routeById(id) then return end
     db.route, db.step = id, 1
@@ -2045,7 +2045,7 @@ function M:ForgetDungeonQuests() dqCache = {}; for k in pairs(zqRoutes) do zqRou
 function M:DungeonRoute(name)
     local entry = dqEntry(name)
     if not entry then return nil, "Pathfinder has no quest list for " .. tostring(name) .. "." end
-    if not QB.Has() then return nil, "Enable RUIN Quest Data for dungeon quest routes." end
+    if not QB.Has() then return nil, "Pathfinder's quest data didn't load (reinstall Pathfinder), so there are no dungeon quest routes." end
     local r = dungeonRoute(entry)
     if not r then return nil, "The quest database lists no quests in " .. entry.name .. " for your character." end
     return r
@@ -2554,7 +2554,7 @@ local function refreshQuests()
             if info.ends[1] then lines[#lines + 1] = C.dim .. "Hand in: |r" .. info.ends[1] end
             for i = 1, math.min(4, #info.objectives) do lines[#lines + 1] = "- " .. info.objectives[i] end
         else
-            lines[#lines + 1] = C.dim .. (QB.Has() and "The quest database has no entry for this quest." or "Enable RUIN Quest Data to see where this quest starts, ends and where its targets are.") .. "|r"
+            lines[#lines + 1] = C.dim .. (QB.Has() and "The quest database has no entry for this quest." or "Pathfinder's quest data didn't load (reinstall Pathfinder), so where this quest starts, ends and its targets are is unknown.") .. "|r"
         end
         lines[#lines + 1] = " "
         local have, ready, done = whoHas(qid)
@@ -2567,11 +2567,11 @@ local function refreshQuests()
         ui.qInvite:SetEnabled(#have > 0)
     end
     if QB.Has() then
-        ui.qzHead:SetText(C.good .. (QB.Source() or "RUIN Quest Data") .. " found|r")
+        ui.qzHead:SetText(C.good .. (QB.Source() or "RUIN Quest Data") .. " loaded|r")
         ui.qzText:SetText(C.dim .. "Givers, hand-ins and targets come from " .. (QB.Source() or "RUIN Quest Data") .. ". Draft a route of this zone's quests for your level.|r")
     else
-        ui.qzHead:SetText(C.dim .. "No quest database|r")
-        ui.qzText:SetText(C.dim .. "Routes and sharing work without it. Enable RUIN Quest Data and every step gets a place and you can draft routes.|r")
+        ui.qzHead:SetText(C.dim .. "Quest data didn't load|r")
+        ui.qzText:SetText(C.dim .. "Routes and sharing still work. Reinstall Pathfinder to get its quest data back: places for every step, and drafted routes.|r")
     end
     ui.qDraft:SetEnabled(QB.Has())
 end
@@ -3129,4 +3129,20 @@ SlashCmdList.RUINPATH = function(input)
         updateStepPin()
         M:Print("Waypoint in the world " .. (db.waypoint and "on." or "off."))
     else M:OpenTab() end
+end
+
+-- RUIN Quest Data used to be its own addon; it's part of Pathfinder now. If
+-- the old folder is still installed, say once that it can go (it loads the
+-- same 3 MB again).
+do
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_LOGIN")
+    f:SetScript("OnEvent", function(self)
+        self:UnregisterAllEvents()
+        local loaded = (C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("RUIN_QuestData"))
+            or (IsAddOnLoaded and IsAddOnLoaded("RUIN_QuestData"))
+        if loaded then
+            M:Print("RUIN Quest Data is part of Pathfinder now: you can delete the RUIN_QuestData folder from your AddOns.")
+        end
+    end)
 end

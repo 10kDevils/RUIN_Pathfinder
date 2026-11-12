@@ -393,6 +393,24 @@ local function ensureNavigation()
     end
 end
 
+-- The Options switch: on turns the game's In-Game Navigation on (and keeps it
+-- on when a waypoint is placed); off turns it off, so nothing is drawn in the
+-- world, the RUIN Waypoint included. Out of combat only (a CVar change); in
+-- combat it waits for combat to end.
+local navWant
+function M.SetInGameNavigation(on)
+    db.autoNav = on and true or false
+    if not on then db.navTurnedOn = nil end
+    if not (GetCVar and SetCVar) then return end
+    if InCombatLockdown and InCombatLockdown() then navWant = on; return end
+    navWant = nil
+    pcall(SetCVar, "showInGameNavigation", on and "1" or "0")
+    if M.RefreshPin then M.RefreshPin() end
+end
+local navWait = CreateFrame("Frame")
+navWait:RegisterEvent("PLAYER_REGEN_ENABLED")
+navWait:SetScript("OnEvent", function() if navWant ~= nil then M.SetInGameNavigation(navWant) end end)
+
 -- A quest step whose quest is in your log is tracked the game's own way
 -- (super-tracked), so the pin follows the quest's objective or turn-in
 -- like clicking it in the objective tracker. Quests the game can't place
@@ -2891,7 +2909,12 @@ local function buildOptions(page)
     edit.tip = "What the RUIN Waypoint shows and how it looks, where it sits over the spot, when it hides and when it moves to the screen edge, with a live preview. /path editor"
     check(w, "Put a waypoint on each step", "waypoint", "The game's waypoint on the step's spot, so the pin (and the game's navigation) leads you there. /path waypoint", nil, 12, -62)
     check(w, "Track quest steps the game's way", "trackQuests", "For a quest in your log, track the quest itself (like clicking it in the objective tracker) so the pin follows its objective or turn-in.", nil, COL2, -62)
-    check(w, "Turn on In-Game Navigation", "autoNav", "The game draws nothing in the world while its In-Game Navigation option is off. Pathfinder turns it on when it places a waypoint.", nil, 12, -88)
+    local navCheck = W.Check(w, "In-Game Navigation", function()
+        return db.autoNav ~= false
+    end, function(v) M.SetInGameNavigation(v) end)
+    navCheck:SetPoint("TOPLEFT", 12, -88)
+    navCheck.tip = "The game's In-Game Navigation option: the waypoint drawn in the world (the RUIN Waypoint rides on it). On: Pathfinder turns it on, and keeps it on when it places a waypoint. Off: it's turned off, so nothing is drawn in the world; the map pin and tracker still work."
+    checks[#checks + 1] = navCheck
     local share = W.Check(w, "Share quest locations with RUIN", function() return adb.atlasShare ~= false end, function(v) adb.atlasShare = v end)
     share:SetPoint("TOPLEFT", COL2, -88)
     share.tip = "Pathfinder's atlas: where you pick up, do and hand in quests, shared with RUIN so routes follow where things really are on WoW Forever. Only quest numbers and map spots. /path atlas"

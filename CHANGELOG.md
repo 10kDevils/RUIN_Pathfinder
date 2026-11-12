@@ -8,6 +8,7 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.6.1 — 2026-11-11
 
+- Options > Waypoint > **In-Game Navigation** (was "Turn on In-Game Navigation") works both ways now: off turns the game's In-Game Navigation off, so nothing is drawn in the world (the RUIN Waypoint included), and on turns it back on. Before, unticking it only stopped Pathfinder from turning it on, so the waypoint stayed. In combat the change waits until combat ends.
 - The Waypoint Editor holds everything about the waypoint now, in three columns: what it shows and how it looks, then Position (the nudges), Hiding (hide when the game says you're there, and the hide distance) and Screen edge (the four boundaries). In Options, the Waypoint card opens with **Show the RUIN Waypoint** (renamed from Show the RUIN pin), larger than the rest, with the Waypoint Editor button beside it; the RUIN pin and Screen edge cards are gone.
 - The on-screen preview in the Waypoint Editor moves with the Position nudges. Options is respaced so nothing crowds: the Tracker rows have room again and "Turn on In-Game Navigation" no longer runs into the column beside it.
 - With the marker off, the card at the screen edge takes the marker's place, just above the distance and time, stopping short of the arrow.

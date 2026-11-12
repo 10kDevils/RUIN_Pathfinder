@@ -329,7 +329,16 @@ local function currentWaypoint()
     if p.position.GetXY then x, y = p.position:GetXY() end
     return { map = p.uiMapID, x = x, y = y }
 end
+-- Changes to the game's tracking (super-tracked quest, user waypoint) never
+-- happen in combat: the objective tracker answers them, and its quest item
+-- buttons are protected then. They wait for combat to end (combatPending).
+local combatPending
+local function inCombat()
+    if InCombatLockdown and InCombatLockdown() then combatPending = true; return true end
+    return false
+end
 local function clearWaypoint()
+    if inCombat() then return end
     if placedWp and C_Map and C_Map.ClearUserWaypoint and sameSpot(currentWaypoint(), placedWp) then
         selfChange()
         C_Map.ClearUserWaypoint()
@@ -372,7 +381,8 @@ local function userQuest()
 end
 M.UserQuest = userQuest
 local function superTrackQuest(q)
-    if not (C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID) then return false end
+    if not (C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID) or inCombat() then return false end
+    if C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID() == q then return true end
     settingQuest = q
     selfChange()
     local ok = pcall(C_SuperTrack.SetSuperTrackedQuestID, q)
@@ -391,11 +401,9 @@ end
 local function noteWp(why, map, x, y, err)
     db.navLast = { t = time and time() or 0, route = db.route, step = db.step, why = why, map = map, x = x, y = y, err = err and tostring(err) }
 end
-local combatPending
 local function updateWaypoint(map, x, y, s)
-    -- never change the game's tracking in combat (the objective tracker's
-    -- quest item buttons are protected then); catch up when combat ends
-    if InCombatLockdown and InCombatLockdown() then combatPending = true; return end
+    -- never change the game's tracking in combat (see inCombat); catch up when combat ends
+    if inCombat() then return end
     combatPending = nil
     -- the Tracked tab: the world pin follows your tracked quest, not the route
     local uq = userQuest()

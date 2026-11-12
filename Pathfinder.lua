@@ -35,6 +35,9 @@ local C = W.COLORS
 local M = R:RegisterModule("Pathfinder", { version = "0.6.1" })
 local QB = ns.QB
 
+-- What the player lets RUIN share about them (RUIN Core: Settings > Display)
+local function shares(kind) return not (R.Shares and not R:Shares(kind)) end
+
 local SHARE_EVERY, PEER_TTL = 120, 300
 local QUEST_SHARE_MIN, QUEST_SHARE_EVERY, QUEST_TTL = 20, 300, 900
 local ACT_LABEL = { accept = "Accept", complete = "Do", turnin = "Turn in", go = "Go", note = "Note",
@@ -591,7 +594,7 @@ local function questPayload()
 end
 
 local function shareQuests(force)
-    if not (db and db.shareQuests) or not R:IsConnected() then return end
+    if not (db and db.shareQuests and shares("quests")) or not R:IsConnected() then return end
     local now = GetTime()
     if not force and now - lastQuestShare < QUEST_SHARE_MIN then return end
     local d = questPayload()
@@ -1544,7 +1547,7 @@ local function atlasNote(kind, qid, map, x, y, mine)
         end
     end
     if QB.ForgetSpots then QB.ForgetSpots(qid) end
-    if mine and adb.atlasShare ~= false then
+    if mine and adb.atlasShare ~= false and shares("atlas") then
         atlasPending[#atlasPending + 1] = { kind, qid, map, math.floor(x * 10000 + 0.5), math.floor(y * 10000 + 0.5) }
         while #atlasPending > ATLAS_SHARE_MAX * 4 do table.remove(atlasPending, 1) end
     end
@@ -1592,7 +1595,7 @@ local function atlasObjectives()
 end
 
 local function atlasShare()
-    if #atlasPending == 0 or adb.atlasShare == false or GetTime() - atlasLastShare < ATLAS_SHARE_EVERY then return end
+    if #atlasPending == 0 or adb.atlasShare == false or not shares("atlas") or GetTime() - atlasLastShare < ATLAS_SHARE_EVERY then return end
     atlasLastShare = GetTime()
     local flat = {}
     for i = 1, math.min(#atlasPending, ATLAS_SHARE_MAX) do
@@ -1605,10 +1608,23 @@ end
 function M:OnAtlas(d, sender)
     if type(d) ~= "table" or type(d.l) ~= "table" or adb.atlasShare == false then return end
     local l = d.l
+    -- one vote per player and place: sending the same sighting again (or a
+    -- made-up one many times) can't outweigh what others saw
+    adb.atlasVoters = type(adb.atlasVoters) == "table" and adb.atlasVoters or {}
+    local who = (R.NormalizeName and R:NormalizeName(sender)) or tostring(sender):lower()
     for i = 1, math.min(#l, ATLAS_SHARE_MAX * 5) - 4, 5 do
         local kind = l[i]
         if kind == "s" or kind == "f" or kind == "o" then
-            atlasNote(kind, l[i + 1], l[i + 2], (tonumber(l[i + 3]) or -1) / 10000, (tonumber(l[i + 4]) or -1) / 10000, false)
+            local key = kind .. tostring(tonumber(l[i + 1]) or "?")
+            if kind == "o" then key = key .. ":" .. tostring(tonumber(l[i + 2]) or "?") .. ":" .. math.floor((tonumber(l[i + 3]) or 0) / 500) .. ":" .. math.floor((tonumber(l[i + 4]) or 0) / 500) end
+            local voters = adb.atlasVoters[key] or {}
+            local n = 0
+            for _ in pairs(voters) do n = n + 1 end
+            if not voters[who] and n < 16 then
+                voters[who] = true
+                adb.atlasVoters[key] = voters
+                atlasNote(kind, l[i + 1], l[i + 2], (tonumber(l[i + 3]) or -1) / 10000, (tonumber(l[i + 4]) or -1) / 10000, false)
+            end
         end
     end
 end

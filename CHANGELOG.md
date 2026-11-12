@@ -8,6 +8,7 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.6.1 — 2026-11-11
 
+- **Security:** quest-place sightings from others count once per player and place, so one player sending a sighting again and again can't move a quest giver. With quest log or quest place sharing off (RUIN Core), Pathfinder doesn't send them.
 - Pathfinder never changes the game's tracked quest or waypoint during combat, from any path (closing the tracker's Tracked tab or clearing the waypoint could still do it), and doesn't set the tracked quest again when it's already the one tracked. Whatever waited is caught up when combat ends.
 - Pathfinder has its own quest database now: RUIN Quest Data, a new addon in the suite with every WoW Forever quest and the NPCs, objects and items they use (see its NOTICE file for where the data comes from). Zone routes, dungeon quest routes, waypoints and quest tooltips all read from it, and Pathfinder no longer looks for any other quest addon.
 - Routes walk less: after the quick passes, a search over the whole order (simulated annealing, a fixed number of tries so the same quests always give the same route) tries moving every stop anywhere the quest order allows. On the real quest data it took about 6% off the walking of zone routes the quick passes made, and up to 30% on some. Quests on neighbouring maps now count as the real distance apart (Elwynn's edge to Westfall's is a short walk) instead of one flat trip across the world.

@@ -1159,6 +1159,19 @@ local function anneal(tasks, order, here, iterations)
     return best, bestL
 end
 
+-- One step for quests that share targets: its name (the first quest and how
+-- many more, so it fits a row) and the objectives, each once.
+local function groupLabel(names)
+    if #names <= 2 then return table.concat(names, " + ") end
+    return ("%s + %d more"):format(names[1], #names - 1)
+end
+local function joinTexts(texts)
+    local out = {}
+    for _, t in ipairs(texts) do out[#out + 1] = (t:gsub("[%s%.;]+$", "")) end
+    return table.concat(out, "; ")
+end
+QB.GroupLabel, QB.JoinTexts = groupLabel, joinTexts
+
 QB.Planner = { build = buildTasks, length = routeLength, allowed = allowed, greedy = greedy, improve = improve, anneal = anneal, dist = dist }
 
 -- Plans a set of quests from where you stand: the ordered tasks, and the walk in yards.
@@ -1219,8 +1232,8 @@ function QB.ZoneRoute(qids)
                     local d = QB.DoText(q)
                     if d ~= "" then texts[#texts + 1] = d end
                 end
-                steps[#steps + 1] = { act = "complete", quest = table.concat(names, " + "):sub(1, 60), qid = t.qids[1],
-                                      qids = { unpack(t.qids) }, text = table.concat(texts, "; "):sub(1, 120) }
+                steps[#steps + 1] = { act = "complete", quest = groupLabel(names):sub(1, 60), qid = t.qids[1],
+                                      qids = { unpack(t.qids) }, text = joinTexts(texts):sub(1, 120) }
             else
                 local text = t.kind == "accept" and QB.AcceptText(t.qid) or t.kind == "turnin" and QB.TurninText(t.qid) or QB.DoText(t.qid)
                 step(t.kind, t.qid, text)
@@ -1266,8 +1279,8 @@ function QB.LogRoute(log)
                 local d = QB.DoText(q)
                 if d ~= "" then texts[#texts + 1] = d end
             end
-            steps[#steps + 1] = { act = "complete", quest = table.concat(names, " + "):sub(1, 60), qid = t.qids[1],
-                                  qids = { unpack(t.qids) }, text = table.concat(texts, "; "):sub(1, 120) }
+            steps[#steps + 1] = { act = "complete", quest = groupLabel(names):sub(1, 60), qid = t.qids[1],
+                                  qids = { unpack(t.qids) }, text = joinTexts(texts):sub(1, 120) }
         else
             local text = t.kind == "accept" and QB.AcceptText(t.qid) or t.kind == "turnin" and QB.TurninText(t.qid) or QB.DoText(t.qid)
             steps[#steps + 1] = { act = t.kind, quest = name(t.qid), qid = t.qid, text = (text or ""):sub(1, 120) }

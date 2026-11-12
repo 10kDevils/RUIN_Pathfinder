@@ -2213,7 +2213,7 @@ end
 -- the picker labels zone and dungeon routes without building their steps
 local function pickerLabel(id)
     if id == LOG_ID then
-        return "Quests in your log  " .. C.dim .. "best order · " .. #QB.Log() .. " quests|r"
+        return "Quests in your log  " .. C.dim .. "(" .. #QB.Log() .. ")|r"
     end
     if type(id) == "string" and id:sub(1, 3) == "zq:" then
         local r = zqRoutes[id]
@@ -2283,7 +2283,6 @@ local function buildCurrent(page)
     ui.samplePill:SetPoint("LEFT", ui.stepCount, "RIGHT", 10, 0)
     ui.samplePill:SetTag("Sample", "Classic sample")
     ui.clearBtn = W.Button(page, "Clear route", 90, function() M:ClearRoute() end)
-    ui.clearBtn:SetPoint("TOPRIGHT", page, "TOPRIGHT", -24, -50)
     ui.clearBtn.tip = "Leave the route you're on without starting another."
     ui.list = W.List(page, 32, function(row)
         row.box = CreateFrame("Frame", nil, row)
@@ -2323,6 +2322,12 @@ local function buildCurrent(page)
         row.num:SetText(C.dim .. i .. "|r")
         row.tip = function(tip)
             tip:AddLine((ACT_LABEL[s.act] or s.act) .. (s.quest and (": " .. s.quest) or ""), 1, 0.82, 0)
+            if type(s.qids) == "table" and #s.qids > 1 then      -- one stop for several quests: name them all
+                for _, q in ipairs(s.qids) do
+                    local info = QB.Quest(q)
+                    tip:AddLine("  " .. ((info and info.name) or ("Quest " .. q)), 0.85, 0.85, 0.85)
+                end
+            end
             if s.text and s.text ~= "" then tip:AddLine(s.text, 1, 1, 1, true) end
             if s.at then tip:AddLine(("%s %.1f, %.1f"):format(s.at.zone, s.at.x, s.at.y), 0.6, 0.8, 0.6) end
             if s.qid then questTip(tip, s.qid) end
@@ -2330,7 +2335,8 @@ local function buildCurrent(page)
     end)
     ui.list:SetEmptyText("Pick a route above and press Start.")
     ui.list.frame:SetPoint("TOPLEFT", 0, -74)
-    ui.list.frame:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -214, 120)
+    ui.list.frame:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -234, 120)   -- room for its scroll bar beside the right column
+    ui.clearBtn:SetPoint("BOTTOMRIGHT", ui.list.frame, "TOPRIGHT", 0, 3)   -- over the steps, clear of the right column
 
     -- Right column: class track and the marker legend.
     local ct = W.Card(page)

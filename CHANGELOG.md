@@ -8,6 +8,7 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.6.1 — 2026-11-11
 
+- Guide tidied so nothing overlaps: Clear route sits over the steps list instead of on the Class track card, the steps list leaves room for its scroll bar beside the right column, and Quests in your log reads "Quests in your log (35)" so it fits the route picker. A step for several quests that share targets is named for the first and how many more ("Save Techbot's Brain! + 2 more"); its tooltip lists them all.
 - **RUIN Quest Data is part of Pathfinder now** (the `QuestData` folder, GPLv3; see its NOTICE.md), so there's no separate addon to install or enable. If the old RUIN_QuestData folder is still in your AddOns, Pathfinder says once that you can delete it.
 - **Quests in your log as a route.** The Guide's route list starts with "Quests in your log": the best order to finish every quest you have from where you stand, with what's left to do for each and its hand-in (ready quests go straight to the hand-in, no pick-ups). It's planned when you pick or start it and keeps its order while you follow it; start it again to plan it afresh. Quests the quest database doesn't know come last.
 - Pathfinder's tabs are in a new order: Quests, Guide, Routes, Record, Options. Pathfinder opens on the Guide while you're on a route, otherwise on Quests.

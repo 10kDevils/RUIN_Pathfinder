@@ -539,6 +539,7 @@ local function buildEditor()
     f:SetPoint("CENTER")
     f:SetFrameStrata("DIALOG")
     f:SetClampedToScreen(true)
+    if W.Themed then W.Themed(f, "Pathfinder") end       -- Pathfinder's green on its controls
     W.Skin(f, "bg", 0.96, "border")
     f:EnableMouse(true)
     f:SetMovable(true)
@@ -616,7 +617,7 @@ local function buildEditor()
             local cur = opt(key, LOOK_KEYS[key])
             for _, b in ipairs(btns) do
                 local on = (type(cur) == "number" and math.abs(cur - b.value) < 0.01) or cur == b.value
-                b:SetText(on and (C.gold .. b.name .. "|r") or b.name)
+                if on then b:LockHighlight() else b:UnlockHighlight() end      -- the picked one is filled
             end
         end }
         for i, o in ipairs(options) do

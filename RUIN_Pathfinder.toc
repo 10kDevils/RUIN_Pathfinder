@@ -6,7 +6,7 @@
 ## Dependencies: RUIN_Core
 ## SavedVariables: RUIN_PathfinderDB
 ## SavedVariablesPerCharacter: RUIN_PathfinderCharDB
-## IconTexture: Interface\Icons\INV_Misc_Map_01
+## IconTexture: Interface\AddOns\RUIN_Core\Media\BadgePathfinder
 ## X-Category: Guild
 ## Category: RUIN Gaming Companion App
 

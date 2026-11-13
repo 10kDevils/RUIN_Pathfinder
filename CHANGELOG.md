@@ -6,6 +6,10 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.7.2 — 2026-11-13
+
+- **Fixed: the minimap went see-through** with the minimap options on: RUIN gave the round map a mask from the classic client, which WoW Forever's client doesn't have. RUIN now leaves the game's own round mask alone and only changes it for the square map (and back to WoW Forever's round one after that).
+
 ## 0.7.1 — 2026-11-12
 
 - **Mark on map** in Pathfinder's alert window now closes the window and opens the world map on the quest's giver, with a pin there.

@@ -16,8 +16,13 @@ local MM = {}
 ns.Minimap = MM
 
 local MEDIA = "Interface\\AddOns\\RUIN_Pathfinder\\Media\\"
-local ROUND_MASK = "Textures\\MinimapMask"
-local SQUARE_MASK = "Interface\\ChatFrame\\ChatFrameBackground"
+-- The game's round mask: the modern client's (WoW Forever runs on it), or
+-- the classic one. RUIN only touches the mask once you pick square, so the
+-- game's own round map is never replaced by a guess.
+local ROUND_MASK = (WOW_PROJECT_ID and WOW_PROJECT_MAINLINE and WOW_PROJECT_ID == WOW_PROJECT_MAINLINE or not WOW_PROJECT_ID)
+    and "Interface\\Masks\\CircleMaskScalable" or "Textures\\MinimapMask"
+local SQUARE_MASK = "Interface\\BUTTONS\\WHITE8X8"
+local maskSet = false   -- RUIN has put the square mask on
 
 MM.SHAPES = { "round", "square" }
 MM.STYLES = { "blizzard", "pathfinder" }
@@ -249,7 +254,15 @@ function MM.Apply()
     if not (db and m) then return end
     local square, modern = MM.Shape() == "square", MM.Style() == "pathfinder"
     -- shape: the mask, and what other addons ask (minimap buttons follow it)
-    if m.SetMaskTexture then m:SetMaskTexture(square and SQUARE_MASK or ROUND_MASK) end
+    if m.SetMaskTexture then
+        if square then
+            m:SetMaskTexture(SQUARE_MASK)
+            maskSet = true
+        elseif maskSet then
+            m:SetMaskTexture(ROUND_MASK)
+            maskSet = false
+        end
+    end
     if square then
         if origShape == nil then origShape = rawget(_G, "GetMinimapShape") or false end
         _G.GetMinimapShape = function() return "SQUARE" end

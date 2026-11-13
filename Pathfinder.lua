@@ -32,7 +32,7 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Pathfinder", { version = "0.7.0" })
+local M = R:RegisterModule("Pathfinder", { version = "0.7.1" })
 local QB = ns.QB
 
 -- What the player lets RUIN share about them (RUIN Core: Settings > Display)
@@ -946,58 +946,67 @@ end
 -- giver on the map. It closes itself after a while unless the mouse is on
 -- it. One copy goes to chat too, for the record.
 do
-local ALERT_KEEP, ALERT_SECONDS, ALERT_W = 3, 25, 340
+local ALERT_KEEP, ALERT_SECONDS, ALERT_W = 3, 25, 360
+local ALERT_PAD = 14            -- the window's inner margin
 local alertWin, alerts = nil, {}
+-- Mark on map: close the alerts and open the world map on the quest's giver
+-- (a pin there), as the Quests page's Show on map does.
 local function markGiver(q)
-    local sp = q and QB.Spot(q, "start")
-    if not sp then return M:Print("The quest database doesn't have a place for this quest's giver.") end
-    local info = QB.Quest(q)
-    R.Map:SetPin("Pathfinder", "quest", { map = sp.map, x = sp.x, y = sp.y, icon = "Interface\\AddOns\\RUIN_Core\\Media\\EmblemIcon",
-        plain = true, shadow = true, color = W.MARKERS.quest, title = "Pathfinder: " .. ((info and info.name) or "quest"),
-        text = "Pick up: " .. ((info and info.starts and info.starts[1]) or "") })
-    M:Print("Marked the giver on your map.")
+    if alertWin then wipe(alerts); alertWin:Hide() end
+    M:ShowQuestOnMap(q, "start")
 end
 local function layoutAlerts()
     local f = alertWin
-    local y = -26
+    local y = -(f.headH or 33) - 10
+    local shown = 0
     for i = 1, ALERT_KEEP do
         local row, a = f.rows[i], alerts[i]
         if a then
+            shown = shown + 1
             row.text:SetText(a.msg)
             row.mark:SetShown(a.qid ~= nil)
+            row.rule:SetShown(shown > 1)          -- a hairline between alerts
             row:ClearAllPoints()
-            row:SetPoint("TOPLEFT", 10, y)
-            local h = math.max(18, (row.text:GetStringHeight() or 14)) + (a.qid and 26 or 4)
-            row:SetSize(ALERT_W - 20, h)
+            row:SetPoint("TOPLEFT", ALERT_PAD, y)
+            local textH = math.max(16, (row.text:GetStringHeight() or 14))
+            local h = textH + (a.qid and 34 or 0)
+            row:SetSize(ALERT_W - ALERT_PAD * 2, h)
             row:Show()
-            y = y - h - 6
+            y = y - h - 21
         else
             row:Hide()
         end
     end
-    f:SetHeight(-y + 4)
+    f:SetHeight(-y - 21 + ALERT_PAD)
     f:SetShown(#alerts > 0)
 end
 local function buildAlertWin()
     local f = W.HudFrame("RUIN_PathfinderAlerts", "Pathfinder", db, "alertPos", { "TOP", UIParent, "TOP", 0, -170 })
     f:SetWidth(ALERT_W)
     f:SetFrameStrata("HIGH")
-    local title = W.Label(f, C.gold .. "Pathfinder|r", "GameFontNormal")
-    title:SetPoint("TOPLEFT", 10, -8)
-    local x = W.Button(f, "x", 20, function() wipe(alerts); f:Hide() end)
-    x:SetPoint("TOPRIGHT", -5, -4)
+    f.headH = W.HudHeader(f, "Pathfinder")
+    local x = W.CloseButton(f, function() wipe(alerts); f:Hide() end, 18)
+    x:SetPoint("TOPRIGHT", -7, -7)
     x.tip = "Close (the alerts stay in chat)."
+    f.close = x
     f.rows = {}
     for i = 1, ALERT_KEEP do
         local row = CreateFrame("Frame", nil, f)
+        row.rule = row:CreateTexture(nil, "ARTWORK")
+        row.rule:SetColorTexture(W.PALETTE.line[1], W.PALETTE.line[2], W.PALETTE.line[3], 1)
+        row.rule:SetHeight(1)
+        row.rule:SetPoint("TOPLEFT", -ALERT_PAD + 1, 11)
+        row.rule:SetPoint("TOPRIGHT", ALERT_PAD - 1, 11)
         row.text = W.Label(row, "", "GameFontHighlight")
         row.text:SetPoint("TOPLEFT", 0, 0)
-        row.text:SetWidth(ALERT_W - 20)
+        row.text:SetWidth(ALERT_W - ALERT_PAD * 2)
         row.text:SetJustifyH("LEFT")
         if row.text.SetWordWrap then row.text:SetWordWrap(true) end
-        row.mark = W.Button(row, "Mark on map", 110, function() local a = alerts[i]; if a then markGiver(a.qid) end end)
+        if row.text.SetSpacing then row.text:SetSpacing(3) end
+        row.mark = W.Button(row, "Mark on map", 124, function() local a = alerts[i]; if a then markGiver(a.qid) end end)
+        row.mark:SetHeight(24)
         row.mark:SetPoint("BOTTOMLEFT", 0, 0)
-        row.mark.tip = "Put a pin on your map where the quest is picked up."
+        row.mark.tip = "Open the map where the quest is picked up (with a pin on it)."
         f.rows[i] = row
     end
     -- closes itself after a while, but not under the mouse
@@ -1213,9 +1222,10 @@ local function buildTrackerTabs()
         t:SetFrameLevel((tracker:GetFrameLevel() or 1) + 5)
         t.bg = t:CreateTexture(nil, "BACKGROUND")
         t.bg:SetAllPoints()
-        t.top = t:CreateTexture(nil, "BORDER")
+        t.top = t:CreateTexture(nil, "BORDER")       -- the open tab's line, in Pathfinder's color
         t.top:SetPoint("TOPLEFT"); t.top:SetPoint("TOPRIGHT"); t.top:SetHeight(2)
-        t.top:SetColorTexture(0.90, 0.72, 0.38, 1)
+        local ac = W.SchemeOf(tracker).accent
+        t.top:SetColorTexture(ac[1], ac[2], ac[3], 1)
         t.text = W.Label(t, label, "GameFontNormalSmall")
         t.text:SetPoint("CENTER", 0, 0)
         t:SetWidth(((t.text.GetStringWidth and t.text:GetStringWidth()) or 40) + 24)
@@ -1245,45 +1255,53 @@ local function paintTrackerTabs(cur, hasRoute, hasQuest)
     for _, t in ipairs(tracker.tabs) do
         local on = t.key == cur
         t.ok = (t.key == "route" and hasRoute) or (t.key == "tracked" and hasQuest)
-        t.bg:SetColorTexture(on and 0.07 or 0.035, on and 0.085 or 0.045, on and 0.13 or 0.075, on and 0.94 or 0.80)
+        local P = W.PALETTE
+        local bg = on and P.bg or P.panel
+        t.bg:SetColorTexture(bg[1], bg[2], bg[3], on and 0.94 or 0.82)
         t.top:SetShown(on)
-        if not t.ok then t.text:SetTextColor(0.40, 0.40, 0.42)
-        elseif on then t.text:SetTextColor(1, 0.86, 0.55)
-        else t.text:SetTextColor(0.70, 0.73, 0.80) end
+        if not t.ok then t.text:SetTextColor(0.40, 0.42, 0.46)
+        elseif on then t.text:SetTextColor(1, 1, 1)
+        else t.text:SetTextColor(P.sub[1], P.sub[2], P.sub[3]) end
         if t.text.SetDesaturated then t.text:SetDesaturated(not t.ok) end
         t:SetEnabled(t.ok and true or false)
     end
 end
 
 -- A small round button for < and >, centered on the tracker's sides: a
--- dark disc in a thin gold ring with the arrow in the middle.
+-- navy disc in a thin steel ring, the arrow in Pathfinder's color; the ring
+-- takes the color under the mouse.
 local DISC = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local function sideButton(label, onClick)
     local b = CreateFrame("Button", nil, tracker)
+    local ac = W.SchemeOf(tracker).accent
+    local edge = W.BTN_EDGE or W.PALETTE.border
+    local P = W.PALETTE
     b:SetSize(18, 18)
     b.ring = b:CreateTexture(nil, "BACKGROUND")
     b.ring:SetTexture(DISC)
     b.ring:SetAllPoints()
-    b.ring:SetVertexColor(0.90, 0.72, 0.38, 0.75)
+    b.ring:SetVertexColor(edge[1], edge[2], edge[3], 1)
     b.disc = b:CreateTexture(nil, "BORDER")
     b.disc:SetTexture(DISC)
     b.disc:SetPoint("TOPLEFT", 1, -1); b.disc:SetPoint("BOTTOMRIGHT", -1, 1)
-    b.disc:SetVertexColor(0.05, 0.065, 0.10, 1)
+    b.disc:SetVertexColor(P.panelHi[1], P.panelHi[2], P.panelHi[3], 1)
     b.text = b:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     b.text:SetText(label)
     b.text:SetPoint("CENTER", label == "<" and -0.5 or 0.5, 1)
-    b.text:SetTextColor(0.90, 0.72, 0.38)
+    b.text:SetTextColor(ac[1], ac[2], ac[3])
     b:SetScript("OnClick", function() onClick() end)
     b:SetScript("OnEnter", function(self)
-        self.disc:SetVertexColor(0.11, 0.13, 0.19, 1)
-        self.text:SetTextColor(1, 0.88, 0.55)
+        self.ring:SetVertexColor(ac[1], ac[2], ac[3], 1)
+        self.disc:SetVertexColor(W.Mix(P.panelHi, ac, 0.20)[1], W.Mix(P.panelHi, ac, 0.20)[2], W.Mix(P.panelHi, ac, 0.20)[3], 1)
+        self.text:SetTextColor(1, 1, 1)
         if self.tip and GameTooltip then
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:SetText(self.tip); GameTooltip:Show()
         end
     end)
     b:SetScript("OnLeave", function(self)
-        self.disc:SetVertexColor(0.05, 0.065, 0.10, 1)
-        self.text:SetTextColor(0.90, 0.72, 0.38)
+        self.ring:SetVertexColor(edge[1], edge[2], edge[3], 1)
+        self.disc:SetVertexColor(P.panelHi[1], P.panelHi[2], P.panelHi[3], 1)
+        self.text:SetTextColor(ac[1], ac[2], ac[3])
         if GameTooltip then GameTooltip:Hide() end
     end)
     return b
@@ -1302,6 +1320,7 @@ updateTracker = function()
         tracker:SetSize(TRACKER_W, TRACKER_H)
         tracker.title = W.Label(tracker, "", "GameFontNormalSmall")
         tracker.title:SetPoint("TOPLEFT", SIDE + 4, -9)
+        do local ac = W.SchemeOf(tracker).accent; tracker.title:SetTextColor(ac[1], ac[2], ac[3]) end
         tracker.title:SetWordWrap(false)
         tracker.step = W.Label(tracker, "")
         tracker.step:SetPoint("TOPLEFT", SIDE + 4, -26)
@@ -1317,24 +1336,17 @@ updateTracker = function()
             if trackerTab() == "tracked" then stepTracked(1) else M:Advance(1) end
         end)
         tracker.next:SetPoint("RIGHT", -5, 0)
-        -- a little x in the top-right corner
-        tracker.clear = CreateFrame("Button", nil, tracker)
-        tracker.clear:SetSize(14, 14)
-        tracker.clear:SetPoint("TOPRIGHT", -6, -6)
-        tracker.clear.icon = tracker.clear:CreateTexture(nil, "ARTWORK")
-        tracker.clear.icon:SetTexture("Interface\\FriendsFrame\\ClearBroadcastIcon")
-        tracker.clear.icon:SetAllPoints()
-        tracker.clear.icon:SetAlpha(0.7)
-        tracker.clear:SetScript("OnClick", function() closeTab() end)
-        tracker.clear:SetScript("OnEnter", function(self)
-            self.icon:SetAlpha(1)
+        -- a little x in the top-right corner, red under the mouse
+        tracker.clear = W.CloseButton(tracker, function() closeTab() end, 16)
+        tracker.clear:SetPoint("TOPRIGHT", -5, -5)
+        tracker.clear:HookScript("OnEnter", function(self)
             if GameTooltip then
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 GameTooltip:SetText(trackerTab() == "tracked" and "Stop tracking this quest" or "Leave this route")
                 GameTooltip:Show()
             end
         end)
-        tracker.clear:SetScript("OnLeave", function(self) self.icon:SetAlpha(0.7); if GameTooltip then GameTooltip:Hide() end end)
+        tracker.clear:HookScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
         -- the zone (or distance) at the top right, beside the x
         tracker.dist = W.Label(tracker, "", "GameFontHighlightSmall")
         tracker.dist:SetPoint("TOPRIGHT", -24, -9)

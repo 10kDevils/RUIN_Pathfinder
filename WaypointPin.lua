@@ -260,10 +260,8 @@ local function paint(p, d, lk, relayout)
     paintMarker(p, lk)
     p.tag:ClearAllPoints()
     if d.clamped then
-        p.arrow:ClearAllPoints()
-        p.arrow:SetPoint("CENTER", p, "CENTER", math.cos(d.angle or 0) * (PIN * 0.82), math.sin(d.angle or 0) * (PIN * 0.82))
         p.arrow:SetRotation((d.angle or 0) - math.pi / 2)
-        p.arrow:Show()
+        p.arrow:Show()            -- placed below, once the parts around it are laid out
         p.beam:Hide(); p.foot:Hide()
         p.tag:SetPoint("TOP", p, "BOTTOM", 0, -6)
         -- the card at the edge too: beside the marker, on the side toward the
@@ -302,22 +300,71 @@ local function paint(p, d, lk, relayout)
     p.tag:SetWidth(tagW)
     vis(p.tag, lk.distance)
     if d.clamped then
-        -- beside the marker (clear of the arrow and the distance tag), on the
-        -- side toward the middle of the screen, so it stays on screen
-        local gap = math.max(EDGE_ARROW, (lk.distance and (tagW / 2 - PIN / 2) or 0) + 6)
-        p.card:ClearAllPoints()
-        -- without the marker its place is empty: the card takes it, just above
-        -- the distance tag, and stops short of the arrow
-        local clear = PIN * 0.82 - EDGE_ARROW / 2 - 4        -- the arrow's inner edge, from the middle
+        -- The card: beside the marker on the side toward the middle of the
+        -- screen (so it stays on screen), or in the marker's place without it.
+        -- Each part's box is kept (x, y from the pin's middle, y up) so the
+        -- arrow can sit right on the edge of whatever is showing.
+        local cw, ch = p.card:GetWidth() or 0, p.card:GetHeight() or 0
+        local tagH = p.tag:GetHeight() or 18
+        local tagHalf = lk.distance and tagW / 2 or 0
+        local tagTop = -PIN / 2 - 6
+        local gap = math.max(6, (lk.distance and (tagW / 2 - PIN / 2) or 0) + 6)
         local above = -PIN / 2 - 2                           -- just above the distance tag
-        if not lk.marker and d.side == "right" then p.card:SetPoint("BOTTOMRIGHT", p, "CENTER", clear, above)
-        elseif not lk.marker and d.side == "left" then p.card:SetPoint("BOTTOMLEFT", p, "CENTER", -clear, above)
-        elseif not lk.marker and d.side ~= "top" then p.card:SetPoint("BOTTOM", p, "CENTER", 0, above)
-        elseif d.side == "right" then p.card:SetPoint("RIGHT", p, "LEFT", -gap, 0)
-        elseif d.side == "left" then p.card:SetPoint("LEFT", p, "RIGHT", gap, 0)
-        elseif d.side == "top" then p.card:SetPoint("TOP", lk.distance and p.tag or p, "BOTTOM", 0, -6)
-        else p.card:SetPoint("BOTTOM", p, "TOP", 0, 7) end
+        local below = lk.distance and (tagTop - tagH - 6) or (-PIN / 2 - 6)
+        local box                                            -- the card's box: x0, y0, x1, y1
+        p.card:ClearAllPoints()
+        if d.side == "top" then
+            p.card:SetPoint("TOP", lk.distance and p.tag or p, "BOTTOM", 0, -6)
+            box = { -cw / 2, below - ch, cw / 2, below }
+        elseif not lk.marker and d.side == "right" then
+            p.card:SetPoint("BOTTOMRIGHT", p, "CENTER", tagHalf, above)
+            box = { tagHalf - cw, above, tagHalf, above + ch }
+        elseif not lk.marker and d.side == "left" then
+            p.card:SetPoint("BOTTOMLEFT", p, "CENTER", -tagHalf, above)
+            box = { -tagHalf, above, -tagHalf + cw, above + ch }
+        elseif not lk.marker then
+            p.card:SetPoint("BOTTOM", p, "CENTER", 0, above)
+            box = { -cw / 2, above, cw / 2, above + ch }
+        elseif d.side == "right" then
+            p.card:SetPoint("RIGHT", p, "LEFT", -gap, 0)
+            box = { -PIN / 2 - gap - cw, -ch / 2, -PIN / 2 - gap, ch / 2 }
+        elseif d.side == "left" then
+            p.card:SetPoint("LEFT", p, "RIGHT", gap, 0)
+            box = { PIN / 2 + gap, -ch / 2, PIN / 2 + gap + cw, ch / 2 }
+        else
+            p.card:SetPoint("BOTTOM", p, "TOP", 0, 7)
+            box = { -cw / 2, PIN / 2 + 7, cw / 2, PIN / 2 + 7 + ch }
+        end
+        local parts = {}
+        if lk.marker then parts[#parts + 1] = { -PIN / 2, -PIN / 2, PIN / 2, PIN / 2 } end
+        if lk.distance then parts[#parts + 1] = { -tagW / 2, tagTop - tagH, tagW / 2, tagTop } end
+        if p.card:IsShown() and cw > 0 then parts[#parts + 1] = box end
+        local ax, ay = M.EdgeArrowSpot(parts, d.angle or 0)
+        p.arrowX, p.arrowY = ax, ay
+        p.arrow:ClearAllPoints()
+        p.arrow:SetPoint("CENTER", p, "CENTER", ax, ay)
     end
+end
+
+-- Where the edge arrow goes: just outside the box around the parts showing
+-- (each { x0, y0, x1, y1 } from the pin's middle), in the direction it points.
+function M.EdgeArrowSpot(parts, angle)
+    local x0, y0, x1, y1
+    for _, b in ipairs(parts) do
+        x0 = x0 and math.min(x0, b[1]) or b[1]; y0 = y0 and math.min(y0, b[2]) or b[2]
+        x1 = x1 and math.max(x1, b[3]) or b[3]; y1 = y1 and math.max(y1, b[4]) or b[4]
+    end
+    if not x0 then x0, y0, x1, y1 = -PIN / 4, -PIN / 4, PIN / 4, PIN / 4 end
+    local cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    local hw, hh = (x1 - x0) / 2, (y1 - y0) / 2
+    local dx, dy = math.cos(angle), math.sin(angle)
+    local t = math.huge
+    if math.abs(dx) > 1e-6 then t = math.min(t, hw / math.abs(dx)) end
+    if math.abs(dy) > 1e-6 then t = math.min(t, hh / math.abs(dy)) end
+    if t == math.huge then t = 0 end
+    -- the arrow's own half-width beyond the edge, along its direction
+    local r = t + EDGE_ARROW / 2 + 1
+    return cx + dx * r, cy + dy * r
 end
 
 local function setGameMarker(hide)
@@ -388,6 +435,11 @@ local function update(_, elapsed)
         d.side = M.EdgeSide(ex, ey, b)
         local sc = 0.8 * lk.size
         pin:SetScale(sc)
+        -- keep the arrow (on the edge of the card, marker and distance) on screen too
+        local m = EDGE_ARROW * sc / 2 + 4
+        local ax, ay = (pin.arrowX or 0) * sc, (pin.arrowY or 0) * sc
+        ex = math.max(m - math.min(0, ax), math.min(w - m - math.max(0, ax), ex))
+        ey = math.max(m - math.min(0, ay), math.min(h - m - math.max(0, ay), ey))
         -- offsets are in the pin's own (scaled) units
         pin:SetPoint("CENTER", UIParent, "BOTTOMLEFT", ex / sc, ey / sc)
     else
@@ -517,7 +569,7 @@ local function refreshEditor()
     local e = editor.edgePreview
     e:SetScale(0.8 * lk.size)
     e:ClearAllPoints()
-    e:SetPoint("RIGHT", editor.edgeArea, "RIGHT", -34 / (0.8 * lk.size), -8 / (0.8 * lk.size))
+    e:SetPoint("RIGHT", editor.edgeArea, "RIGHT", -56 / (0.8 * lk.size), -8 / (0.8 * lk.size))   -- room for the arrow beyond the distance
     paint(e, { yards = 420, clamped = true, angle = 0, side = "right", title = SAMPLE.title, sub = SAMPLE.sub, obj = SAMPLE.obj }, lk, true)
     vis(e, lk.edge)
     editor.edgeOff:SetText(lk.edge and "" or (C.dim .. "Off: the pin hides when the spot is off screen.|r"))

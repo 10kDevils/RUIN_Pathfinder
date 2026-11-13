@@ -6,6 +6,12 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.7.1 — 2026-11-12
+
+- **Mark on map** in Pathfinder's alert window now closes the window and opens the world map on the quest's giver, with a pin there.
+- The alert window and the step tracker match the new look: the alert window has Pathfinder's compass and name over a hairline, more room around each alert with a line between them, and a close x that turns red under the mouse; the tracker's title, tabs and < > buttons use Pathfinder's green instead of gold, and its x is the same close button.
+- The arrow at the screen edge sits right on the edge of whatever you show (the marker, the card and the distance, as picked in the Waypoint Editor), on the side it points to, instead of a fixed distance from the marker's middle (with the marker off it used to land in the gap between the card and the distance). With the marker off, the card lines up with the distance's edge. The edge pin pulls in far enough to keep the arrow on screen.
+
 ## 0.7.0 — 2026-11-12
 
 - **A new look, with the rest of the suite.** Pathfinder's pages take its green through and through: the open tab's underline, check marks, the bar on a row under the mouse and the edge a button gets when you point at it. Its header carries a drawing of the route over contour lines with a traveler walking it, and Pathfinder has its own icon (a compass) on its tab, its header and in the AddOns list. The Waypoint Editor wears the same green, the choice you picked is filled rather than only gold text, and a finished step shows a green check.

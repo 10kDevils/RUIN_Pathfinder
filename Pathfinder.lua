@@ -32,7 +32,7 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Pathfinder", { version = "0.7.2" })
+local M = R:RegisterModule("Pathfinder", { version = "0.7.3" })
 local QB = ns.QB
 
 -- What the player lets RUIN share about them (RUIN Core: Settings > Display)
@@ -3257,6 +3257,7 @@ SlashCmdList.RUINPATH = function(input)
     elseif msg:match("^minimap") and ns.Minimap then
         local arg = msg:match("^minimap%s+(%S+)")
         local mm = ns.Minimap
+        if arg == "debug" then return mm.Debug(function(t) M:Print(t) end) end
         if arg == "round" or arg == "square" then mm.SetShape(arg)
         elseif arg == "blizzard" or arg == "pathfinder" then mm.SetStyle(arg)
         else return M:Print("/path minimap round | square | blizzard | pathfinder") end

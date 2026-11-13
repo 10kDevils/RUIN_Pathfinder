@@ -94,11 +94,34 @@ function MM.Grow(k) local d = DOCKS[k or MM.Dock() or ""]; return d and d.grow e
 local function blizzardBits()
     local list = {}
     local function add(r) if type(r) == "table" and r.SetAlpha then list[#list + 1] = r end end
-    for _, n in ipairs({ "MinimapBorder", "MinimapBorderTop", "MinimapNorthTag", "MinimapCompassTexture" }) do add(rawget(_G, n)) end
+    local seen = {}
+    local function addOnce(r) if type(r) == "table" and not seen[r] then seen[r] = true; add(r) end end
+    for _, n in ipairs({ "MinimapBorder", "MinimapBorderTop", "MinimapNorthTag", "MinimapCompassTexture" }) do addOnce(rawget(_G, n)) end
     local cl = rawget(_G, "MinimapCluster")
-    if type(cl) == "table" then add(cl.BorderTop) end
+    if type(cl) == "table" then addOnce(cl.BorderTop) end
+    -- whatever else draws the round border: a texture around the map, at
+    -- least as big as it, named or drawn as a border, frame, ring or compass
+    local m = minimap()
+    local mw = m and m.GetWidth and m:GetWidth() or 0
+    local function scan(frame)
+        if type(frame) ~= "table" or not frame.GetRegions then return end
+        for _, r in ipairs({ frame:GetRegions() }) do
+            if type(r) == "table" and r.GetObjectType and r:GetObjectType() == "Texture" and r ~= (deco and deco.ring) then
+                local name = (r.GetName and r:GetName()) or ""
+                local tex = r.GetTexture and r:GetTexture()
+                local atlas = r.GetAtlas and r:GetAtlas()
+                local text = (tostring(name) .. " " .. tostring(tex or "") .. " " .. tostring(atlas or "")):lower()
+                local w = r.GetWidth and r:GetWidth() or 0
+                local named = text:find("border") or text:find("ring") or text:find("compass") or text:find("minimap%-frame") or text:find("hud%-minimap")
+                if named and (w == 0 or w >= mw * 0.9) and not text:find("ruin") then addOnce(r) end
+            end
+        end
+    end
+    scan(m); scan(rawget(_G, "MinimapBackdrop")); scan(cl)
+    if type(cl) == "table" then scan(cl.MinimapContainer) end
     return list
 end
+MM.BlizzardBits = blizzardBits
 local function zoomButtons()
     local list, m = {}, minimap()
     for _, n in ipairs({ "MinimapZoomIn", "MinimapZoomOut" }) do local b = rawget(_G, n); if type(b) == "table" then list[#list + 1] = b end end
@@ -113,14 +136,28 @@ local function zoneText()
     return type(b) == "table" and b or nil
 end
 
+-- Something (the game, another addon) may show a dimmed piece again: keep it dimmed.
+local keepDim = {}
+local function hookAlpha(r)
+    if r.ruinAlphaHook or not hooksecurefunc then return end
+    r.ruinAlphaHook = true
+    hooksecurefunc(r, "SetAlpha", function(self, a)
+        if keepDim[self] and a and a > 0 and not self.ruinSetting then
+            self.ruinSetting = true; self:SetAlpha(0); self.ruinSetting = nil
+        end
+    end)
+end
+
 local function dim(r, off)
     if type(r) ~= "table" or not r.SetAlpha then return end
+    keepDim[r] = off or nil
     if off then
         if saved[r] == nil then saved[r] = (r.GetAlpha and r:GetAlpha()) or 1 end
-        r:SetAlpha(0)
+        hookAlpha(r)
+        r.ruinSetting = true; r:SetAlpha(0); r.ruinSetting = nil
         if r.EnableMouse and r.IsMouseEnabled then r.ruinMouse = r.ruinMouse == nil and r:IsMouseEnabled() or r.ruinMouse; r:EnableMouse(false) end
     elseif saved[r] ~= nil then
-        r:SetAlpha(saved[r])
+        r.ruinSetting = true; r:SetAlpha(saved[r]); r.ruinSetting = nil
         saved[r] = nil
         if r.EnableMouse and r.ruinMouse ~= nil then r:EnableMouse(r.ruinMouse); r.ruinMouse = nil end
     end
@@ -255,6 +292,17 @@ function MM.Apply()
     local square, modern = MM.Shape() == "square", MM.Style() == "pathfinder"
     -- shape: the mask, and what other addons ask (minimap buttons follow it)
     if m.SetMaskTexture then
+        -- the game (or WoW Forever's own UI) may put its round mask back:
+        -- while the map is square, put the square one back over it
+        if not m.ruinMaskHook and hooksecurefunc then
+            m.ruinMaskHook = true
+            hooksecurefunc(m, "SetMaskTexture", function(self, t)
+                if MM.Shape() == "square" and not self.ruinMasking and t ~= SQUARE_MASK then
+                    self.ruinMasking = true; self:SetMaskTexture(SQUARE_MASK); self.ruinMasking = nil
+                end
+            end)
+        end
+        m.ruinMasking = true
         if square then
             m:SetMaskTexture(SQUARE_MASK)
             maskSet = true
@@ -262,6 +310,10 @@ function MM.Apply()
             m:SetMaskTexture(ROUND_MASK)
             maskSet = false
         end
+        m.ruinMasking = nil
+        -- quest and dig-site blobs draw a round ring of their own
+        if m.SetArchBlobRingScalar then pcall(m.SetArchBlobRingScalar, m, square and 0 or 1) end
+        if m.SetQuestBlobRingScalar then pcall(m.SetQuestBlobRingScalar, m, square and 0 or 1) end
     end
     if square then
         if origShape == nil then origShape = rawget(_G, "GetMinimapShape") or false end
@@ -356,11 +408,44 @@ function MM.SetStyle(style)
     return true
 end
 
+-- /path minimap debug: what's around the minimap, to find a border RUIN missed.
+function MM.Debug(print)
+    local m = minimap()
+    print(("Minimap: %s, %dx%d, shape %s, style %s, square mask set: %s"):format(tostring(m and m:GetName()), m and m:GetWidth() or 0, m and m:GetHeight() or 0,
+        MM.Shape(), MM.Style(), tostring(maskSet)))
+    local function list(label, frame)
+        if type(frame) ~= "table" or not frame.GetRegions then return print(label .. ": none") end
+        for _, r in ipairs({ frame:GetRegions() }) do
+            if r.GetObjectType and r:GetObjectType() == "Texture" then
+                print(("%s: %s tex=%s atlas=%s %dx%d alpha=%.1f %s"):format(label, tostring(r:GetName()), tostring(r:GetTexture()), tostring(r.GetAtlas and r:GetAtlas()),
+                    r:GetWidth() or 0, r:GetHeight() or 0, r:GetAlpha() or 0, r:IsShown() and "shown" or "hidden"))
+            end
+        end
+        for _, c in ipairs({ frame:GetChildren() }) do
+            print(("%s child: %s (%s) %dx%d"):format(label, tostring(c:GetName()), c:GetObjectType(), c:GetWidth() or 0, c:GetHeight() or 0))
+        end
+    end
+    list("Minimap", m)
+    list("MinimapBackdrop", rawget(_G, "MinimapBackdrop"))
+    list("MinimapCluster", rawget(_G, "MinimapCluster"))
+    local dimmed = 0
+    for _ in pairs(keepDim) do dimmed = dimmed + 1 end
+    print("RUIN is hiding " .. dimmed .. " of the game's minimap pieces.")
+end
+
 function MM.Init(cdb)
     db = cdb
     if db.mmShape == nil then db.mmShape = "round" end
     if db.mmStyle == nil then db.mmStyle = "blizzard" end
-    -- the game's own look on a round map needs nothing; anything else is applied once the UI is up
+    -- the game's own look on a round map needs nothing; anything else is
+    -- applied once the UI is up, and again when you change zones (the game
+    -- rebuilds parts of the minimap then)
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_ENTERING_WORLD")
+    f:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+    f:SetScript("OnEvent", function()
+        if db.mmShape ~= "round" or db.mmStyle ~= "blizzard" then C_Timer.After(1, MM.Apply) end
+    end)
     if db.mmShape ~= "round" or db.mmStyle ~= "blizzard" then
         C_Timer.After(1, MM.Apply)
     end

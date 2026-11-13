@@ -32,7 +32,7 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Pathfinder", { version = "0.7.1" })
+local M = R:RegisterModule("Pathfinder", { version = "0.7.2" })
 local QB = ns.QB
 
 -- What the player lets RUIN share about them (RUIN Core: Settings > Display)
@@ -1167,6 +1167,8 @@ M.OpenFromTracker = openFromTracker
 -- Keeps the side nearest the screen edge still while the width changes:
 -- left third grows rightward, right third leftward, the middle both ways.
 local function anchorTracker()
+    -- docked to the minimap: it grows away from the side it's on
+    if ns.Minimap and ns.Minimap.AnchorTracker(tracker) then return end
     if not (tracker.GetLeft and tracker:GetLeft()) then return end
     local ratio = (tracker:GetEffectiveScale() or 1) / (UIParent:GetEffectiveScale() or 1)
     local screenW = (UIParent:GetWidth() or 0) / ratio
@@ -1368,7 +1370,15 @@ updateTracker = function()
         -- double-click opens Pathfinder on the right page (a drag doesn't count)
         tracker:HookScript("OnMouseUp", function(self, button)
             if button ~= "LeftButton" then return end
-            if self.justMoved then anchorTracker(); return end
+            if self.justMoved then
+                -- dragged off the minimap: it's free again
+                if ns.Minimap and ns.Minimap.Dock() then
+                    ns.Minimap.SetDock("off")
+                    M:Print("Tracker undocked from the minimap (Options > Minimap to dock it again).")
+                end
+                anchorTracker()
+                return
+            end
             local now = GetTime()
             if self.lastClick and now - self.lastClick < 0.4 then
                 self.lastClick = nil
@@ -1403,6 +1413,7 @@ updateTracker = function()
         tracker.prev.tip, tracker.next.tip = "Previous step.", "Next step."
     end
     tracker:Show()
+    if ns.Minimap and ns.Minimap.Dock() then ns.Minimap.AnchorTracker(tracker) end
     fitTracker()
 end
 
@@ -3017,16 +3028,59 @@ local function buildOptions(page)
     share.tip = "Pathfinder's atlas: where you pick up, do and hand in quests, shared with RUIN so routes follow where things really are on WoW Forever. Only quest numbers and map spots. /path atlas"
     checks[#checks + 1] = share
 
-    local k = card("Controls", -244, 56)
+    -- the minimap: shape, look, and the tracker docked to it
+    local mm = ns.Minimap
+    local mc = card("Minimap", -244, 92)
+    local sl = W.Label(mc, C.dim .. "Shape|r", "GameFontHighlightSmall")
+    sl:SetPoint("TOPLEFT", 12, -36)
+    local shape = W.Dropdown(mc, 110, mm.SHAPES, function() return mm.Shape() end, function(v) mm.SetShape(v); if ui.dock then ui.dock:Refresh() end end)
+    shape.format = function(v) return mm.SHAPE_LABEL[v] or v end
+    shape:SetPoint("LEFT", sl, "RIGHT", 8, 0)
+    shape.tipTitle = "Round, as the game draws it, or square"
+    shape:Refresh()
+    local stl = W.Label(mc, C.dim .. "Style|r", "GameFontHighlightSmall")
+    stl:SetPoint("LEFT", shape, "RIGHT", 18, 0)
+    local style = W.Dropdown(mc, 190, mm.STYLES, function() return mm.Style() end, function(v) mm.SetStyle(v) end)
+    style.format = function(v) return mm.STYLE_LABEL[v] or v end
+    style:SetPoint("LEFT", stl, "RIGHT", 8, 0)
+    style.tipTitle = "The game's own look, or Pathfinder's: a slim ring (or edge) in Pathfinder's color, an N, the zone in a pill, mouse-wheel zoom"
+    style:Refresh()
+    local dl = W.Label(mc, C.dim .. "Dock the tracker|r", "GameFontHighlightSmall")
+    dl:SetPoint("TOPLEFT", 12, -66)
+    local dock = W.Dropdown(mc, 200, function() return mm.DockChoices() end, function() return mm.Dock() or "off" end,
+        function(v) mm.SetDock(v) end)
+    dock.format = function(v) return mm.DockLabel(v) end
+    dock:SetPoint("LEFT", dl, "RIGHT", 8, 0)
+    dock.tipTitle = "Attach the tracker to the minimap. On top it grows up, below it grows down, on a side it grows away from the map. Drag it off to free it."
+    dock:Refresh()
+    ui.dock, ui.mmShape, ui.mmStyle = dock, shape, style
+    local dh = W.Label(mc, "", "GameFontHighlightSmall")
+    dh:SetPoint("LEFT", dock, "RIGHT", 12, 0)
+    dh:SetWidth(320)
+    dh:SetJustifyH("LEFT")
+    dh:SetWordWrap(false)
+    ui.dockHint = dh
+    local function dockHint()
+        local g = mm.Grow()
+        dh:SetText(C.dim .. (g and ("Grows " .. g .. " as it fills.") or "Free: drag it anywhere.") .. "|r")
+    end
+    dockHint()
+    mm.OnDockChanged = function()
+        if tracker then anchorTracker(); fitTracker() end
+        dock:Refresh(); dockHint()
+    end
+
+    local k = card("Controls", -344, 56)
     local kl = W.Label(k, "", "GameFontHighlightSmall")
     kl:SetPoint("TOPLEFT", 12, -28)
     kl:SetPoint("RIGHT", k, "RIGHT", -12, 0)
     kl:SetWordWrap(false)
     kl:SetText(C.white .. "Keys:|r " .. C.dim .. "Options > Keybindings > AddOns > RUIN Pathfinder.|r   "
-        .. C.white .. "Chat:|r " .. C.dim .. "/path next, prev, clear, pin, editor, waypoint, nav, remind|r")
+        .. C.white .. "Chat:|r " .. C.dim .. "/path next, prev, clear, pin, editor, waypoint, nav, remind, minimap, dock|r")
 
     page:SetScript("OnShow", function()
         for _, c in ipairs(checks) do c:Refresh() end
+        shape:Refresh(); style:Refresh(); dock:Refresh(); dockHint()
     end)
     ui.optionChecks = checks
 end
@@ -3103,6 +3157,10 @@ function M:OnEnable()
         db.edgeDefaults10 = true
     end
     for k, v in pairs(DEFAULTS) do if db[k] == nil then db[k] = v end end
+    if ns.Minimap then
+        ns.Minimap.Init(db)
+        ns.Minimap.OnDockChanged = ns.Minimap.OnDockChanged or function() if tracker then anchorTracker(); fitTracker() end end
+    end
     if type(RUIN_PathfinderDB) ~= "table" then RUIN_PathfinderDB = {} end
     adb = RUIN_PathfinderDB
     for k, v in pairs(ACCOUNT_DEFAULTS) do if adb[k] == nil then adb[k] = R.Util.DeepCopy(v) end end
@@ -3196,6 +3254,21 @@ SlashCmdList.RUINPATH = function(input)
         M:Print(("Atlas: where %d quests are picked up, %d handed in, and the objectives of %d, from RUIN members playing WoW Forever. Sharing is %s."):format(
             n.s, n.f, n.o, adb.atlasShare == false and "off" or "on"))
     elseif msg == "editor" or msg == "edit" then if M.OpenWaypointEditor then M.OpenWaypointEditor() end
+    elseif msg:match("^minimap") and ns.Minimap then
+        local arg = msg:match("^minimap%s+(%S+)")
+        local mm = ns.Minimap
+        if arg == "round" or arg == "square" then mm.SetShape(arg)
+        elseif arg == "blizzard" or arg == "pathfinder" then mm.SetStyle(arg)
+        else return M:Print("/path minimap round | square | blizzard | pathfinder") end
+        M:Print(("Minimap: %s, %s style."):format(mm.SHAPE_LABEL[mm.Shape()], mm.STYLE_LABEL[mm.Style()]))
+    elseif msg:match("^dock") and ns.Minimap then
+        local arg = msg:match("^dock%s+(%S+)")
+        local mm = ns.Minimap
+        local ok = false
+        for _, c in ipairs(mm.DockChoices()) do if c == arg then ok = true end end
+        if not ok then return M:Print("/path dock " .. table.concat(mm.DockChoices(), " | ")) end
+        mm.SetDock(arg)
+        M:Print("Tracker dock: " .. mm.DockLabel(mm.Dock()) .. ".")
     elseif msg == "pin" then
         db.pin = db.pin == false
         if M.RefreshPin then M.RefreshPin() end

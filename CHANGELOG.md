@@ -6,6 +6,13 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.7.2 — 2026-11-13
+
+- **Minimap options** (Options > Minimap; /path minimap round | square | blizzard | pathfinder):
+  - **Shape:** round, as the game draws it, or square. Other addons are told the minimap is square, so their minimap buttons line up with it.
+  - **Style:** the game's own look (Blizzard / WoW Forever), or Pathfinder's modern one: a slim ring (or square edge) in Pathfinder's green with a soft shadow, an N at the top, the zone name in a pill above the map (in its PvP color), and mouse-wheel zoom in place of the + and - buttons. On a square map the game's look gets a classic tooltip-style frame.
+  - **Dock the tracker** to the minimap (/path dock <spot>). A round map offers above, below and each side; a square one also offers each end of every edge. Above, the tracker grows up as it fills; below, it grows down; on a side, it grows away from the map. Dragging the tracker off the map undocks it.
+
 ## 0.7.1 — 2026-11-12
 
 - **Mark on map** in Pathfinder's alert window now closes the window and opens the world map on the quest's giver, with a pin there.

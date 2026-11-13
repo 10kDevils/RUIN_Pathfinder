@@ -199,8 +199,13 @@ local function buildDeco(m)
     end
     edge(deco.edges, "OVERLAY", c[1], c[2], c[3], 0.95)
     edge(deco.outer, "BORDER", 0, 0, 0, 0.85)
-    deco.sqShadow = deco:CreateTexture(nil, "BACKGROUND")
-    deco.sqShadow:SetColorTexture(0, 0, 0, 0.45)
+    -- the square's shadow: four soft bands outside the edge (never over the map)
+    deco.sqShadow = {}
+    for i = 1, 4 do
+        local t = deco:CreateTexture(nil, "BACKGROUND")
+        t:SetColorTexture(1, 1, 1, 1)
+        deco.sqShadow[i] = t
+    end
     -- N at the top, on a dark dot
     deco.north = deco:CreateTexture(nil, "OVERLAY")
     deco.north:SetTexture(MEDIA .. "MinimapShadow")
@@ -255,10 +260,22 @@ local function layoutDeco(m, square)
     end
     place(deco.edges, 0, 2)
     place(deco.outer, 2, 1)
-    deco.sqShadow:ClearAllPoints()
-    deco.sqShadow:SetPoint("TOPLEFT", m, "TOPLEFT", -6, 6)
-    deco.sqShadow:SetPoint("BOTTOMRIGHT", m, "BOTTOMRIGHT", 6, -6)
-    deco.sqShadow:SetShown(square)
+    -- shadow bands just outside the dark line, fading outward
+    local sh, o, w = deco.sqShadow, 3, 6
+    local function fade(t, horiz, outward)
+        if t.SetGradient and CreateColor then
+            local dark, clear = CreateColor(0, 0, 0, 0.55), CreateColor(0, 0, 0, 0)
+            if horiz then t:SetGradient("HORIZONTAL", outward and dark or clear, outward and clear or dark)
+            else t:SetGradient("VERTICAL", outward and clear or dark, outward and dark or clear) end
+        else
+            t:SetColorTexture(0, 0, 0, 0.35)
+        end
+    end
+    sh[1]:ClearAllPoints(); sh[1]:SetPoint("BOTTOMLEFT", m, "TOPLEFT", -o - w, o); sh[1]:SetPoint("BOTTOMRIGHT", m, "TOPRIGHT", o + w, o); sh[1]:SetHeight(w); fade(sh[1], false, false)
+    sh[2]:ClearAllPoints(); sh[2]:SetPoint("TOPLEFT", m, "BOTTOMLEFT", -o - w, -o); sh[2]:SetPoint("TOPRIGHT", m, "BOTTOMRIGHT", o + w, -o); sh[2]:SetHeight(w); fade(sh[2], false, true)
+    sh[3]:ClearAllPoints(); sh[3]:SetPoint("TOPRIGHT", m, "TOPLEFT", -o, o); sh[3]:SetPoint("BOTTOMRIGHT", m, "BOTTOMLEFT", -o, -o); sh[3]:SetWidth(w); fade(sh[3], true, false)
+    sh[4]:ClearAllPoints(); sh[4]:SetPoint("TOPLEFT", m, "TOPRIGHT", o, o); sh[4]:SetPoint("BOTTOMLEFT", m, "BOTTOMRIGHT", o, -o); sh[4]:SetWidth(w); fade(sh[4], true, true)
+    for _, t in ipairs(sh) do t:SetShown(square) end
     deco.north:ClearAllPoints(); deco.north:SetPoint("CENTER", m, "TOP", 0, square and 0 or -1)
     deco.n:ClearAllPoints(); deco.n:SetPoint("CENTER", deco.north, "CENTER", 0, 0)
     deco.zone:ClearAllPoints(); deco.zone:SetPoint("BOTTOM", m, "TOP", 0, square and 12 or 14)

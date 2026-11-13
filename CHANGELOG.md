@@ -6,6 +6,10 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.7.5 — 2026-11-13
+
+- **Fixed: Pathfinder's square minimap had a dark see-through layer over the map.** Its shadow was one dark square under the edge, drawn above the map. It's now four soft bands outside the edge, fading outward.
+
 ## 0.7.4 — 2026-11-13
 
 - **Fixed: the round minimap went see-through after trying the square one.** Going back to round put on a round mask WoW Forever's client doesn't have. Pathfinder now ships its own round mask and uses that.

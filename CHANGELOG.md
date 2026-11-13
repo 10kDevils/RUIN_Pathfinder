@@ -6,6 +6,10 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.7.4 — 2026-11-13
+
+- **Fixed: the round minimap went see-through after trying the square one.** Going back to round put on a round mask WoW Forever's client doesn't have. Pathfinder now ships its own round mask and uses that.
+
 ## 0.7.3 — 2026-11-13
 
 - **Fixed: the square minimap stayed round, with the game's round border.** When the game (or WoW Forever's own UI) puts its round mask back, Pathfinder now puts the square one straight back over it, and it reapplies the minimap's look whenever you change zones. The game's round border is found by what it draws (not only by name) and kept hidden while the map is square or in Pathfinder's style. Quest and dig-site areas no longer draw a round ring on a square map.

@@ -16,11 +16,11 @@ local MM = {}
 ns.Minimap = MM
 
 local MEDIA = "Interface\\AddOns\\RUIN_Pathfinder\\Media\\"
--- The game's round mask: the modern client's (WoW Forever runs on it), or
--- the classic one. RUIN only touches the mask once you pick square, so the
--- game's own round map is never replaced by a guess.
-local ROUND_MASK = (WOW_PROJECT_ID and WOW_PROJECT_MAINLINE and WOW_PROJECT_ID == WOW_PROJECT_MAINLINE or not WOW_PROJECT_ID)
-    and "Interface\\Masks\\CircleMaskScalable" or "Textures\\MinimapMask"
+-- The round mask: Pathfinder's own (the game's mask files differ between
+-- clients, and WoW Forever's has neither the classic nor the modern one by
+-- those names). RUIN only touches the mask once you pick square, so the
+-- game's own round map stays as it is until then.
+local ROUND_MASK = MEDIA .. "MinimapMask"
 local SQUARE_MASK = "Interface\\BUTTONS\\WHITE8X8"
 local maskSet = false   -- RUIN has put the square mask on
 

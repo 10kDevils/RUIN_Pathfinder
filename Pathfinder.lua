@@ -32,7 +32,7 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Pathfinder", { version = "0.7.2" })
+local M = R:RegisterModule("Pathfinder", { version = "0.7.1" })
 local QB = ns.QB
 
 -- What the player lets RUIN share about them (RUIN Core: Settings > Display)

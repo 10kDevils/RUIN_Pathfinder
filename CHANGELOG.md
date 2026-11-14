@@ -8,8 +8,11 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.7.6 — 2026-11-13
 
-- **The N turns with a rotating minimap** (Pathfinder style): it sits where north is, on the ring or on the square's edge, instead of staying on top.
-- **A rotating square minimap stays square and full.** The game turns the map picture inside the frame, which left the corners empty. While the map rotates, the frame grows behind a mask the size it was (and the game is made to redraw the map at the new size), so the turning map always fills the square. The edge, the tracker dock and RUIN's map pins follow the square you see.
+- **The square minimap is gone.** A rotating map leaves a square's corners empty, and the fixes didn't hold up on WoW Forever, so the minimap is round again. A tracker docked to a corner spot moves to that side.
+- **Pathfinder's minimap style gets a bar above the map.** The tracking button, the zone name, the clock, the calendar and the addon list sit on a flat bar in Pathfinder's look just above the ring, shrunk to fit and without their round frames, so nothing sits on the map. Back in the game's own look, they go back where they were.
+- **The tracker docks on that bar** when it's set above the minimap in Pathfinder's style, and grows up from it.
+- **The N turns with a rotating minimap** (Pathfinder's style): it sits on the ring where north is, instead of staying on top.
+- `/path minimap blizzard | pathfinder | debug`.
 
 ## 0.7.5 — 2026-11-13
 

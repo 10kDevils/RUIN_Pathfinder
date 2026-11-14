@@ -3028,22 +3028,15 @@ local function buildOptions(page)
     share.tip = "Pathfinder's atlas: where you pick up, do and hand in quests, shared with RUIN so routes follow where things really are on WoW Forever. Only quest numbers and map spots. /path atlas"
     checks[#checks + 1] = share
 
-    -- the minimap: shape, look, and the tracker docked to it
+    -- the minimap: its look, and the tracker docked to it
     local mm = ns.Minimap
     local mc = card("Minimap", -244, 92)
-    local sl = W.Label(mc, C.dim .. "Shape|r", "GameFontHighlightSmall")
-    sl:SetPoint("TOPLEFT", 12, -36)
-    local shape = W.Dropdown(mc, 110, mm.SHAPES, function() return mm.Shape() end, function(v) mm.SetShape(v); if ui.dock then ui.dock:Refresh() end end)
-    shape.format = function(v) return mm.SHAPE_LABEL[v] or v end
-    shape:SetPoint("LEFT", sl, "RIGHT", 8, 0)
-    shape.tipTitle = "Round, as the game draws it, or square"
-    shape:Refresh()
     local stl = W.Label(mc, C.dim .. "Style|r", "GameFontHighlightSmall")
-    stl:SetPoint("LEFT", shape, "RIGHT", 18, 0)
+    stl:SetPoint("TOPLEFT", 12, -36)
     local style = W.Dropdown(mc, 190, mm.STYLES, function() return mm.Style() end, function(v) mm.SetStyle(v) end)
     style.format = function(v) return mm.STYLE_LABEL[v] or v end
     style:SetPoint("LEFT", stl, "RIGHT", 8, 0)
-    style.tipTitle = "The game's own look, or Pathfinder's: a slim ring (or edge) in Pathfinder's color, an N, the zone in a pill, mouse-wheel zoom"
+    style.tipTitle = "The game's own look, or Pathfinder's: a slim ring in Pathfinder's color, an N where north is, mouse-wheel zoom, and a flat bar above the map with the tracking button, zone, clock, calendar and addon list"
     style:Refresh()
     local dl = W.Label(mc, C.dim .. "Dock the tracker|r", "GameFontHighlightSmall")
     dl:SetPoint("TOPLEFT", 12, -66)
@@ -3051,9 +3044,9 @@ local function buildOptions(page)
         function(v) mm.SetDock(v) end)
     dock.format = function(v) return mm.DockLabel(v) end
     dock:SetPoint("LEFT", dl, "RIGHT", 8, 0)
-    dock.tipTitle = "Attach the tracker to the minimap. On top it grows up, below it grows down, on a side it grows away from the map. Drag it off to free it."
+    dock.tipTitle = "Attach the tracker to the minimap. On top it grows up (in Pathfinder's style it sits on the bar above the map), below it grows down, on a side it grows away from the map. Drag it off to free it."
     dock:Refresh()
-    ui.dock, ui.mmShape, ui.mmStyle = dock, shape, style
+    ui.dock, ui.mmStyle = dock, style
     local dh = W.Label(mc, "", "GameFontHighlightSmall")
     dh:SetPoint("LEFT", dock, "RIGHT", 12, 0)
     dh:SetWidth(320)
@@ -3080,7 +3073,7 @@ local function buildOptions(page)
 
     page:SetScript("OnShow", function()
         for _, c in ipairs(checks) do c:Refresh() end
-        shape:Refresh(); style:Refresh(); dock:Refresh(); dockHint()
+        style:Refresh(); dock:Refresh(); dockHint()
     end)
     ui.optionChecks = checks
 end
@@ -3258,10 +3251,9 @@ SlashCmdList.RUINPATH = function(input)
         local arg = msg:match("^minimap%s+(%S+)")
         local mm = ns.Minimap
         if arg == "debug" then return mm.Debug(function(t) M:Print(t) end) end
-        if arg == "round" or arg == "square" then mm.SetShape(arg)
-        elseif arg == "blizzard" or arg == "pathfinder" then mm.SetStyle(arg)
-        else return M:Print("/path minimap round | square | blizzard | pathfinder") end
-        M:Print(("Minimap: %s, %s style."):format(mm.SHAPE_LABEL[mm.Shape()], mm.STYLE_LABEL[mm.Style()]))
+        if arg == "blizzard" or arg == "pathfinder" then mm.SetStyle(arg)
+        else return M:Print("/path minimap blizzard | pathfinder | debug") end
+        M:Print(("Minimap: %s style."):format(mm.STYLE_LABEL[mm.Style()]))
     elseif msg:match("^dock") and ns.Minimap then
         local arg = msg:match("^dock%s+(%S+)")
         local mm = ns.Minimap

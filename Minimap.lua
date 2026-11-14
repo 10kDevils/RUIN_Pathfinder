@@ -256,10 +256,13 @@ end
 -- The tracking button, calendar and mail keep working but are drawn flat by
 -- Pathfinder; the clock and addon count are text and keep theirs.
 ---------------------------------------------------------------------------
-local BAR_H, FOOT_H, SLOT = 16, 16, 16
+local BAR_H, FOOT_H, SLOT = 19, 19, 19
 -- how far the housing reaches past the map: more at the top, for the zone,
 -- the coordinates and the N; little at the bottom, where only the corners hold anything
-local TOPM, BOTM = 34, 10
+local TOPM, BOTM = 31, 7
+-- the map is sized as if the margins were this much: the frame sits a
+-- little inside the Edit Mode box, close around the map
+local FIT = 44
 local moved = {}        -- frame -> { parent, points, scale, slot, dress, ghost }
 local foot              -- the housing below the map
 local rows = {}         -- top / bottom: the strips the pieces sit in
@@ -316,7 +319,7 @@ local function dayNight()
         for _, c in ipairs({ mm:GetChildren() }) do
             local w, h = c.GetWidth and c:GetWidth() or 0, c.GetHeight and c:GetHeight() or 0
             if not (c.GetName and c:GetName()) and c.GetObjectType and c:GetObjectType() == "Frame"
-                    and w >= 28 and w <= 48 and math.abs(w - h) <= 4 and c.GetRegions and select("#", c:GetRegions()) > 0 then
+                    and w >= 28 and w <= 48 and math.abs(w - h) <= 4 then
                 return c
             end
         end
@@ -466,7 +469,7 @@ local function drawGhost(s, kind)
         local c = accent()
         s.page = s:CreateTexture(nil, "ARTWORK")
         s.page:SetColorTexture(0.42, 0.46, 0.5, 1)
-        s.page:SetSize(14, 13)
+        s.page:SetSize(16, 15)
         s.page:SetPoint("CENTER", 0, -1)
         s.inside = s:CreateTexture(nil, "ARTWORK", nil, 1)
         do local b = scheme().bg; s.inside:SetColorTexture(b[1], b[2], b[3], 1) end
@@ -480,7 +483,7 @@ local function drawGhost(s, kind)
         s.day = s:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         s.day:SetPoint("CENTER", s.inside, "CENTER", 0, 0)
         local font, _, flags = s.day:GetFont()
-        if font and s.day.SetFont then s.day:SetFont(font, 8, flags) end
+        if font and s.day.SetFont then s.day:SetFont(font, 10, flags) end
         s.dot = s:CreateTexture(nil, "OVERLAY")
         s.dot:SetColorTexture(1, 0.82, 0, 1)
         s.dot:SetSize(4, 4)
@@ -488,17 +491,17 @@ local function drawGhost(s, kind)
         s.dot:Hide()
     elseif kind == "daynight" then
         s.icon = s:CreateTexture(nil, "ARTWORK")
-        s.icon:SetSize(15, 15)
+        s.icon:SetSize(18, 18)
         s.icon:SetPoint("CENTER", 0, 0)
         s.dayNight = true
     else
         s.icon = s:CreateTexture(nil, "ARTWORK")
         if kind == "tracking" then
             s.icon:SetTexture(MEDIA .. "ModernSearch")
-            s.icon:SetSize(13, 13)
+            s.icon:SetSize(16, 16)
         else
             s.icon:SetTexture(MEDIA .. "ModernMail")
-            s.icon:SetSize(15, 15)
+            s.icon:SetSize(18, 18)
         end
         s.icon:SetPoint("CENTER", 0, 0)
         s.icon:SetVertexColor(0.82, 0.84, 0.88)
@@ -527,7 +530,7 @@ local function slotFor(p)
     local s = r.slots[p.key]
     if not s then
         s = CreateFrame("Frame", nil, r)
-        s:SetSize(p.wide and 32 or SLOT, SLOT)
+        s:SetSize(p.wide and 40 or SLOT, SLOT)
         r.slots[p.key] = s
     end
     return s
@@ -558,7 +561,7 @@ local function movePiece(p)
     for _, r in ipairs(rec.dress) do dim(r, true) end
     if p.key == "clock" then
         local t = rawget(_G, "TimeManagerClockTicker")
-        if type(t) == "table" and t.SetFontObject then t:SetFontObject(GameFontHighlightSmall) end
+        if type(t) == "table" and t.SetFontObject then t:SetFontObject(GameFontHighlight) end
     end
     place(f, s)
     if not f.ruinPointHook and hooksecurefunc then
@@ -678,7 +681,7 @@ local function fitMap(m, on)
     end
     -- the box's shorter side, in the map's parent's units
     local side = math.min(cw, ch) * ces / pes
-    local d = math.max(80, side - TOPM - BOTM)
+    local d = math.max(80, side - FIT)
     local k = d / w
     -- a little below the box's middle, so the top strip has its room
     local dy = (BOTM - TOPM) / 2 / k

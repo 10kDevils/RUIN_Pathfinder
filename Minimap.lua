@@ -151,6 +151,15 @@ local function accent()
     local f = rawget(_G, "RUIN_PathfinderTracker")
     return (f and f.themeColor) or { 0.48, 0.70, 0.41 }
 end
+-- Pathfinder's theme and colors, as its tracker and pages wear them
+local THEME = { color = { 0.31, 0.60, 0.23 } }
+local function theme()
+    local f = rawget(_G, "RUIN_PathfinderTracker")
+    return (f and f.ruinTheme) or THEME
+end
+local function scheme() return W.SchemeFor and W.SchemeFor(theme()) or { accent = accent(), edge = { 0.2, 0.3, 0.2 }, bg = { 0.05, 0.06, 0.08 } } end
+local function mixed(a, b, t) return { a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t } end
+MM.Scheme = scheme
 
 local function buildDeco(m)
     deco = CreateFrame("Frame", "RUIN_PathfinderMinimapDeco", m)
@@ -163,7 +172,10 @@ local function buildDeco(m)
     deco.shadow:SetVertexColor(0, 0, 0, 0.75)
     deco.ring = deco:CreateTexture(nil, "OVERLAY")
     deco.ring:SetTexture(MEDIA .. "MinimapRing")
-    deco.ring:SetVertexColor(c[1], c[2], c[3], 0.95)
+    -- the ring in the suite's edge color, warmed toward the accent: a frame, not a highlight
+    local sc = scheme()
+    local rc = mixed(sc.edge, sc.accent, 0.55)
+    deco.ring:SetVertexColor(rc[1], rc[2], rc[3], 1)
     deco.inner = deco:CreateTexture(nil, "OVERLAY")
     deco.inner:SetTexture(MEDIA .. "MinimapRing")
     deco.inner:SetVertexColor(0, 0, 0, 0.6)
@@ -208,7 +220,7 @@ end
 -- The tracking button, calendar and mail keep working but are drawn flat by
 -- Pathfinder; the clock and addon count are text and keep theirs.
 ---------------------------------------------------------------------------
-local BAR_H, FOOT_H, SLOT, EXT = 16, 16, 16, 18     -- EXT: how far the housing reaches past the map, top and bottom
+local BAR_H, FOOT_H, SLOT, EXT = 16, 16, 16, 19     -- EXT: how far the housing reaches past the map, top and bottom
 local moved = {}        -- frame -> { parent, points, scale, slot, dress, ghost }
 local foot              -- the housing below the map
 local rows = {}         -- top / bottom: the strips the pieces sit in
@@ -295,10 +307,19 @@ local function housing(m, name, openSide)
         h:SetFrameLevel(math.max(0, (m:GetFrameLevel() or 1) - 1))
     end
     if h.EnableMouse then h:EnableMouse(false) end
+    -- the suite's HUD look: its panel, its 1-pixel edges, a faint sheen and
+    -- the accent band along the top
+    h.ruinTheme = theme()
     if W.Skin then W.Skin(h, "bg", 0.94, "border") end
-    local c = accent()
-    for side, e in pairs(h.skinEdges or {}) do
-        if side == openSide then e:SetColorTexture(0, 0, 0, 0) else e:SetColorTexture(c[1], c[2], c[3], 0.95) end
+    if h.skinEdges and h.skinEdges[openSide] then h.skinEdges[openSide]:SetColorTexture(0, 0, 0, 0) end
+    if openSide == "BOTTOM" then
+        if W.Sheen then h.sheen = W.Sheen(h, 0.04) end
+        local c = scheme().accent
+        h.band = h:CreateTexture(nil, "ARTWORK")
+        h.band:SetColorTexture(c[1], c[2], c[3], 0.9)
+        h.band:SetHeight(2)
+        h.band:SetPoint("TOPLEFT", 0, 0)
+        h.band:SetPoint("TOPRIGHT", 0, 0)
     end
     -- a hairline under (or over) the strip, so the icons read as one row
     h.rule = h:CreateTexture(nil, "ARTWORK")
@@ -327,11 +348,11 @@ local function drawGhost(s, kind)
     if kind == "calendar" then
         local c = accent()
         s.page = s:CreateTexture(nil, "ARTWORK")
-        s.page:SetColorTexture(0.85, 0.87, 0.9, 0.9)
+        s.page:SetColorTexture(0.42, 0.46, 0.5, 1)
         s.page:SetSize(14, 13)
         s.page:SetPoint("CENTER", 0, -1)
         s.inside = s:CreateTexture(nil, "ARTWORK", nil, 1)
-        s.inside:SetColorTexture(0.06, 0.07, 0.08, 1)
+        do local b = scheme().bg; s.inside:SetColorTexture(b[1], b[2], b[3], 1) end
         s.inside:SetPoint("TOPLEFT", s.page, "TOPLEFT", 1, -3)
         s.inside:SetPoint("BOTTOMRIGHT", s.page, "BOTTOMRIGHT", -1, 1)
         s.top = s:CreateTexture(nil, "ARTWORK", nil, 2)
@@ -367,6 +388,7 @@ local function buildBar(m)
     bar = housing(m, "RUIN_PathfinderMinimapBar", "BOTTOM")
     foot = housing(m, "RUIN_PathfinderMinimapFoot", "TOP")
     local top = row(m, "top", BAR_H)
+    if top.text.SetFontObject and rawget(_G, "GameFontNormalSmall") then top.text:SetFontObject(GameFontNormalSmall) end
     row(m, "bottom", FOOT_H)
     bar.zone = top.text
     bar.slots = top.slots
@@ -518,7 +540,7 @@ local function layoutBar(m)
     foot:SetSize(w, size / 2 + EXT)
     bar.rule:Hide(); foot.rule:Hide()
     rows.top:ClearAllPoints()
-    rows.top:SetPoint("TOP", bar, "TOP", 0, -1)
+    rows.top:SetPoint("TOP", bar, "TOP", 0, -2)
     rows.top:SetWidth(w - 2)
     rows.bottom:ClearAllPoints()
     rows.bottom:SetPoint("BOTTOM", foot, "BOTTOM", 0, 1)
@@ -533,9 +555,8 @@ function MM.UpdateZone()
     if not (bar and bar.zone) then return end
     local text = (GetMinimapZoneText and GetMinimapZoneText()) or (GetZoneText and GetZoneText()) or ""
     bar.zone:SetText(text)
-    local pvp = GetZonePVPInfo and GetZonePVPInfo()
-    local col = ({ sanctuary = { 0.41, 0.8, 0.94 }, friendly = { 0.1, 1, 0.1 }, hostile = { 1, 0.1, 0.1 }, contested = { 1, 0.7, 0 } })[pvp or ""]
-    if col then bar.zone:SetTextColor(col[1], col[2], col[3]) else bar.zone:SetTextColor(1, 0.82, 0) end
+    local c = scheme().accent       -- titled like the suite's panels
+    bar.zone:SetTextColor(c[1], c[2], c[3])
 end
 
 -- Where you stand, as the foot shows it ("" where the game won't say).
@@ -577,7 +598,7 @@ function MM.Tick(now, elapsed)
                     s.dot:SetShown((inv or 0) > 0)
                 end
                 s.top:SetColorTexture(c[1], c[2], c[3], 1)
-                s.page:SetColorTexture(over and 1 or 0.85, over and 1 or 0.87, over and 1 or 0.9, 0.9)
+                if over then s.page:SetColorTexture(c[1], c[2], c[3], 1) else s.page:SetColorTexture(0.42, 0.46, 0.5, 1) end
             end
         end
     end

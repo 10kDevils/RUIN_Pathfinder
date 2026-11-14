@@ -2988,10 +2988,18 @@ local function buildOptions(page)
         checks[#checks + 1] = c
         return c
     end
-    local function card(title, top, height)
+    local function card(title, top, height, half)
         local c = W.Card(page)
-        c:SetPoint("TOPLEFT", 0, top)
-        c:SetPoint("RIGHT", page, "RIGHT", 0, 0)
+        if half == "left" then
+            c:SetPoint("TOPLEFT", 0, top)
+            c:SetPoint("RIGHT", page, "CENTER", -4, 0)
+        elseif half == "right" then
+            c:SetPoint("TOPLEFT", page, "TOP", 4, top)
+            c:SetPoint("RIGHT", page, "RIGHT", 0, 0)
+        else
+            c:SetPoint("TOPLEFT", 0, top)
+            c:SetPoint("RIGHT", page, "RIGHT", 0, 0)
+        end
         c:SetHeight(height)
         local h = W.Header(c, title)
         h:SetPoint("TOPLEFT", 10, -8)
@@ -3030,13 +3038,13 @@ local function buildOptions(page)
 
     -- the minimap: its look, and the tracker docked to it
     local mm = ns.Minimap
-    local mc = card("Minimap", -244, 92)
+    local mc = card("Minimap", -244, 122, "left")
     local stl = W.Label(mc, C.dim .. "Style|r", "GameFontHighlightSmall")
     stl:SetPoint("TOPLEFT", 12, -36)
     local style = W.Dropdown(mc, 190, mm.STYLES, function() return mm.Style() end, function(v) mm.SetStyle(v) end)
     style.format = function(v) return mm.STYLE_LABEL[v] or v end
     style:SetPoint("LEFT", stl, "RIGHT", 8, 0)
-    style.tipTitle = "The game's own look, or Pathfinder's: a slim ring in Pathfinder's color, an N where north is, mouse-wheel zoom, and a flat bar above the map with the tracking button, zone, clock, calendar and addon list"
+    style.tipTitle = "The game's own look, or Pathfinder's: a square frame in the suite's look around the map, a slim ring, an N where north is, mouse-wheel zoom, and the tracking button, zone, calendar, addon list, mail, coordinates and clock in its corners"
     style:Refresh()
     local dl = W.Label(mc, C.dim .. "Dock the tracker|r", "GameFontHighlightSmall")
     dl:SetPoint("TOPLEFT", 12, -66)
@@ -3048,8 +3056,8 @@ local function buildOptions(page)
     dock:Refresh()
     ui.dock, ui.mmStyle = dock, style
     local dh = W.Label(mc, "", "GameFontHighlightSmall")
-    dh:SetPoint("LEFT", dock, "RIGHT", 12, 0)
-    dh:SetWidth(320)
+    dh:SetPoint("TOPLEFT", 200, -100)
+    dh:SetPoint("RIGHT", mc, "RIGHT", -12, 0)
     dh:SetJustifyH("LEFT")
     dh:SetWordWrap(false)
     ui.dockHint = dh
@@ -3063,13 +3071,48 @@ local function buildOptions(page)
         dock:Refresh(); dockHint()
     end
 
-    local k = card("Controls", -344, 56)
+    -- background opacity, for the modern look
+    local function opacity(parent, y, getter, setter, tip)
+        local l = W.Label(parent, C.dim .. "Background|r", "GameFontHighlightSmall")
+        l:SetPoint("TOPLEFT", 12, y)
+        local d = W.Dropdown(parent, 90, mm.OPACITY, getter, setter)
+        d.format = function(v) return mm.OpacityLabel(v) end
+        d:SetPoint("LEFT", l, "RIGHT", 8, 0)
+        d.tipTitle = tip
+        d:Refresh()
+        return d
+    end
+    local function near(v)          -- the closest choice to a saved value
+        local best, gap = 1, 2
+        for _, o in ipairs(mm.OPACITY) do if math.abs(o - v) < gap then best, gap = o, math.abs(o - v) end end
+        return best
+    end
+    ui.mmAlpha = opacity(mc, -96, function() return near(mm.Alpha()) end, function(v) mm.SetAlpha(v) end,
+        "How see-through the frame around the minimap is, in Pathfinder's style")
+
+    -- the game's objective tracker: its look
+    local ot = ns.Objectives
+    local oc = card("Objective Tracker", -244, 122, "right")
+    if ot then
+        local ol = W.Label(oc, C.dim .. "Style|r", "GameFontHighlightSmall")
+        ol:SetPoint("TOPLEFT", 12, -36)
+        local ost = W.Dropdown(oc, 190, ot.STYLES, function() return ot.Style() end, function(v) ot.SetStyle(v) end)
+        ost.format = function(v) return ot.STYLE_LABEL[v] or v end
+        ost:SetPoint("LEFT", ol, "RIGHT", 8, 0)
+        ost.tipTitle = "The game's own look, or Pathfinder's: a panel in the suite's look behind the tracker, headers in Pathfinder's color, quest titles and objectives in the suite's text colors"
+        ost:Refresh()
+        ui.otStyle = ost
+        ui.otAlpha = opacity(oc, -66, function() return near(ot.Alpha()) end, function(v) ot.SetAlpha(v) end,
+            "How see-through the panel behind the objective tracker is, in Pathfinder's style")
+    end
+
+    local k = card("Controls", -374, 56)
     local kl = W.Label(k, "", "GameFontHighlightSmall")
     kl:SetPoint("TOPLEFT", 12, -28)
     kl:SetPoint("RIGHT", k, "RIGHT", -12, 0)
     kl:SetWordWrap(false)
     kl:SetText(C.white .. "Keys:|r " .. C.dim .. "Options > Keybindings > AddOns > RUIN Pathfinder.|r   "
-        .. C.white .. "Chat:|r " .. C.dim .. "/path next, prev, clear, pin, editor, waypoint, nav, remind, minimap, dock|r")
+        .. C.white .. "Chat:|r " .. C.dim .. "/path next, prev, clear, pin, editor, waypoint, nav, remind, minimap, objectives, dock|r")
 
     page:SetScript("OnShow", function()
         for _, c in ipairs(checks) do c:Refresh() end
@@ -3150,6 +3193,7 @@ function M:OnEnable()
         db.edgeDefaults10 = true
     end
     for k, v in pairs(DEFAULTS) do if db[k] == nil then db[k] = v end end
+    if ns.Objectives then ns.Objectives.Init(db) end
     if ns.Minimap then
         ns.Minimap.Init(db)
         ns.Minimap.OnDockChanged = ns.Minimap.OnDockChanged or function() if tracker then anchorTracker(); fitTracker() end end
@@ -3254,6 +3298,13 @@ SlashCmdList.RUINPATH = function(input)
         if arg == "blizzard" or arg == "pathfinder" then mm.SetStyle(arg)
         else return M:Print("/path minimap blizzard | pathfinder | debug") end
         M:Print(("Minimap: %s style."):format(mm.STYLE_LABEL[mm.Style()]))
+    elseif msg:match("^objectives") and ns.Objectives then
+        local arg = msg:match("^objectives%s+(%S+)")
+        local ot = ns.Objectives
+        if arg == "blizzard" or arg == "pathfinder" then ot.SetStyle(arg)
+        else return M:Print("/path objectives blizzard | pathfinder") end
+        if ui.otStyle then ui.otStyle:Refresh() end
+        M:Print(("Objective tracker: %s style."):format(ot.STYLE_LABEL[ot.Style()]))
     elseif msg:match("^dock") and ns.Minimap then
         local arg = msg:match("^dock%s+(%S+)")
         local mm = ns.Minimap

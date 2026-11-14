@@ -142,6 +142,7 @@ local function dim(r, off, keepMouse)
         if r.EnableMouse and r.ruinMouse ~= nil then r:EnableMouse(r.ruinMouse); r.ruinMouse = nil end
     end
 end
+MM.Dim = dim
 
 ---------------------------------------------------------------------------
 -- Pathfinder's ring
@@ -160,6 +161,30 @@ end
 local function scheme() return W.SchemeFor and W.SchemeFor(theme()) or { accent = accent(), edge = { 0.2, 0.3, 0.2 }, bg = { 0.05, 0.06, 0.08 } } end
 local function mixed(a, b, t) return { a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t } end
 MM.Scheme = scheme
+
+-- Background opacity choices, for the minimap and the objective tracker.
+MM.OPACITY = { 1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0 }
+function MM.OpacityLabel(v) return ("%d%%"):format(math.floor((v or 0) * 100 + 0.5)) end
+
+-- Paint a panel's background: a slight gradient from Pathfinder's green
+-- (t > 0: how much green) to black (t < 0: how much black), top to bottom,
+-- at the given opacity.
+function MM.Paint(h, alpha, topT, botT)
+    if not (h and h.skinBg) then return end
+    local sc = scheme()
+    local green, black = sc.color or sc.accent, { 0.008, 0.01, 0.012 }
+    local function at(t) if t >= 0 then return mixed(sc.bg, green, t) end return mixed(sc.bg, black, -t) end
+    local top, bot = at(topT), at(botT)
+    alpha = alpha or 0.94
+    h.skinBg:SetColorTexture(1, 1, 1, 1)
+    local ok = CreateColor and h.skinBg.SetGradient and pcall(h.skinBg.SetGradient, h.skinBg, "VERTICAL",
+        CreateColor(bot[1], bot[2], bot[3], alpha), CreateColor(top[1], top[2], top[3], alpha))
+    if not ok then
+        local mid = mixed(top, bot, 0.5)
+        h.skinBg:SetColorTexture(mid[1], mid[2], mid[3], alpha)
+    end
+    if h.sheen and h.sheen.SetAlpha then h.sheen:SetAlpha(alpha) end
+end
 
 local function buildDeco(m)
     deco = CreateFrame("Frame", "RUIN_PathfinderMinimapDeco", m)
@@ -591,6 +616,8 @@ local function layoutBar(m)
     foot:SetPoint("BOTTOM", m, "BOTTOM", 0, -EXT)
     foot:SetSize(w, size / 2 + EXT)
     bar.rule:Hide(); foot.rule:Hide()
+    MM.Paint(bar, db.mmAlpha, 0.16, 0.05)
+    MM.Paint(foot, db.mmAlpha, 0.05, -0.7)
     rows.top:ClearAllPoints()
     rows.top:SetPoint("TOP", bar, "TOP", 0, -2)
     rows.top:SetWidth(w - 2)
@@ -744,6 +771,14 @@ function MM.SetDock(spot)
     return true
 end
 
+function MM.Alpha() return (db and db.mmAlpha) or 0.94 end
+function MM.SetAlpha(a)
+    if type(a) ~= "number" then return false end
+    db.mmAlpha = math.max(0, math.min(1, a))
+    if bar and bar:IsShown() then MM.Paint(bar, db.mmAlpha, 0.16, 0.05); MM.Paint(foot, db.mmAlpha, 0.05, -0.7) end
+    return true
+end
+
 function MM.SetStyle(style)
     if style ~= "blizzard" and style ~= "pathfinder" then return false end
     db.mmStyle = style
@@ -792,6 +827,7 @@ function MM.Init(cdb)
     db = cdb
     db.mmShape = nil      -- an old setting, no longer used
     if db.mmStyle == nil then db.mmStyle = "blizzard" end
+    if type(db.mmAlpha) ~= "number" then db.mmAlpha = 0.94 end
     -- the game's own look needs nothing; Pathfinder's is applied once the UI
     -- is up, and again when you change zones (the game rebuilds parts of the
     -- minimap then)

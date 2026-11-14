@@ -15,5 +15,6 @@ QuestData\Data.lua
 QuestData\Horde.lua
 QuestDB.lua
 Minimap.lua
+ObjectiveTracker.lua
 Pathfinder.lua
 WaypointPin.lua

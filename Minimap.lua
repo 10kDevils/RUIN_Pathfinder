@@ -2,7 +2,7 @@
 --   Style: the game's own look (Blizzard / WoW Forever), or Pathfinder's:
 --          a slim ring in Pathfinder's color with a soft shadow, an N where
 --          north is, mouse-wheel zoom in place of the + and - buttons, and a
---          flat cap above the map and foot below it, joined to the ring,
+--          flat frame hugging the ring (cap above, foot below),
 --          holding the tracking button, zone, calendar, addon list, mail,
 --          coordinates and clock, drawn flat, so nothing sits on the map.
 --   Tracker dock: the tracker sits against the minimap on the side you pick
@@ -199,16 +199,16 @@ function MM.PlaceNorth()
 end
 
 ---------------------------------------------------------------------------
--- Pathfinder's housing: a flat cap above the map and a matching foot below
--- it, drawn behind the map so the ring sits on them and their edges run into
--- the ring in its color. Nothing covers the map: the icons sit in the strips
+-- Pathfinder's housing: a flat frame around the ring (the cap its top half,
+-- the foot its bottom half), drawn behind the map so the ring sits on it,
+-- edged in the ring's color. Nothing covers the map: the icons sit in the strips
 -- outside the circle.
 --   Cap:  tracking, addons | zone | (sun / moon,) calendar   (the tracker docks on top)
 --   Foot: mail | coordinates | clock
 -- The tracking button, calendar and mail keep working but are drawn flat by
 -- Pathfinder; the clock and addon count are text and keep theirs.
 ---------------------------------------------------------------------------
-local BAR_H, FOOT_H, SLOT, LIFT = 22, 18, 18, 4
+local BAR_H, FOOT_H, SLOT, EXT = 16, 16, 16, 18     -- EXT: how far the housing reaches past the map, top and bottom
 local moved = {}        -- frame -> { parent, points, scale, slot, dress, ghost }
 local foot              -- the housing below the map
 local rows = {}         -- top / bottom: the strips the pieces sit in
@@ -384,7 +384,7 @@ local function slotFor(p)
     local s = r.slots[p.key]
     if not s then
         s = CreateFrame("Frame", nil, r)
-        s:SetSize(p.wide and 38 or SLOT, SLOT)
+        s:SetSize(p.wide and 32 or SLOT, SLOT)
         r.slots[p.key] = s
     end
     return s
@@ -475,7 +475,7 @@ local function hideStrayCoords(off)
 end
 
 local function layoutRow(r)
-    local left, right = 3, 3
+    local left, right = 1, 1
     for _, p in ipairs(barPieces()) do
         local s = r.slots[p.key]
         if rows[p.tab] == r then
@@ -496,37 +496,33 @@ local function layoutRow(r)
             end
         end
     end
-    -- the text in the room between
+    -- the text between the corners, centered on the map
+    local pad = math.max(left, right) + 1
     r.text:ClearAllPoints()
-    r.text:SetPoint("LEFT", r, "LEFT", left + 1, 0)
-    r.text:SetPoint("RIGHT", r, "RIGHT", -right - 1, 0)
+    r.text:SetPoint("LEFT", r, "LEFT", pad, 0)
+    r.text:SetPoint("RIGHT", r, "RIGHT", -pad, 0)
     r.text:SetJustifyH("CENTER")
 end
 
 local function layoutBar(m)
     local size = m:GetWidth() or 140
-    local w = math.max(124, math.floor(size * 0.9 + 0.5))
-    local rad = size / 2
-    local half = math.min(w / 2, rad)
-    local dip = rad - math.sqrt(math.max(0, rad * rad - half * half)) + 3    -- down to where the circle meets the edges
+    local w = size + 8                      -- the ring's width: the sides run along it
+    -- the cap is the housing's top half, the foot its bottom half: together a
+    -- frame around the ring, a little taller than wide for the zone and the
+    -- coordinates; the icons sit in its corners, outside the circle
     bar:ClearAllPoints()
-    bar:SetPoint("TOP", m, "TOP", 0, LIFT + BAR_H)
-    bar:SetSize(w, BAR_H + LIFT + dip)
-    bar.rule:ClearAllPoints()
-    bar.rule:SetPoint("TOPLEFT", bar, "TOPLEFT", 4, -BAR_H)
-    bar.rule:SetPoint("TOPRIGHT", bar, "TOPRIGHT", -4, -BAR_H)
+    bar:SetPoint("TOP", m, "TOP", 0, EXT)
+    bar:SetSize(w, size / 2 + EXT)
     foot:ClearAllPoints()
-    foot:SetPoint("BOTTOM", m, "BOTTOM", 0, -(LIFT + FOOT_H))
-    foot:SetSize(w, FOOT_H + LIFT + dip)
-    foot.rule:ClearAllPoints()
-    foot.rule:SetPoint("BOTTOMLEFT", foot, "BOTTOMLEFT", 4, FOOT_H)
-    foot.rule:SetPoint("BOTTOMRIGHT", foot, "BOTTOMRIGHT", -4, FOOT_H)
+    foot:SetPoint("BOTTOM", m, "BOTTOM", 0, -EXT)
+    foot:SetSize(w, size / 2 + EXT)
+    bar.rule:Hide(); foot.rule:Hide()
     rows.top:ClearAllPoints()
-    rows.top:SetPoint("BOTTOM", m, "TOP", 0, LIFT)
-    rows.top:SetWidth(w)
+    rows.top:SetPoint("TOP", bar, "TOP", 0, -1)
+    rows.top:SetWidth(w - 2)
     rows.bottom:ClearAllPoints()
-    rows.bottom:SetPoint("TOP", m, "BOTTOM", 0, -LIFT)
-    rows.bottom:SetWidth(w)
+    rows.bottom:SetPoint("BOTTOM", foot, "BOTTOM", 0, 1)
+    rows.bottom:SetWidth(w - 2)
     layoutRow(rows.top)
     layoutRow(rows.bottom)
     MM.UpdateZone()

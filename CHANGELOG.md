@@ -9,7 +9,7 @@ Versioning: the third number counts the meaningful changes made since the second
 ## 0.7.6 — 2026-11-13
 
 - **The N turns with a rotating minimap** (Pathfinder style): it sits where north is, on the ring or on the square's edge, instead of staying on top.
-- **A rotating minimap shows round.** The game turns the map picture inside the frame, so a square map showed empty corners. While Rotate Minimap is on, Pathfinder shows the map round (with a one-time note in chat) and goes back to square when rotation is off.
+- **A rotating square minimap stays square and full.** The game turns the map picture inside the frame, which left the corners empty. While the map rotates, the frame grows behind a mask the size it was (and the game is made to redraw the map at the new size), so the turning map always fills the square. The edge, the tracker dock and RUIN's map pins follow the square you see.
 
 ## 0.7.5 — 2026-11-13
 

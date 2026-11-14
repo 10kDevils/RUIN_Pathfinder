@@ -18,7 +18,7 @@ ns.Objectives = OT
 OT.STYLES = { "blizzard", "pathfinder" }
 OT.STYLE_LABEL = { blizzard = "Blizzard / WoW Forever", pathfinder = "Pathfinder (modern)" }
 
-local PAD = 6
+local PAD = 8
 local TITLE = { 0.95, 0.96, 0.98 }
 local LINE = { 0.74, 0.78, 0.84 }
 local DONE = { 0.52, 0.84, 0.48 }
@@ -88,32 +88,48 @@ local function styleTree(f, depth)
     end
 end
 
--- The lowest edge of what the tracker shows, for the panel's height.
-local function bottomOf(f)
-    local low = f.GetBottom and f:GetBottom()
-    local head = f.Header
-    if shown(head) and head.GetBottom and head:GetBottom() then low = head:GetBottom() end
+-- The box around everything the tracker shows: its text and its buttons
+-- (the quest markers on the left, item buttons on the right, the collapse
+-- buttons), in the tracker's own units. Container frames don't count: the
+-- tracker itself is as tall as its Edit Mode box, not its contents.
+local function visible(x)
+    if type(x) ~= "table" then return false end
+    if x.IsVisible then return x:IsVisible() end
+    return x.IsShown == nil or x:IsShown()
+end
+
+local function contentBounds(f)
+    local fes = (f.GetEffectiveScale and f:GetEffectiveScale()) or 1
+    local l, r, t, b
+    local function add(x)
+        if not (x.GetLeft and x:GetLeft()) then return end
+        local es = (x.GetEffectiveScale and x:GetEffectiveScale()) or fes
+        local k = es / fes
+        local xl, xr, xt, xb = x:GetLeft() * k, x:GetRight() * k, x:GetTop() * k, x:GetBottom() * k
+        if xr - xl < 1 or xt - xb < 1 then return end
+        l = (l and math.min(l, xl)) or xl
+        r = (r and math.max(r, xr)) or xr
+        t = (t and math.max(t, xt)) or xt
+        b = (b and math.min(b, xb)) or xb
+    end
     local function walk(x, depth)
-        if depth > 2 or not x.GetChildren then return end
-        for _, c in ipairs({ x:GetChildren() }) do
-            if shown(c) and c ~= back and c.GetBottom then
-                local b = c:GetBottom()
-                local hgt = c.GetHeight and c:GetHeight() or 0
-                if b and hgt > 1 and (not low or b < low) then low = b end
+        if depth > 7 or not visible(x) or x == back then return end
+        local kind = x.GetObjectType and x:GetObjectType()
+        if x ~= f and (kind == "Button" or kind == "CheckButton") then add(x) end
+        if x.GetRegions then
+            for _, reg in ipairs({ x:GetRegions() }) do
+                if reg.GetObjectType and reg:GetObjectType() == "FontString" and visible(reg) then
+                    local text = reg.GetText and reg:GetText()
+                    if type(text) == "string" and text ~= "" then add(reg) end
+                end
             end
         end
-    end
-    if type(f.modules) == "table" then
-        for _, mod in ipairs(f.modules) do
-            if shown(mod) and mod.GetBottom and mod:GetBottom() and (mod.GetHeight and mod:GetHeight() or 0) > 1 then
-                local b = mod:GetBottom()
-                if not low or b < low then low = b end
-            end
+        if x.GetChildren then
+            for _, c in ipairs({ x:GetChildren() }) do walk(c, depth + 1) end
         end
-    else
-        walk(f, 1)
     end
-    return low
+    walk(f, 1)
+    return l, r, t, b
 end
 
 local function buildBack(f)
@@ -130,19 +146,21 @@ local function buildBack(f)
 end
 
 local function layoutBack(f)
-    local top = f.GetTop and f:GetTop()
-    local low = bottomOf(f)
-    local es = (f.GetEffectiveScale and f:GetEffectiveScale()) or 1
+    local l, r, t, b = contentBounds(f)
     back:ClearAllPoints()
-    back:SetPoint("TOPLEFT", f, "TOPLEFT", -PAD, PAD)
-    back:SetPoint("TOPRIGHT", f, "TOPRIGHT", PAD, PAD)
-    local h = (top and low) and (top - low) or ((f.GetHeight and f:GetHeight()) or 200)
-    back:SetHeight(math.max(24, h + PAD * 2))
+    if l and f.GetLeft and f:GetLeft() then
+        -- room around it all: a little more at the top for the accent band
+        local fl, fb = f:GetLeft(), f:GetBottom()
+        back:SetPoint("TOPLEFT", f, "BOTTOMLEFT", l - fl - PAD, t - fb + PAD + 2)
+        back:SetPoint("BOTTOMRIGHT", f, "BOTTOMLEFT", r - fl + PAD, b - fb - PAD)
+    else
+        back:SetPoint("TOPLEFT", f, "TOPLEFT", -PAD, PAD)
+        back:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", PAD, -PAD)
+    end
     local c = accent()
     back.band:SetColorTexture(c[1], c[2], c[3], 0.9)
     MM.Paint(back, OT.Alpha(), 0.14, -0.6)
     back:SetShown(shown(f))
-    return es
 end
 
 -- One pass over the tracker: the panel's size, the colors.

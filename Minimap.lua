@@ -528,10 +528,10 @@ end
 
 local function layoutBar(m)
     local size = m:GetWidth() or 140
-    local w = size + 8                      -- the ring's width: the sides run along it
+    local w = size + EXT * 2                -- square: as wide as it is tall
     -- the cap is the housing's top half, the foot its bottom half: together a
-    -- frame around the ring, a little taller than wide for the zone and the
-    -- coordinates; the icons sit in its corners, outside the circle
+    -- square frame around the ring, room above for the zone and below for
+    -- the coordinates; the icons sit in its corners, outside the circle
     bar:ClearAllPoints()
     bar:SetPoint("TOP", m, "TOP", 0, EXT)
     bar:SetSize(w, size / 2 + EXT)

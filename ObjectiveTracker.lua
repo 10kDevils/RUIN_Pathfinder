@@ -19,8 +19,8 @@ OT.STYLES = { "blizzard", "pathfinder" }
 OT.STYLE_LABEL = { blizzard = "Blizzard / WoW Forever", pathfinder = "Pathfinder (modern)" }
 
 local PAD = 8
-local TITLE = { 0.95, 0.96, 0.98 }
-local LINE = { 0.74, 0.78, 0.84 }
+local TITLE = { 1, 1, 1 }           -- quest names: bright, with a firm shadow
+local LINE = { 0.60, 0.64, 0.70 }   -- objectives: quieter, so the names lead
 local DONE = { 0.52, 0.84, 0.48 }
 
 local db
@@ -258,7 +258,13 @@ local function styleTree(f, depth, inBlock)
     if type(f) ~= "table" or depth > 6 or not shown(f) then return end
     local kind = skins[f] and skins[f].kind or kindOf(f, inBlock)
     if kind then skin(f, kind); return end
-    if f.HeaderText and not (f.IsMouseOver and f:IsMouseOver()) then color(f.HeaderText, TITLE) end
+    if f.HeaderText and not (f.IsMouseOver and f:IsMouseOver()) then
+        color(f.HeaderText, TITLE)
+        if type(f.HeaderText) == "table" and f.HeaderText.SetShadowOffset then
+            f.HeaderText:SetShadowColor(0, 0, 0, 1)
+            f.HeaderText:SetShadowOffset(1, -1)
+        end
+    end
     if f.Text and f.Dash then
         local fin = finished(f)
         color(f.Text, fin and DONE or LINE)

@@ -23,12 +23,9 @@ local MEDIA = "Interface\\AddOns\\RUIN_Pathfinder\\Media\\"
 local ROUND_MASK = MEDIA .. "MinimapMask"
 local SQUARE_MASK = "Interface\\BUTTONS\\WHITE8X8"
 local maskSet = false   -- RUIN has put the square mask on
--- A rotating square map: the game turns the map's picture inside the frame,
--- which leaves the corners empty. So the frame grows by sqrt(2) around the
--- same center and this mask shows only the middle square, the size the map
--- was: the turning picture always covers it.
-local INNER_MASK = MEDIA .. "MinimapSquareInner"
-local INNER = 1 / math.sqrt(2)
+-- A rotating map: the game turns the map's picture inside the frame, so only
+-- a circle is always covered. A square map would show empty corners, so
+-- while the minimap rotates, Pathfinder shows it round.
 
 MM.SHAPES = { "round", "square" }
 MM.STYLES = { "blizzard", "pathfinder" }
@@ -250,11 +247,10 @@ function MM.UpdateZone()
 end
 
 ---------------------------------------------------------------------------
--- The view: the minimap's footprint on screen. Normally the minimap itself;
--- while a square map rotates, a frame where the minimap was (it has grown
--- around it). Pathfinder's edge, the tracker dock and RUIN's pins use it.
+-- The view: the minimap's footprint on screen (the minimap itself).
+-- Pathfinder's edge and the tracker dock use it.
 ---------------------------------------------------------------------------
-local view, grown
+local view
 local function rotating()
     local v = GetCVar and GetCVar("rotateMinimap")
     return v == "1" or v == 1 or v == true
@@ -272,31 +268,8 @@ function MM.View()
     return view
 end
 
-local function setGrown(m, on)
-    local v = MM.View()
-    if on and not grown then
-        local w, h = m:GetWidth() or 140, m:GetHeight() or 140
-        local pts = {}
-        for i = 1, (m.GetNumPoints and m:GetNumPoints() or 0) do pts[i] = { m:GetPoint(i) } end
-        grown = { w = w, h = h, pts = pts }
-        -- the view keeps the minimap's old place and size
-        v:ClearAllPoints()
-        for _, p in ipairs(pts) do v:SetPoint(unpack(p)) end
-        v:SetSize(w, h)
-        m:ClearAllPoints()
-        m:SetPoint("CENTER", v, "CENTER", 0, 0)
-        m:SetSize(w / INNER, h / INNER)
-        m.ruinViewScale = INNER
-    elseif not on and grown then
-        m:SetSize(grown.w, grown.h)
-        m:ClearAllPoints()
-        for _, p in ipairs(grown.pts) do m:SetPoint(unpack(p)) end
-        grown = nil
-        m.ruinViewScale = nil
-        v:ClearAllPoints()
-        v:SetAllPoints(m)
-    end
-end
+-- Square as you set it, and not rotating (a rotating map is shown round).
+function MM.EffectiveSquare() return MM.Shape() == "square" and not rotating() end
 
 local function layoutDeco(m, square)
     m = MM.View() or m
@@ -362,7 +335,11 @@ end
 function MM.Apply()
     local m = minimap()
     if not (db and m) then return end
-    local square, modern = MM.Shape() == "square", MM.Style() == "pathfinder"
+    local square, modern = MM.EffectiveSquare(), MM.Style() == "pathfinder"
+    if MM.Shape() == "square" and rotating() and not MM.toldRound then
+        MM.toldRound = true
+        print("|cff9fd26dRUIN Pathfinder|r: the minimap rotates, which a square map can't do without empty corners, so it shows round while rotation is on (Interface options: Rotate Minimap).")
+    end
     -- shape: the mask, and what other addons ask (minimap buttons follow it)
     if m.SetMaskTexture then
         -- the game (or WoW Forever's own UI) may put its round mask back:
@@ -370,16 +347,14 @@ function MM.Apply()
         if not m.ruinMaskHook and hooksecurefunc then
             m.ruinMaskHook = true
             hooksecurefunc(m, "SetMaskTexture", function(self, t)
-                local want = grown and INNER_MASK or SQUARE_MASK
-                if MM.Shape() == "square" and not self.ruinMasking and t ~= want then
-                    self.ruinMasking = true; self:SetMaskTexture(want); self.ruinMasking = nil
+                if MM.EffectiveSquare() and not self.ruinMasking and t ~= SQUARE_MASK then
+                    self.ruinMasking = true; self:SetMaskTexture(SQUARE_MASK); self.ruinMasking = nil
                 end
             end)
         end
         m.ruinMasking = true
-        setGrown(m, square and rotating())
         if square then
-            m:SetMaskTexture(grown and INNER_MASK or SQUARE_MASK)
+            m:SetMaskTexture(SQUARE_MASK)
             maskSet = true
         elseif maskSet then
             m:SetMaskTexture(ROUND_MASK)
@@ -436,7 +411,7 @@ end
 -- How far the tracker sits from the map's edge: past the game's ring and
 -- zone text, or past Pathfinder's slimmer edge.
 local function gap(spot)
-    local modern, square = MM.Style() == "pathfinder", MM.Shape() == "square"
+    local modern, square = MM.Style() == "pathfinder", MM.EffectiveSquare()
     local d = DOCKS[spot]
     if d.grow == "up" then return modern and 36 or (square and 30 or 34) end
     if d.grow == "down" then return modern and 26 or 28 end     -- room for the tracker's tabs above it
@@ -517,7 +492,7 @@ function MM.PlaceNorth()
     local a = rotating() and GetPlayerFacing and GetPlayerFacing() or 0
     if type(a) ~= "number" then a = 0 end
     local x, y = math.sin(a), math.cos(a)
-    if MM.Shape() == "square" then
+    if MM.EffectiveSquare() then
         local k = half / math.max(math.abs(x), math.abs(y), 0.0001)
         x, y = x * k, y * k
     else
@@ -534,7 +509,8 @@ local function watch(_, elapsed)
     if since < 0.03 then return end
     since = 0
     local m = minimap()
-    if m and (MM.Shape() == "square" and rotating()) ~= (grown ~= nil) then MM.Apply() end
+    local eff = MM.EffectiveSquare()
+    if m and db and eff ~= MM.lastEffective then MM.lastEffective = eff; MM.Apply() end
     if rotating() then MM.PlaceNorth() end
 end
 

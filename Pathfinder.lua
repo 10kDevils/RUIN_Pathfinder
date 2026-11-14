@@ -1297,7 +1297,7 @@ local function sideButton(label, onClick)
         self.disc:SetVertexColor(W.Mix(P.panelHi, ac, 0.20)[1], W.Mix(P.panelHi, ac, 0.20)[2], W.Mix(P.panelHi, ac, 0.20)[3], 1)
         self.text:SetTextColor(1, 1, 1)
         if self.tip and GameTooltip then
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:SetText(self.tip); GameTooltip:Show()
+            W.TipOwner(self); GameTooltip:SetText(self.tip); GameTooltip:Show()
         end
     end)
     b:SetScript("OnLeave", function(self)
@@ -1343,7 +1343,7 @@ updateTracker = function()
         tracker.clear:SetPoint("TOPRIGHT", -5, -5)
         tracker.clear:HookScript("OnEnter", function(self)
             if GameTooltip then
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                W.TipOwner(self)
                 GameTooltip:SetText(trackerTab() == "tracked" and "Stop tracking this quest" or "Leave this route")
                 GameTooltip:Show()
             end

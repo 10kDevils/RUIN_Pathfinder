@@ -189,7 +189,7 @@ end
 local function buildDeco(m)
     deco = CreateFrame("Frame", "RUIN_PathfinderMinimapDeco", m)
     deco:SetAllPoints(m)
-    deco:SetFrameLevel((m:GetFrameLevel() or 1) + 2)
+    deco:SetFrameLevel((m:GetFrameLevel() or 1) + 10)      -- the N stays over the map's own icons
     if deco.EnableMouse then deco:EnableMouse(false) end
     local c = accent()
     deco.shadow = deco:CreateTexture(nil, "BACKGROUND")
@@ -204,14 +204,25 @@ local function buildDeco(m)
     deco.inner = deco:CreateTexture(nil, "OVERLAY")
     deco.inner:SetTexture(MEDIA .. "MinimapRing")
     deco.inner:SetVertexColor(0, 0, 0, 0.6)
-    -- N where north is, on a dark dot
-    deco.north = deco:CreateTexture(nil, "OVERLAY")
-    deco.north:SetTexture(MEDIA .. "MinimapShadow")
-    deco.north:SetVertexColor(0, 0, 0, 1)
-    deco.north:SetSize(26, 26)
-    deco.n = deco:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    deco.n:SetText("N")
-    deco.n:SetTextColor(c[1], c[2], c[3])
+    -- N where north is: a badge that holds up on any ground, a dark disc
+    -- edged in Pathfinder's green with a bold white N, over a soft shadow
+    deco.north = deco:CreateTexture(nil, "OVERLAY", nil, 1)
+    deco.north:SetTexture(MEDIA .. "ModernDisc")
+    deco.north:SetVertexColor(sc.bg[1] * 0.6, sc.bg[2] * 0.6, sc.bg[3] * 0.6, 1)
+    deco.north:SetSize(22, 22)
+    deco.northShade = deco:CreateTexture(nil, "OVERLAY", nil, 0)
+    deco.northShade:SetTexture(MEDIA .. "MinimapShadow")
+    deco.northShade:SetVertexColor(0, 0, 0, 0.85)
+    deco.northShade:SetPoint("CENTER", deco.north, "CENTER", 0, -1)
+    deco.northShade:SetSize(36, 36)
+    deco.northRing = deco:CreateTexture(nil, "OVERLAY", nil, 2)
+    deco.northRing:SetTexture(MEDIA .. "ModernRing")
+    deco.northRing:SetVertexColor(c[1], c[2], c[3], 1)
+    deco.northRing:SetAllPoints(deco.north)
+    deco.n = deco:CreateTexture(nil, "OVERLAY", nil, 3)
+    deco.n:SetTexture(MEDIA .. "ModernNorth")
+    deco.n:SetVertexColor(1, 1, 1, 1)
+    deco.n:SetSize(12, 12)
     deco.n:SetPoint("CENTER", deco.north, "CENTER", 0, 0)
 end
 
@@ -265,15 +276,25 @@ local function texText(r)
         .. " " .. tostring((r.GetAtlas and r:GetAtlas()) or "")):lower()
 end
 
--- A day / night indicator some clients put on the ring (a sun or moon).
+-- A day / night indicator on the ring (a sun or moon, the client's or an
+-- addon's): Pathfinder draws its own in the cap and keeps that one, unseen,
+-- for its clicks.
+local DAYNIGHT = { "daynight", "moon", "sun", "timeofday", "daytime", "dayclock", "worldtime" }
+local function nightish(name)
+    name = tostring(name or ""):lower()
+    if name:find("ruin") or name == "gametimeframe" then return false end
+    for _, w in ipairs(DAYNIGHT) do if name:find(w, 1, true) then return true end end
+    return false
+end
+
 local function dayNight()
     local cl = rawget(_G, "MinimapCluster")
     for _, holder in ipairs({ minimap(), rawget(_G, "MinimapBackdrop"), cl }) do
         if type(holder) == "table" and holder.GetChildren then
             for _, c in ipairs({ holder:GetChildren() }) do
-                local name = tostring((c.GetName and c:GetName()) or ""):lower()
-                local hit = name:find("daynight") or name:find("moon") or name:find("sun") or name:find("timeofday")
-                if not hit and c.GetRegions and not name:find("ruin") then
+                local name = c.GetName and c:GetName()
+                local hit = nightish(name)
+                if not hit and c.GetRegions and not tostring(name or ""):lower():find("ruin") then
                     for _, r in ipairs({ c:GetRegions() }) do
                         if r.GetObjectType and r:GetObjectType() == "Texture" then
                             local t = texText(r)
@@ -281,10 +302,52 @@ local function dayNight()
                         end
                     end
                 end
-                if hit and not name:find("ruin") then return c end
+                if hit then return c end
             end
         end
     end
+    -- an addon's minimap button (LibDBIcon names them LibDBIcon10_<addon>);
+    -- looked for now and then, not on every layout
+    local now = GetTime and GetTime() or 0
+    if MM.dbiFound and MM.dbiFound.SetPoint then return MM.dbiFound end
+    if MM.dbiLooked and now - MM.dbiLooked < 30 then return nil end
+    MM.dbiLooked = now
+    for k, v in pairs(_G) do
+        if type(k) == "string" and k:find("^LibDBIcon10_") and nightish(k:sub(13)) and type(v) == "table" and v.SetPoint then
+            MM.dbiFound = v
+            return v
+        end
+    end
+end
+
+-- Pathfinder's own day / night button, when nothing else is there to click.
+local ownDayNight
+local function serverHour()
+    local h, mi = GetGameTime and GetGameTime()
+    return h or tonumber(date and date("%H")) or 12, mi or 0
+end
+local function isDay() local h = serverHour(); return h >= 6 and h < 18 end
+MM.IsDay = isDay
+local function makeDayNight()
+    if ownDayNight then return ownDayNight end
+    local b = CreateFrame("Button", "RUIN_PathfinderDayNight", UIParent)
+    b:SetSize(18, 18)
+    b.ruinOwn = true
+    b:SetScript("OnEnter", function(self)
+        if not GameTooltip then return end
+        if W.TipOwner then W.TipOwner(self) else GameTooltip:SetOwner(self, "ANCHOR_RIGHT") end
+        local h, mi = serverHour()
+        GameTooltip:AddLine(isDay() and "Day" or "Night", 1, 1, 1)
+        GameTooltip:AddLine(("Server time %d:%02d"):format(h, mi), 0.75, 0.78, 0.84)
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+    b:SetScript("OnClick", function()
+        local cal = rawget(_G, "GameTimeFrame")
+        if cal and cal.Click then cal:Click() end
+    end)
+    ownDayNight = b
+    return b
 end
 
 -- The game's pieces that move into the housing. ghost: Pathfinder draws it
@@ -298,7 +361,7 @@ local function barPieces()
           frame = first(type(cl) == "table" and cl.Tracking or nil, rawget(_G, "MiniMapTracking"), rawget(_G, "MiniMapTrackingButton")) },
         { key = "addons", tab = "top", side = "left", dress = "all", frame = first(rawget(_G, "AddonCompartmentFrame")) },
         { key = "calendar", tab = "top", side = "right", ghost = "calendar", frame = first(rawget(_G, "GameTimeFrame")) },
-        { key = "daynight", tab = "top", side = "right", dress = "frame", frame = dayNight() },
+        { key = "daynight", tab = "top", side = "right", ghost = "daynight", frame = dayNight() or makeDayNight() },
         { key = "mail", tab = "bottom", side = "left", ghost = "mail",
           frame = first(rawget(_G, "MiniMapMailFrame"), type(ind) == "table" and ind.MailFrame or nil) },
         { key = "clock", tab = "bottom", side = "right", dress = "all", wide = true, frame = first(rawget(_G, "TimeManagerClockButton")) },
@@ -394,6 +457,11 @@ local function drawGhost(s, kind)
         s.dot:SetSize(4, 4)
         s.dot:SetPoint("TOPRIGHT", s.page, "TOPRIGHT", 2, 2)
         s.dot:Hide()
+    elseif kind == "daynight" then
+        s.icon = s:CreateTexture(nil, "ARTWORK")
+        s.icon:SetSize(15, 15)
+        s.icon:SetPoint("CENTER", 0, 0)
+        s.dayNight = true
     else
         s.icon = s:CreateTexture(nil, "ARTWORK")
         if kind == "tracking" then
@@ -451,6 +519,7 @@ local function movePiece(p)
     for i = 1, (f.GetNumPoints and f:GetNumPoints() or 0) do rec.points[i] = { f:GetPoint(i) } end
     moved[f] = rec
     f:SetParent(s)
+    if f.ruinOwn then f:Show() end
     local h = (f.GetHeight and f:GetHeight()) or SLOT
     if h and h > 0 and f.SetScale then f:SetScale(math.min(1, SLOT / h)) end
     if p.ghost then
@@ -476,6 +545,7 @@ local function restorePiece(f)
     local rec = moved[f]
     if not rec then return end
     moved[f] = nil
+    if f.ruinOwn then f:Hide(); f:SetParent(UIParent); return end
     f:SetParent(rec.parent)
     if f.SetScale then f:SetScale(rec.scale or 1) end
     if rec.ghost then dim(f, false) end
@@ -666,7 +736,12 @@ function MM.Tick(now, elapsed)
         local s = rec.slot
         if rec.ghost then
             local over = f.IsMouseOver and f:IsMouseOver() or false
-            if s.icon then
+            if s.dayNight then
+                local day = isDay()
+                s.icon:SetTexture(MEDIA .. (day and "ModernSun" or "ModernMoon"))
+                local col = over and { 1, 1, 1 } or (day and { 1, 0.82, 0.35 } or { 0.75, 0.82, 1 })
+                s.icon:SetVertexColor(col[1], col[2], col[3])
+            elseif s.icon then
                 s.icon:SetShown(f.IsShown == nil or f:IsShown())
                 if over then s.icon:SetVertexColor(c[1], c[2], c[3]) else s.icon:SetVertexColor(0.82, 0.84, 0.88) end
             elseif s.day then
@@ -802,6 +877,10 @@ function MM.Debug(print)
         for _, c in ipairs({ frame:GetChildren() }) do
             print(("%s child: %s (%s) %dx%d"):format(label, tostring(c:GetName()), c:GetObjectType(), c:GetWidth() or 0, c:GetHeight() or 0))
         end
+    end
+    local foci = GetMouseFoci and GetMouseFoci() or { GetMouseFocus and GetMouseFocus() }
+    for _, f in ipairs(foci or {}) do
+        print("Under the mouse: " .. tostring(f and f.GetName and f:GetName()) .. " (parent " .. tostring(f and f.GetParent and f:GetParent() and f:GetParent():GetName()) .. ")")
     end
     list("Minimap", m)
     list("MinimapBackdrop", rawget(_G, "MinimapBackdrop"))

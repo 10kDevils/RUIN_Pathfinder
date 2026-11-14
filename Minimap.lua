@@ -312,14 +312,13 @@ local function dayNight()
             end
         end
     end
-    -- WoW Forever's own: an unnamed, unclickable picture on the map's ring
-    -- (about 40 pixels square), the only one of its kind on the map
-    local mm = minimap()
-    if type(mm) == "table" and mm.GetChildren then
-        for _, c in ipairs({ mm:GetChildren() }) do
+    -- WoW Forever's own: an unnamed button on the map's backdrop, about 32
+    -- pixels square, sitting on the ring
+    local bd = rawget(_G, "MinimapBackdrop")
+    if type(bd) == "table" and bd.GetChildren then
+        for _, c in ipairs({ bd:GetChildren() }) do
             local w, h = c.GetWidth and c:GetWidth() or 0, c.GetHeight and c:GetHeight() or 0
-            if not (c.GetName and c:GetName()) and c.GetObjectType and c:GetObjectType() == "Frame"
-                    and w >= 28 and w <= 48 and math.abs(w - h) <= 4 then
+            if not (c.GetName and c:GetName()) and w >= 24 and w <= 48 and math.abs(w - h) <= 4 then
                 return c
             end
         end
@@ -936,6 +935,62 @@ function MM.Debug(print)
     for _ in pairs(keepDim) do dimmed = dimmed + 1 end
     for _, p in ipairs(barPieces()) do onBar[#onBar + 1] = p.key .. "=" .. (p.frame and tostring(p.frame:GetName() or "found") or "missing") end
     print("RUIN is hiding " .. dimmed .. " of the game's minimap pieces. Bar: " .. table.concat(onBar, ", "))
+end
+
+-- Everything drawn over the map that's about icon-sized: frames anywhere in
+-- the interface whose middle is on the map, and the pictures on the map's
+-- own frames. For finding what puts something on the ring.
+function MM.Find(print)
+    local m = minimap()
+    if not (m and m.GetRect) then return print("No minimap.") end
+    local ms = m:GetEffectiveScale()
+    local ml, mb, mw, mh = m:GetRect()
+    if not ml then return print("The minimap has no place on screen yet.") end
+    ml, mb, mw, mh = ml * ms, mb * ms, mw * ms, mh * ms
+    local function onMap(r)
+        local l, b, w, h = r:GetRect()
+        if not l then return nil end
+        local es = (r.GetEffectiveScale and r:GetEffectiveScale()) or ms
+        l, b, w, h = l * es, b * es, w * es, h * es
+        local cx, cy = l + w / 2, b + h / 2
+        if w < 14 or w > 70 or h < 14 or h > 70 then return nil end
+        if cx < ml - 20 or cx > ml + mw + 20 or cy < mb - 20 or cy > mb + mh + 20 then return nil end
+        return ("%dx%d at %d,%d from the map's top left"):format(w, h, cx - ml, (mb + mh) - cy)
+    end
+    local function who(f)
+        local p = f.GetParent and f:GetParent()
+        return ("%s (%s, parent %s%s)"):format(tostring(f:GetName()), f:GetObjectType(), tostring(p and p:GetName()),
+            (f.IsMouseEnabled and f:IsMouseEnabled()) and ", clickable" or "")
+    end
+    local n = 0
+    local f = EnumerateFrames and EnumerateFrames()
+    while f do
+        if f.IsVisible and f:IsVisible() and f ~= m and (f.GetAlpha and f:GetAlpha() > 0) then
+            local where = onMap(f)
+            local name = tostring(f:GetName() or "")
+            if where and not name:find("^RUIN") then
+                n = n + 1
+                print("Frame: " .. who(f) .. " " .. where)
+            end
+        end
+        f = EnumerateFrames(f)
+    end
+    local function pics(frame, depth)
+        if type(frame) ~= "table" or depth > 3 or not frame.GetRegions then return end
+        for _, r in ipairs({ frame:GetRegions() }) do
+            if r.GetObjectType and r:GetObjectType() == "Texture" and r:IsVisible() and (r:GetAlpha() or 0) > 0 then
+                local where = onMap(r)
+                if where then
+                    n = n + 1
+                    print(("Picture on %s: %s tex=%s atlas=%s %s"):format(tostring(frame:GetName()), tostring(r:GetName()), tostring(r:GetTexture()),
+                        tostring(r.GetAtlas and r:GetAtlas()), where))
+                end
+            end
+        end
+        for _, c in ipairs({ frame:GetChildren() }) do pics(c, depth + 1) end
+    end
+    pics(m, 0); pics(rawget(_G, "MinimapCluster"), 0)
+    print(n .. " found.")
 end
 
 -- Turn the N as you turn (on a rotating map).

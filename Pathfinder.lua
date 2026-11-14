@@ -3295,8 +3295,9 @@ SlashCmdList.RUINPATH = function(input)
         local arg = msg:match("^minimap%s+(%S+)")
         local mm = ns.Minimap
         if arg == "debug" then return mm.Debug(function(t) M:Print(t) end) end
+        if arg == "find" then return mm.Find(function(t) M:Print(t) end) end
         if arg == "blizzard" or arg == "pathfinder" then mm.SetStyle(arg)
-        else return M:Print("/path minimap blizzard | pathfinder | debug") end
+        else return M:Print("/path minimap blizzard | pathfinder | debug | find") end
         M:Print(("Minimap: %s style."):format(mm.STYLE_LABEL[mm.Style()]))
     elseif msg:match("^objectives") and ns.Objectives then
         local arg = msg:match("^objectives%s+(%S+)")

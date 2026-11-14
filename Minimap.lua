@@ -251,12 +251,15 @@ end
 -- the foot its bottom half), drawn behind the map so the ring sits on it,
 -- edged in the ring's color. Nothing covers the map: the icons sit in the strips
 -- outside the circle.
---   Cap:  tracking, addons | zone | (sun / moon,) calendar   (the tracker docks on top)
---   Foot: mail | coordinates | clock
+--   Cap:  tracking, addons | zone, coordinates | (sun / moon,) calendar   (the tracker docks on top)
+--   Foot: mail | clock     (the coordinates sit beside the zone, in the cap)
 -- The tracking button, calendar and mail keep working but are drawn flat by
 -- Pathfinder; the clock and addon count are text and keep theirs.
 ---------------------------------------------------------------------------
-local BAR_H, FOOT_H, SLOT, EXT = 16, 16, 16, 19     -- EXT: how far the housing reaches past the map, top and bottom
+local BAR_H, FOOT_H, SLOT = 16, 16, 16
+-- how far the housing reaches past the map: more at the top, for the zone,
+-- the coordinates and the N; little at the bottom, where only the corners hold anything
+local TOPM, BOTM = 34, 10
 local moved = {}        -- frame -> { parent, points, scale, slot, dress, ghost }
 local foot              -- the housing below the map
 local rows = {}         -- top / bottom: the strips the pieces sit in
@@ -306,6 +309,18 @@ local function dayNight()
             end
         end
     end
+    -- WoW Forever's own: an unnamed, unclickable picture on the map's ring
+    -- (about 40 pixels square), the only one of its kind on the map
+    local mm = minimap()
+    if type(mm) == "table" and mm.GetChildren then
+        for _, c in ipairs({ mm:GetChildren() }) do
+            local w, h = c.GetWidth and c:GetWidth() or 0, c.GetHeight and c:GetHeight() or 0
+            if not (c.GetName and c:GetName()) and c.GetObjectType and c:GetObjectType() == "Frame"
+                    and w >= 28 and w <= 48 and math.abs(w - h) <= 4 and c.GetRegions and select("#", c:GetRegions()) > 0 then
+                return c
+            end
+        end
+    end
     -- an addon's minimap button (LibDBIcon names them LibDBIcon10_<addon>);
     -- looked for now and then, not on every layout
     local now = GetTime and GetTime() or 0
@@ -350,6 +365,20 @@ local function makeDayNight()
     return b
 end
 
+-- The day / night piece: another one that takes clicks moves into the cap;
+-- a picture that doesn't is hidden, and Pathfinder's own button stands in.
+local strayDayNight
+local function dayNightButton()
+    local dn = dayNight()
+    if dn and dn.GetObjectType and dn:GetObjectType() == "Button" then return dn end
+    if dn and dn ~= strayDayNight then
+        if strayDayNight then dim(strayDayNight, false) end
+        strayDayNight = dn
+    end
+    return makeDayNight()
+end
+function MM.HideStrayDayNight(on) if strayDayNight then dim(strayDayNight, on) end end
+
 -- The game's pieces that move into the housing. ghost: Pathfinder draws it
 -- (the game's frame stays, unseen, to take the clicks); dress: which of its
 -- textures to hide otherwise ("all": it's text).
@@ -361,7 +390,7 @@ local function barPieces()
           frame = first(type(cl) == "table" and cl.Tracking or nil, rawget(_G, "MiniMapTracking"), rawget(_G, "MiniMapTrackingButton")) },
         { key = "addons", tab = "top", side = "left", dress = "all", frame = first(rawget(_G, "AddonCompartmentFrame")) },
         { key = "calendar", tab = "top", side = "right", ghost = "calendar", frame = first(rawget(_G, "GameTimeFrame")) },
-        { key = "daynight", tab = "top", side = "right", ghost = "daynight", frame = dayNight() or makeDayNight() },
+        { key = "daynight", tab = "top", side = "right", ghost = "daynight", frame = dayNightButton() },
         { key = "mail", tab = "bottom", side = "left", ghost = "mail",
           frame = first(rawget(_G, "MiniMapMailFrame"), type(ind) == "table" and ind.MailFrame or nil) },
         { key = "clock", tab = "bottom", side = "right", dress = "all", wide = true, frame = first(rawget(_G, "TimeManagerClockButton")) },
@@ -649,12 +678,16 @@ local function fitMap(m, on)
     end
     -- the box's shorter side, in the map's parent's units
     local side = math.min(cw, ch) * ces / pes
-    local d = math.max(80, side - EXT * 2)
+    local d = math.max(80, side - TOPM - BOTM)
+    local k = d / w
+    -- a little below the box's middle, so the top strip has its room
+    local dy = (BOTM - TOPM) / 2 / k
     m.ruinPlacing = true
-    m:SetScale(d / w)
+    m:SetScale(k)
     m:ClearAllPoints()
-    m:SetPoint("CENTER", cl, "CENTER", 0, 0)
+    m:SetPoint("CENTER", cl, "CENTER", 0, dy)
     m.ruinPlacing = nil
+    mapHome.dy = dy
     -- the game lays the map out again now and then: keep it in the box
     if not m.ruinFitHook and hooksecurefunc then
         m.ruinFitHook = true
@@ -662,7 +695,7 @@ local function fitMap(m, on)
             if mapHome and not self.ruinPlacing and MM.Style() == "pathfinder" then
                 self.ruinPlacing = true
                 self:ClearAllPoints()
-                self:SetPoint("CENTER", cl, "CENTER", 0, 0)
+                self:SetPoint("CENTER", cl, "CENTER", 0, mapHome.dy or 0)
                 self.ruinPlacing = nil
             end
         end)
@@ -674,16 +707,16 @@ local function mapSize(m) return (m:GetWidth() or 140) * ((m.GetScale and m:GetS
 
 local function layoutBar(m)
     local size = mapSize(m)
-    local w = size + EXT * 2                -- square: as wide as it is tall
+    local w = size + TOPM + BOTM            -- square: as wide as it is tall
     -- the cap is the housing's top half, the foot its bottom half: together a
     -- square frame around the ring, room above for the zone and below for
     -- the coordinates; the icons sit in its corners, outside the circle
     bar:ClearAllPoints()
-    bar:SetPoint("TOP", m, "TOP", 0, EXT)
-    bar:SetSize(w, size / 2 + EXT)
+    bar:SetPoint("TOP", m, "TOP", 0, TOPM)
+    bar:SetSize(w, size / 2 + TOPM)
     foot:ClearAllPoints()
-    foot:SetPoint("BOTTOM", m, "BOTTOM", 0, -EXT)
-    foot:SetSize(w, size / 2 + EXT)
+    foot:SetPoint("BOTTOM", m, "BOTTOM", 0, -BOTM)
+    foot:SetSize(w, size / 2 + BOTM)
     bar.rule:Hide(); foot.rule:Hide()
     MM.Paint(bar, db.mmAlpha, 0.16, 0.05)
     MM.Paint(foot, db.mmAlpha, 0.05, -0.7)
@@ -701,13 +734,23 @@ end
 
 function MM.UpdateZone()
     if not (bar and bar.zone) then return end
-    local text = (GetMinimapZoneText and GetMinimapZoneText()) or (GetZoneText and GetZoneText()) or ""
-    bar.zone:SetText(text)
-    local c = scheme().accent       -- titled like the suite's panels
-    bar.zone:SetTextColor(c[1], c[2], c[3])
+    bar.zoneName = (GetMinimapZoneText and GetMinimapZoneText()) or (GetZoneText and GetZoneText()) or ""
+    MM.DrawTop()
 end
 
--- Where you stand, as the foot shows it ("" where the game won't say).
+-- The cap's middle: the zone, titled like the suite's panels, and where you
+-- stand beside it in a quieter grey.
+local function hex(c) return ("%02x%02x%02x"):format(math.floor(c[1] * 255 + 0.5), math.floor(c[2] * 255 + 0.5), math.floor(c[3] * 255 + 0.5)) end
+function MM.DrawTop()
+    if not (bar and bar.zone) then return end
+    local coords = MM.Coords()
+    local text = "|cff" .. hex(scheme().accent) .. (bar.zoneName or "") .. "|r"
+    if coords ~= "" then text = text .. "  |cffb4b9c2" .. coords .. "|r" end
+    bar.zone:SetText(text)
+    bar.zone:SetTextColor(1, 1, 1)
+end
+
+-- Where you stand, as the cap shows it ("" where the game won't say).
 function MM.Coords()
     if not (C_Map and C_Map.GetBestMapForUnit and C_Map.GetPlayerMapPosition) then return "" end
     local id = C_Map.GetBestMapForUnit("player")
@@ -728,8 +771,7 @@ function MM.Tick(now, elapsed)
     tickDay = tickDay + (elapsed or 0)
     if now or tickCoords >= 0.1 then
         tickCoords = 0
-        bar.coords:SetText(MM.Coords())
-        bar.coords:SetTextColor(0.82, 0.84, 0.88)
+        MM.DrawTop()
     end
     local c = accent()
     for f, rec in pairs(moved) do
@@ -800,11 +842,13 @@ function MM.Apply()
         bar:Show(); foot:Show(); rows.top:Show(); rows.bottom:Show()
         layoutBar(m)
         hideStrayCoords(true)
+        MM.HideStrayDayNight(true)
     else
         if deco then deco:Hide() end
         fitMap(m, false)
         for f in pairs(moved) do restorePiece(f) end
         hideStrayCoords(false)
+        MM.HideStrayDayNight(false)
         if bar then bar:Hide(); foot:Hide(); rows.top:Hide(); rows.bottom:Hide() end
     end
 end

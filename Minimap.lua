@@ -23,6 +23,12 @@ local MEDIA = "Interface\\AddOns\\RUIN_Pathfinder\\Media\\"
 local ROUND_MASK = MEDIA .. "MinimapMask"
 local SQUARE_MASK = "Interface\\BUTTONS\\WHITE8X8"
 local maskSet = false   -- RUIN has put the square mask on
+-- A rotating square map: the game turns the map's picture inside the frame,
+-- which leaves the corners empty. So the frame grows by sqrt(2) around the
+-- same center and this mask shows only the middle square, the size the map
+-- was: the turning picture always covers it.
+local INNER_MASK = MEDIA .. "MinimapSquareInner"
+local INNER = 1 / math.sqrt(2)
 
 MM.SHAPES = { "round", "square" }
 MM.STYLES = { "blizzard", "pathfinder" }
@@ -243,7 +249,57 @@ function MM.UpdateZone()
     deco.zone:SetWidth(math.min(220, math.max(60, w + 20)))
 end
 
+---------------------------------------------------------------------------
+-- The view: the minimap's footprint on screen. Normally the minimap itself;
+-- while a square map rotates, a frame where the minimap was (it has grown
+-- around it). Pathfinder's edge, the tracker dock and RUIN's pins use it.
+---------------------------------------------------------------------------
+local view, grown
+local function rotating()
+    local v = GetCVar and GetCVar("rotateMinimap")
+    return v == "1" or v == 1 or v == true
+end
+MM.Rotating = rotating
+
+function MM.View()
+    local m = minimap()
+    if not m then return nil end
+    if not view then
+        view = CreateFrame("Frame", "RUIN_PathfinderMinimapView", m:GetParent() or UIParent)
+        if view.EnableMouse then view:EnableMouse(false) end
+        view:SetAllPoints(m)
+    end
+    return view
+end
+
+local function setGrown(m, on)
+    local v = MM.View()
+    if on and not grown then
+        local w, h = m:GetWidth() or 140, m:GetHeight() or 140
+        local pts = {}
+        for i = 1, (m.GetNumPoints and m:GetNumPoints() or 0) do pts[i] = { m:GetPoint(i) } end
+        grown = { w = w, h = h, pts = pts }
+        -- the view keeps the minimap's old place and size
+        v:ClearAllPoints()
+        for _, p in ipairs(pts) do v:SetPoint(unpack(p)) end
+        v:SetSize(w, h)
+        m:ClearAllPoints()
+        m:SetPoint("CENTER", v, "CENTER", 0, 0)
+        m:SetSize(w / INNER, h / INNER)
+        m.ruinViewScale = INNER
+    elseif not on and grown then
+        m:SetSize(grown.w, grown.h)
+        m:ClearAllPoints()
+        for _, p in ipairs(grown.pts) do m:SetPoint(unpack(p)) end
+        grown = nil
+        m.ruinViewScale = nil
+        v:ClearAllPoints()
+        v:SetAllPoints(m)
+    end
+end
+
 local function layoutDeco(m, square)
+    m = MM.View() or m
     local size = m:GetWidth() or 140
     deco.shadow:ClearAllPoints(); deco.shadow:SetPoint("CENTER", m, "CENTER", 0, 0); deco.shadow:SetSize(size * 1.24, size * 1.24)
     deco.ring:ClearAllPoints(); deco.ring:SetPoint("CENTER", m, "CENTER", 0, 0); deco.ring:SetSize(size + 6, size + 6)
@@ -276,8 +332,8 @@ local function layoutDeco(m, square)
     sh[3]:ClearAllPoints(); sh[3]:SetPoint("TOPRIGHT", m, "TOPLEFT", -o, o); sh[3]:SetPoint("BOTTOMRIGHT", m, "BOTTOMLEFT", -o, -o); sh[3]:SetWidth(w); fade(sh[3], true, false)
     sh[4]:ClearAllPoints(); sh[4]:SetPoint("TOPLEFT", m, "TOPRIGHT", o, o); sh[4]:SetPoint("BOTTOMLEFT", m, "BOTTOMRIGHT", o, -o); sh[4]:SetWidth(w); fade(sh[4], true, true)
     for _, t in ipairs(sh) do t:SetShown(square) end
-    deco.north:ClearAllPoints(); deco.north:SetPoint("CENTER", m, "TOP", 0, square and 0 or -1)
     deco.n:ClearAllPoints(); deco.n:SetPoint("CENTER", deco.north, "CENTER", 0, 0)
+    MM.PlaceNorth()
     deco.zone:ClearAllPoints(); deco.zone:SetPoint("BOTTOM", m, "TOP", 0, square and 12 or 14)
     MM.UpdateZone()
 end
@@ -314,14 +370,16 @@ function MM.Apply()
         if not m.ruinMaskHook and hooksecurefunc then
             m.ruinMaskHook = true
             hooksecurefunc(m, "SetMaskTexture", function(self, t)
-                if MM.Shape() == "square" and not self.ruinMasking and t ~= SQUARE_MASK then
-                    self.ruinMasking = true; self:SetMaskTexture(SQUARE_MASK); self.ruinMasking = nil
+                local want = grown and INNER_MASK or SQUARE_MASK
+                if MM.Shape() == "square" and not self.ruinMasking and t ~= want then
+                    self.ruinMasking = true; self:SetMaskTexture(want); self.ruinMasking = nil
                 end
             end)
         end
         m.ruinMasking = true
+        setGrown(m, square and rotating())
         if square then
-            m:SetMaskTexture(SQUARE_MASK)
+            m:SetMaskTexture(grown and INNER_MASK or SQUARE_MASK)
             maskSet = true
         elseif maskSet then
             m:SetMaskTexture(ROUND_MASK)
@@ -356,8 +414,8 @@ function MM.Apply()
     if square and not modern then
         if not blizzBox then
             blizzBox = CreateFrame("Frame", nil, m, BackdropTemplateMixin and "BackdropTemplate" or nil)
-            blizzBox:SetPoint("TOPLEFT", m, "TOPLEFT", -5, 5)
-            blizzBox:SetPoint("BOTTOMRIGHT", m, "BOTTOMRIGHT", 5, -5)
+            blizzBox:SetPoint("TOPLEFT", MM.View(), "TOPLEFT", -5, 5)
+            blizzBox:SetPoint("BOTTOMRIGHT", MM.View(), "BOTTOMRIGHT", 5, -5)
             blizzBox:SetFrameLevel((m:GetFrameLevel() or 1) + 2)
             if blizzBox.SetBackdrop then
                 blizzBox:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 16, insets = { left = 4, right = 4, top = 4, bottom = 4 } })
@@ -395,7 +453,7 @@ function MM.AnchorTracker(tracker)
     local dx = (d.grow == "left" and -g) or (d.grow == "right" and g) or 0
     local dy = (d.grow == "up" and g) or (d.grow == "down" and -g) or 0
     tracker:ClearAllPoints()
-    tracker:SetPoint(d.pt, m, d.rel, dx, dy)
+    tracker:SetPoint(d.pt, MM.View() or m, d.rel, dx, dy)
     return true
 end
 
@@ -450,6 +508,36 @@ function MM.Debug(print)
     print("RUIN is hiding " .. dimmed .. " of the game's minimap pieces.")
 end
 
+-- The N sits where north is: on top, or, on a rotating map, wherever north
+-- has turned to (on the ring, or on the square's edge).
+function MM.PlaceNorth()
+    if not (deco and deco:IsShown() and deco.north) then return end
+    local v = MM.View()
+    local half = (v:GetWidth() or 140) / 2
+    local a = rotating() and GetPlayerFacing and GetPlayerFacing() or 0
+    if type(a) ~= "number" then a = 0 end
+    local x, y = math.sin(a), math.cos(a)
+    if MM.Shape() == "square" then
+        local k = half / math.max(math.abs(x), math.abs(y), 0.0001)
+        x, y = x * k, y * k
+    else
+        x, y = x * (half + 1), y * (half + 1)
+    end
+    deco.north:ClearAllPoints()
+    deco.north:SetPoint("CENTER", v, "CENTER", x, y)
+end
+
+-- Watch the rotate setting (and turn the N as you turn).
+local watcher, since = nil, 0
+local function watch(_, elapsed)
+    since = since + (elapsed or 0)
+    if since < 0.03 then return end
+    since = 0
+    local m = minimap()
+    if m and (MM.Shape() == "square" and rotating()) ~= (grown ~= nil) then MM.Apply() end
+    if rotating() then MM.PlaceNorth() end
+end
+
 function MM.Init(cdb)
     db = cdb
     if db.mmShape == nil then db.mmShape = "round" end
@@ -457,6 +545,8 @@ function MM.Init(cdb)
     -- the game's own look on a round map needs nothing; anything else is
     -- applied once the UI is up, and again when you change zones (the game
     -- rebuilds parts of the minimap then)
+    watcher = watcher or CreateFrame("Frame")
+    watcher:SetScript("OnUpdate", watch)
     local f = CreateFrame("Frame")
     f:RegisterEvent("PLAYER_ENTERING_WORLD")
     f:RegisterEvent("ZONE_CHANGED_NEW_AREA")

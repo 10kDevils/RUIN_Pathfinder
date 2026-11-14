@@ -397,12 +397,11 @@ local function drawGhost(s, kind)
     else
         s.icon = s:CreateTexture(nil, "ARTWORK")
         if kind == "tracking" then
-            s.icon:SetTexture("Interface\\Common\\UI-Searchbox-Icon")
+            s.icon:SetTexture(MEDIA .. "ModernSearch")
             s.icon:SetSize(13, 13)
         else
-            s.icon:SetTexture("Interface\\Minimap\\Tracking\\Mailbox")
+            s.icon:SetTexture(MEDIA .. "ModernMail")
             s.icon:SetSize(15, 15)
-            if s.icon.SetDesaturated then s.icon:SetDesaturated(true) end
         end
         s.icon:SetPoint("CENTER", 0, 0)
         s.icon:SetVertexColor(0.82, 0.84, 0.88)

@@ -42,6 +42,182 @@ local function color(fs, c)
 end
 
 local function shown(f) return type(f) == "table" and (f.IsShown == nil or f:IsShown()) end
+local function visible(x)
+    if type(x) ~= "table" then return false end
+    if x.IsVisible then return x:IsVisible() end
+    return x.IsShown == nil or x:IsShown()
+end
+
+---------------------------------------------------------------------------
+-- Icons: the game's quest markers, collapse buttons, item buttons and
+-- check marks drawn in Pathfinder's flat style (Media\Modern*.tga). The
+-- game's buttons stay where they are, unseen, and still take the clicks.
+---------------------------------------------------------------------------
+local MEDIA = "Interface\\AddOns\\RUIN_Pathfinder\\Media\\Modern"
+local GOLD = { 1, 0.82, 0.32 }
+local GREY = { 0.80, 0.83, 0.88 }
+local skins = {}        -- game button -> { kind, overlay }
+local checks = {}       -- check-mark texture -> its own art, to give back
+
+local function tex(f, name, layer, sub)
+    local t = f:CreateTexture(nil, layer or "ARTWORK", nil, sub or 0)
+    t:SetTexture(MEDIA .. name)
+    return t
+end
+
+local function overlay(btn)
+    local o = CreateFrame("Frame", nil, tracker() or btn:GetParent())
+    if o.SetFrameStrata and btn.GetFrameStrata then o:SetFrameStrata(btn:GetFrameStrata() or "MEDIUM") end
+    if o.SetFrameLevel then o:SetFrameLevel(((btn.GetFrameLevel and btn:GetFrameLevel()) or 1) + 3) end
+    if o.EnableMouse then o:EnableMouse(false) end
+    o:SetAllPoints(btn)
+    return o
+end
+
+local function hovered(btn) return btn.IsMouseOver and btn:IsMouseOver() or false end
+
+-- What a quest marker says: ? to hand in, ... under way, ! not started.
+local function questState(btn)
+    local q = btn.questID or (btn.GetQuestID and btn:GetQuestID())
+    local style = btn.GetStyle and btn:GetStyle()
+    local S = rawget(_G, "POIButtonUtil") and POIButtonUtil.Style
+    local done = (q and C_QuestLog and C_QuestLog.IsComplete and C_QuestLog.IsComplete(q))
+        or (S and style ~= nil and style == S.QuestComplete)
+    local picked = (btn.GetSelected and btn:GetSelected())
+        or (q and C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID() == q)
+    local off = S and style ~= nil and style == S.QuestDisabled
+    return done and "done" or (off and "off" or "busy"), picked
+end
+
+local PAINT = {}
+function PAINT.poi(btn, o)
+    if not o.disc then
+        o.disc = tex(o, "Disc", "ARTWORK", 0); o.disc:SetAllPoints()
+        o.ring = tex(o, "Ring", "ARTWORK", 1); o.ring:SetAllPoints()
+        o.glyph = tex(o, "Dots", "ARTWORK", 2)
+        o.glyph:SetPoint("TOPLEFT", o, "TOPLEFT", 4, -4)
+        o.glyph:SetPoint("BOTTOMRIGHT", o, "BOTTOMRIGHT", -4, 4)
+    end
+    local sc, state, picked = MM.Scheme(), questState(btn)
+    local a = sc.accent
+    o.glyph:SetTexture(MEDIA .. (state == "done" and "Question" or "Dots"))
+    local glyph = state == "done" and GOLD or GREY
+    if picked then
+        o.disc:SetVertexColor(a[1], a[2], a[3], 1)
+        o.ring:SetVertexColor(1, 1, 1, hovered(btn) and 0.9 or 0.5)
+        o.glyph:SetVertexColor(0.05, 0.07, 0.06, 1)
+    else
+        o.disc:SetVertexColor(sc.bg[1], sc.bg[2], sc.bg[3], 0.95)
+        if hovered(btn) then o.ring:SetVertexColor(1, 1, 1, 1) elseif state == "off" then o.ring:SetVertexColor(0.45, 0.48, 0.52, 1) else o.ring:SetVertexColor(a[1], a[2], a[3], 1) end
+        o.glyph:SetVertexColor(glyph[1], glyph[2], glyph[3], 1)
+    end
+end
+function PAINT.collapse(btn, o)
+    if not o.glyph then
+        o.glyph = tex(o, "Minus")
+        o.glyph:SetPoint("CENTER")
+        o.glyph:SetSize(12, 12)
+    end
+    local owner = btn:GetParent() and btn:GetParent():GetParent()
+    local shut = owner and ((owner.IsCollapsed and owner:IsCollapsed()) or owner.collapsed or owner.isCollapsed)
+    o.glyph:SetTexture(MEDIA .. (shut and "Plus" or "Minus"))
+    local c = hovered(btn) and { 1, 1, 1 } or MM.Scheme().accent
+    o.glyph:SetVertexColor(c[1], c[2], c[3], 1)
+end
+function PAINT.item(btn, o)
+    if not o.slot then
+        o.slot = tex(o, "Slot")
+        o.slot:SetPoint("TOPLEFT", -2, 2)
+        o.slot:SetPoint("BOTTOMRIGHT", 2, -2)
+    end
+    local c = hovered(btn) and MM.Scheme().accent or (W.BTN_EDGE or { 0.3, 0.34, 0.38 })
+    o.slot:SetVertexColor(c[1], c[2], c[3], 1)
+end
+function PAINT.arrow(btn, o)
+    if not o.glyph then
+        o.glyph = tex(o, "Chevron")
+        o.glyph:SetPoint("CENTER")
+        o.glyph:SetSize(12, 12)
+    end
+    local c = hovered(btn) and { 1, 1, 1 } or MM.Scheme().accent
+    o.glyph:SetVertexColor(c[1], c[2], c[3], 1)
+end
+
+local function paint(btn)
+    local s = skins[btn]
+    if not s then return end
+    s.overlay:SetShown(visible(btn) and OT.Style() == "pathfinder")
+    if s.overlay:IsShown() then PAINT[s.kind](btn, s.overlay) end
+end
+
+local function itemArt(btn) return btn.icon or btn.Icon or btn.IconTexture end
+
+-- Take a game button into Pathfinder's look.
+local function skin(btn, kind)
+    local s = skins[btn]
+    if not s then
+        s = { kind = kind, overlay = overlay(btn) }
+        skins[btn] = s
+        if btn.HookScript and not btn.ruinOTHook then
+            btn.ruinOTHook = true
+            btn:HookScript("OnEnter", function(b) paint(b) end)
+            btn:HookScript("OnLeave", function(b) paint(b) end)
+            btn:HookScript("OnShow", function(b) paint(b) end)
+            btn:HookScript("OnHide", function(b) paint(b) end)
+        end
+    end
+    if kind == "item" then
+        local n = btn.GetNormalTexture and btn:GetNormalTexture()
+        if n then MM.Dim(n, true) end
+        local art = itemArt(btn)
+        if art and art.SetTexCoord then art:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
+    else
+        MM.Dim(btn, true, true)          -- unseen, but still takes the clicks
+    end
+    paint(btn)
+end
+
+local function unskin(btn, s)
+    s.overlay:Hide()
+    if s.kind == "item" then
+        local n = btn.GetNormalTexture and btn:GetNormalTexture()
+        if n then MM.Dim(n, false) end
+        local art = itemArt(btn)
+        if art and art.SetTexCoord then art:SetTexCoord(0, 1, 0, 1) end
+    else
+        MM.Dim(btn, false)
+    end
+end
+
+-- A finished objective's check mark, in Pathfinder's.
+local function skinCheck(t)
+    if type(t) ~= "table" or not t.SetTexture then return end
+    if not checks[t] then
+        checks[t] = { atlas = t.GetAtlas and t:GetAtlas(), file = t.GetTexture and t:GetTexture() }
+    end
+    t:SetTexture(MEDIA .. "Check")
+    t:SetVertexColor(DONE[1], DONE[2], DONE[3], 1)
+end
+
+local function unskinCheck(t, was)
+    t:SetVertexColor(1, 1, 1, 1)
+    if was.atlas and t.SetAtlas then t:SetAtlas(was.atlas) elseif was.file then t:SetTexture(was.file) end
+end
+
+-- Which kind of game button this is, if one Pathfinder redraws.
+local function kindOf(x, inBlock)
+    local t = x.GetObjectType and x:GetObjectType()
+    if t ~= "Button" and t ~= "CheckButton" then return nil end
+    local w = x.GetWidth and x:GetWidth() or 0
+    if (x.questID ~= nil or (x.GetStyle and x.Display)) and w <= 40 then return "poi" end
+    if itemArt(x) and (x.itemLink ~= nil or x.charges ~= nil or x.questLogIndex ~= nil or x.SetItem or x.UpdateItem) then return "item" end
+    local name = tostring((x.GetName and x:GetName()) or ""):lower()
+    if name:find("minimize") or name:find("collapse") then return "collapse" end
+    if inBlock then
+        if w > 0 and w <= 26 and not (x.GetText and x:GetText() and x:GetText() ~= "") then return "arrow" end
+    end
+end
+OT.KindOf = kindOf
 
 -- A header (the tracker's or a section's): accent text, the game's backdrop
 -- hidden, a short accent rule under the text.
@@ -66,6 +242,8 @@ local function styleHeader(h)
         rule:SetColorTexture(c[1], c[2], c[3], 0.8)
         rule:Show()
     end
+    local mb = h.MinimizeButton or h.CollapseButton
+    if type(mb) == "table" and mb.GetObjectType then skin(mb, "collapse") end
 end
 
 -- A quest line: its finished check (or color) decides.
@@ -74,17 +252,23 @@ local function finished(line)
     return type(icon) == "table" and icon.IsShown and icon:IsShown() or line.state == "COMPLETED" or line.completed == true
 end
 
+
 -- Walk a section: quest blocks (HeaderText) and their lines (Text + Dash).
-local function styleTree(f, depth)
-    if type(f) ~= "table" or depth > 5 or not shown(f) then return end
+local function styleTree(f, depth, inBlock)
+    if type(f) ~= "table" or depth > 6 or not shown(f) then return end
+    local kind = skins[f] and skins[f].kind or kindOf(f, inBlock)
+    if kind then skin(f, kind); return end
     if f.HeaderText and not (f.IsMouseOver and f:IsMouseOver()) then color(f.HeaderText, TITLE) end
     if f.Text and f.Dash then
-        color(f.Text, finished(f) and DONE or LINE)
+        local fin = finished(f)
+        color(f.Text, fin and DONE or LINE)
         color(f.Dash, accent())
+        if fin then skinCheck(f.Icon or f.Check) end
     end
     if f.Header and f ~= tracker() then styleHeader(f.Header) end
     if f.GetChildren then
-        for _, c in ipairs({ f:GetChildren() }) do styleTree(c, depth + 1) end
+        local block = inBlock or f.HeaderText ~= nil
+        for _, c in ipairs({ f:GetChildren() }) do styleTree(c, depth + 1, block) end
     end
 end
 
@@ -92,11 +276,6 @@ end
 -- (the quest markers on the left, item buttons on the right, the collapse
 -- buttons), in the tracker's own units. Container frames don't count: the
 -- tracker itself is as tall as its Edit Mode box, not its contents.
-local function visible(x)
-    if type(x) ~= "table" then return false end
-    if x.IsVisible then return x:IsVisible() end
-    return x.IsShown == nil or x:IsShown()
-end
 
 local function contentBounds(f)
     local fes = (f.GetEffectiveScale and f:GetEffectiveScale()) or 1
@@ -186,6 +365,9 @@ local function restore()
         if h.Background then MM.Dim(h.Background, false) end
     end
     styled = {}
+    for btn, sk in pairs(skins) do unskin(btn, sk) end
+    for t, was in pairs(checks) do unskinCheck(t, was) end
+    checks = {}
     -- the game repaints its own colors on its next update: ask for one now
     local mgr = rawget(_G, "ObjectiveTrackerManager")
     if type(mgr) == "table" and mgr.UpdateAll then pcall(mgr.UpdateAll, mgr)

@@ -526,8 +526,60 @@ local function layoutRow(r)
     r.text:SetJustifyH("CENTER")
 end
 
+-- Fill the minimap's Edit Mode box: the map grows (or shrinks) so the square
+-- housing around it is as big as the box allows, centered in it. Edit Mode
+-- still moves and sizes the box; the map follows.
+local mapHome           -- the map's own scale and points, to give back
+local function fitMap(m, on)
+    local cl = rawget(_G, "MinimapCluster")
+    if not on then
+        if mapHome then
+            m.ruinPlacing = true
+            if m.SetScale then m:SetScale(mapHome.scale or 1) end
+            m:ClearAllPoints()
+            for _, pt in ipairs(mapHome.points) do m:SetPoint(unpack(pt)) end
+            m.ruinPlacing = nil
+            mapHome = nil
+        end
+        return
+    end
+    if type(cl) ~= "table" or not (cl.GetWidth and cl.GetEffectiveScale and m.GetEffectiveScale and m.SetScale) then return end
+    local parent = m:GetParent()
+    local pes = parent and parent.GetEffectiveScale and parent:GetEffectiveScale()
+    local ces = cl:GetEffectiveScale()
+    local cw, ch, w = cl:GetWidth(), cl:GetHeight(), m:GetWidth()
+    if not (pes and ces and cw and ch and w and pes > 0 and w > 0 and cw > 0 and ch > 0) then return end
+    if not mapHome then
+        mapHome = { scale = m:GetScale() or 1, points = {} }
+        for i = 1, (m:GetNumPoints() or 0) do mapHome.points[i] = { m:GetPoint(i) } end
+    end
+    -- the box's shorter side, in the map's parent's units
+    local side = math.min(cw, ch) * ces / pes
+    local d = math.max(80, side - EXT * 2)
+    m.ruinPlacing = true
+    m:SetScale(d / w)
+    m:ClearAllPoints()
+    m:SetPoint("CENTER", cl, "CENTER", 0, 0)
+    m.ruinPlacing = nil
+    -- the game lays the map out again now and then: keep it in the box
+    if not m.ruinFitHook and hooksecurefunc then
+        m.ruinFitHook = true
+        hooksecurefunc(m, "SetPoint", function(self)
+            if mapHome and not self.ruinPlacing and MM.Style() == "pathfinder" then
+                self.ruinPlacing = true
+                self:ClearAllPoints()
+                self:SetPoint("CENTER", cl, "CENTER", 0, 0)
+                self.ruinPlacing = nil
+            end
+        end)
+    end
+end
+
+-- The map's size in its parent's units (it may be scaled to fit its box).
+local function mapSize(m) return (m:GetWidth() or 140) * ((m.GetScale and m:GetScale()) or 1) end
+
 local function layoutBar(m)
-    local size = m:GetWidth() or 140
+    local size = mapSize(m)
     local w = size + EXT * 2                -- square: as wide as it is tall
     -- the cap is the housing's top half, the foot its bottom half: together a
     -- square frame around the ring, room above for the zone and below for
@@ -639,6 +691,7 @@ function MM.Apply()
     dim(zoneText(), modern)
     wheelZoom(m, modern)
     if modern then
+        fitMap(m, true)
         if not deco then buildDeco(m) end
         deco:Show()
         layoutDeco(m)
@@ -648,6 +701,7 @@ function MM.Apply()
         hideStrayCoords(true)
     else
         if deco then deco:Hide() end
+        fitMap(m, false)
         for f in pairs(moved) do restorePiece(f) end
         hideStrayCoords(false)
         if bar then bar:Hide(); foot:Hide(); rows.top:Hide(); rows.bottom:Hide() end
@@ -750,4 +804,13 @@ function MM.Init(cdb)
         if db.mmStyle ~= "blizzard" then C_Timer.After(1, MM.Apply) end
     end)
     if db.mmStyle ~= "blizzard" then C_Timer.After(1, MM.Apply) end
+    -- Edit Mode resizes and moves the box: fit to it again when it closes
+    local em = rawget(_G, "EditModeManagerFrame")
+    if type(em) == "table" and em.HookScript then
+        em:HookScript("OnHide", function() if db.mmStyle ~= "blizzard" then MM.Apply() end end)
+    end
+    local cl = rawget(_G, "MinimapCluster")
+    if type(cl) == "table" and cl.HookScript then
+        cl:HookScript("OnSizeChanged", function() if db.mmStyle ~= "blizzard" and C_Timer then C_Timer.After(0, MM.Apply) end end)
+    end
 end

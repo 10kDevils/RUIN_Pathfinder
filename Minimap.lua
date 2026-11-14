@@ -2,10 +2,11 @@
 --   Style: the game's own look (Blizzard / WoW Forever), or Pathfinder's:
 --          a slim ring in Pathfinder's color with a soft shadow, an N where
 --          north is, mouse-wheel zoom in place of the + and - buttons, and a
---          flat bar above the map holding the tracking button, the zone, the
---          clock, the calendar and the addon list, so nothing sits on the map.
+--          flat cap above the map and foot below it, joined to the ring,
+--          holding the tracking button, zone, calendar, addon list, mail,
+--          coordinates and clock, drawn flat, so nothing sits on the map.
 --   Tracker dock: the tracker sits against the minimap on the side you pick
---          and grows away from it: up from the top (on the bar, in
+--          and grows away from it: up from the top (on the cap, in
 --          Pathfinder's style), down from the bottom, sideways from a side.
 local ADDON, ns = ...
 local R = RUIN_API
@@ -33,7 +34,7 @@ local DOCK_ORDER = { "top", "bottom", "left", "right" }
 
 local db
 local deco          -- Pathfinder's ring, shadow and N
-local bar           -- Pathfinder's bar above the map
+local bar           -- Pathfinder's cap above the map
 local saved = {}    -- the game's own regions we dimmed: region -> alpha
 
 local function minimap() return rawget(_G, "Minimap") end
@@ -124,14 +125,14 @@ local function hookAlpha(r)
     end)
 end
 
-local function dim(r, off)
+local function dim(r, off, keepMouse)
     if type(r) ~= "table" or not r.SetAlpha then return end
     keepDim[r] = off or nil
     if off then
         if saved[r] == nil then saved[r] = (r.GetAlpha and r:GetAlpha()) or 1 end
         hookAlpha(r)
         r.ruinSetting = true; r:SetAlpha(0); r.ruinSetting = nil
-        if r.EnableMouse and r.IsMouseEnabled and r:GetObjectType() ~= "Texture" then
+        if not keepMouse and r.EnableMouse and r.IsMouseEnabled and r:GetObjectType() ~= "Texture" then
             if r.ruinMouse == nil then r.ruinMouse = r:IsMouseEnabled() end
             r:EnableMouse(false)
         end
@@ -198,64 +199,179 @@ function MM.PlaceNorth()
 end
 
 ---------------------------------------------------------------------------
--- Pathfinder's bar: a flat strip above the map. The game's tracking button,
--- clock, calendar and addon list move onto it, shrink to fit, and lose their
--- round frames; the zone name sits in the middle. The tracker docks on top.
+-- Pathfinder's housing: a flat cap above the map and a matching foot below
+-- it, drawn behind the map so the ring sits on them and their edges run into
+-- the ring in its color. Nothing covers the map: the icons sit in the strips
+-- outside the circle.
+--   Cap:  tracking, addons | zone | (sun / moon,) calendar   (the tracker docks on top)
+--   Foot: mail | coordinates | clock
+-- The tracking button, calendar and mail keep working but are drawn flat by
+-- Pathfinder; the clock and addon count are text and keep theirs.
 ---------------------------------------------------------------------------
-local BAR_H, SLOT = 24, 20
-local moved = {}     -- frame -> { parent, points, scale, slot }
+local BAR_H, FOOT_H, SLOT, LIFT = 22, 18, 18, 4
+local moved = {}        -- frame -> { parent, points, scale, slot, dress, ghost }
+local foot              -- the housing below the map
+local rows = {}         -- top / bottom: the strips the pieces sit in
+local strayCoords = {}  -- coordinate text another addon drew by the map, hidden
 
--- The game's pieces that move onto the bar: which frame, which side, and
--- which of its textures are frame dressing to hide (the rest is the icon).
-local function barPieces()
+local STRATA = { "BACKGROUND", "LOW", "MEDIUM", "HIGH", "DIALOG", "FULLSCREEN", "FULLSCREEN_DIALOG", "TOOLTIP" }
+
+local function first(...)
+    for i = 1, select("#", ...) do
+        local f = select(i, ...)
+        if type(f) == "table" and f.SetPoint and f.GetObjectType then return f end
+    end
+end
+
+local function texText(r)
+    return (tostring((r.GetName and r:GetName()) or "") .. " " .. tostring((r.GetTexture and r:GetTexture()) or "")
+        .. " " .. tostring((r.GetAtlas and r:GetAtlas()) or "")):lower()
+end
+
+-- A day / night indicator some clients put on the ring (a sun or moon).
+local function dayNight()
     local cl = rawget(_G, "MinimapCluster")
-    local function first(...)
-        for i = 1, select("#", ...) do
-            local f = select(i, ...)
-            if type(f) == "table" and f.SetPoint and f.GetObjectType then return f end
+    for _, holder in ipairs({ minimap(), rawget(_G, "MinimapBackdrop"), cl }) do
+        if type(holder) == "table" and holder.GetChildren then
+            for _, c in ipairs({ holder:GetChildren() }) do
+                local name = tostring((c.GetName and c:GetName()) or ""):lower()
+                local hit = name:find("daynight") or name:find("moon") or name:find("sun") or name:find("timeofday")
+                if not hit and c.GetRegions and not name:find("ruin") then
+                    for _, r in ipairs({ c:GetRegions() }) do
+                        if r.GetObjectType and r:GetObjectType() == "Texture" then
+                            local t = texText(r)
+                            if t:find("moon") or t:find("daynight") or t:find("sun_") or t:find("timeofday") then hit = true; break end
+                        end
+                    end
+                end
+                if hit and not name:find("ruin") then return c end
+            end
         end
     end
+end
+
+-- The game's pieces that move into the housing. ghost: Pathfinder draws it
+-- (the game's frame stays, unseen, to take the clicks); dress: which of its
+-- textures to hide otherwise ("all": it's text).
+local function barPieces()
+    local cl = rawget(_G, "MinimapCluster")
+    local ind = type(cl) == "table" and cl.IndicatorFrame or nil
     return {
-        { key = "tracking", side = "left", frame = first(type(cl) == "table" and cl.Tracking or nil, rawget(_G, "MiniMapTracking"), rawget(_G, "MiniMapTrackingButton")), dress = "frame" },
-        { key = "addons", side = "right", frame = first(rawget(_G, "AddonCompartmentFrame")), dress = "all" },
-        { key = "calendar", side = "right", frame = first(rawget(_G, "GameTimeFrame")), dress = "frame" },
-        { key = "clock", side = "right", frame = first(rawget(_G, "TimeManagerClockButton")), dress = "all", wide = true },
+        { key = "tracking", tab = "top", side = "left", ghost = "tracking",
+          frame = first(type(cl) == "table" and cl.Tracking or nil, rawget(_G, "MiniMapTracking"), rawget(_G, "MiniMapTrackingButton")) },
+        { key = "addons", tab = "top", side = "left", dress = "all", frame = first(rawget(_G, "AddonCompartmentFrame")) },
+        { key = "calendar", tab = "top", side = "right", ghost = "calendar", frame = first(rawget(_G, "GameTimeFrame")) },
+        { key = "daynight", tab = "top", side = "right", dress = "frame", frame = dayNight() },
+        { key = "mail", tab = "bottom", side = "left", ghost = "mail",
+          frame = first(rawget(_G, "MiniMapMailFrame"), type(ind) == "table" and ind.MailFrame or nil) },
+        { key = "clock", tab = "bottom", side = "right", dress = "all", wide = true, frame = first(rawget(_G, "TimeManagerClockButton")) },
     }
 end
 MM.BarPieces = barPieces
 
--- Its textures that are frame dressing: borders, backgrounds, rings (or, for
--- "all", every texture: the clock and addon count are text).
 local function dressing(frame, mode, out)
     out = out or {}
-    if type(frame) ~= "table" or not frame.GetRegions then return out end
+    if not mode or type(frame) ~= "table" or not frame.GetRegions then return out end
     for _, r in ipairs({ frame:GetRegions() }) do
         if type(r) == "table" and r.GetObjectType and r:GetObjectType() == "Texture" then
-            local text = (tostring((r.GetName and r:GetName()) or "") .. " " .. tostring((r.GetTexture and r:GetTexture()) or "")
-                .. " " .. tostring((r.GetAtlas and r:GetAtlas()) or "")):lower()
+            local text = texText(r)
             if mode == "all" or text:find("border") or text:find("background") or text:find("ring") or text:find("backdrop") then out[#out + 1] = r end
         end
     end
-    -- a frame that is only a holder (the retail tracking frame): its background child too
     if type(frame.Background) == "table" then out[#out + 1] = frame.Background end
     return out
 end
 
-local function buildBar(m)
-    bar = CreateFrame("Frame", "RUIN_PathfinderMinimapBar", m:GetParent() or UIParent)
-    bar:SetFrameStrata(m.GetFrameStrata and m:GetFrameStrata() or "LOW")
-    bar:SetFrameLevel((m:GetFrameLevel() or 1) + 5)
-    bar:SetHeight(BAR_H)
-    if W.Skin then W.Skin(bar, "bg", 0.92, "border") end
+-- One housing (cap or foot): its background behind the map, in a lower
+-- strata, edged in Pathfinder's color on the three sides that show.
+local function housing(m, name, openSide)
+    local h = CreateFrame("Frame", name, m:GetParent() or UIParent)
+    local strata = m.GetFrameStrata and m:GetFrameStrata() or "LOW"
+    local below
+    for i, s in ipairs(STRATA) do if s == strata and i > 1 then below = STRATA[i - 1] end end
+    if below and h.SetFrameStrata then
+        h:SetFrameStrata(below)
+    elseif h.SetFrameLevel then
+        h:SetFrameLevel(math.max(0, (m:GetFrameLevel() or 1) - 1))
+    end
+    if h.EnableMouse then h:EnableMouse(false) end
+    if W.Skin then W.Skin(h, "bg", 0.94, "border") end
     local c = accent()
-    bar.band = bar:CreateTexture(nil, "ARTWORK")
-    bar.band:SetColorTexture(c[1], c[2], c[3], 0.9)
-    bar.band:SetHeight(1)
-    bar.band:SetPoint("BOTTOMLEFT", 4, 0)
-    bar.band:SetPoint("BOTTOMRIGHT", -4, 0)
-    bar.zone = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    bar.zone:SetWordWrap(false)
-    bar.slots = {}
+    for side, e in pairs(h.skinEdges or {}) do
+        if side == openSide then e:SetColorTexture(0, 0, 0, 0) else e:SetColorTexture(c[1], c[2], c[3], 0.95) end
+    end
+    -- a hairline under (or over) the strip, so the icons read as one row
+    h.rule = h:CreateTexture(nil, "ARTWORK")
+    h.rule:SetColorTexture(1, 1, 1, 0.05)
+    h.rule:SetHeight(1)
+    return h
+end
+
+-- The strip the pieces sit in: above the map, at the map's own strata.
+local function row(m, key, height)
+    local r = CreateFrame("Frame", nil, m:GetParent() or UIParent)
+    if r.SetFrameStrata and m.GetFrameStrata then r:SetFrameStrata(m:GetFrameStrata() or "LOW") end
+    if r.SetFrameLevel then r:SetFrameLevel((m:GetFrameLevel() or 1) + 5) end
+    r:SetHeight(height)
+    r.text = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    r.text:SetWordWrap(false)
+    r.slots = {}
+    rows[key] = r
+    return r
+end
+
+-- Pathfinder's flat drawing of a ghosted piece.
+local function drawGhost(s, kind)
+    if s.drawn then return end
+    s.drawn = true
+    if kind == "calendar" then
+        local c = accent()
+        s.page = s:CreateTexture(nil, "ARTWORK")
+        s.page:SetColorTexture(0.85, 0.87, 0.9, 0.9)
+        s.page:SetSize(14, 13)
+        s.page:SetPoint("CENTER", 0, -1)
+        s.inside = s:CreateTexture(nil, "ARTWORK", nil, 1)
+        s.inside:SetColorTexture(0.06, 0.07, 0.08, 1)
+        s.inside:SetPoint("TOPLEFT", s.page, "TOPLEFT", 1, -3)
+        s.inside:SetPoint("BOTTOMRIGHT", s.page, "BOTTOMRIGHT", -1, 1)
+        s.top = s:CreateTexture(nil, "ARTWORK", nil, 2)
+        s.top:SetColorTexture(c[1], c[2], c[3], 1)
+        s.top:SetPoint("TOPLEFT", s.page, "TOPLEFT", 0, 0)
+        s.top:SetPoint("TOPRIGHT", s.page, "TOPRIGHT", 0, 0)
+        s.top:SetHeight(3)
+        s.day = s:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        s.day:SetPoint("CENTER", s.inside, "CENTER", 0, 0)
+        local font, _, flags = s.day:GetFont()
+        if font and s.day.SetFont then s.day:SetFont(font, 8, flags) end
+        s.dot = s:CreateTexture(nil, "OVERLAY")
+        s.dot:SetColorTexture(1, 0.82, 0, 1)
+        s.dot:SetSize(4, 4)
+        s.dot:SetPoint("TOPRIGHT", s.page, "TOPRIGHT", 2, 2)
+        s.dot:Hide()
+    else
+        s.icon = s:CreateTexture(nil, "ARTWORK")
+        if kind == "tracking" then
+            s.icon:SetTexture("Interface\\Common\\UI-Searchbox-Icon")
+            s.icon:SetSize(13, 13)
+        else
+            s.icon:SetTexture("Interface\\Minimap\\Tracking\\Mailbox")
+            s.icon:SetSize(15, 15)
+            if s.icon.SetDesaturated then s.icon:SetDesaturated(true) end
+        end
+        s.icon:SetPoint("CENTER", 0, 0)
+        s.icon:SetVertexColor(0.82, 0.84, 0.88)
+    end
+end
+
+local function buildBar(m)
+    bar = housing(m, "RUIN_PathfinderMinimapBar", "BOTTOM")
+    foot = housing(m, "RUIN_PathfinderMinimapFoot", "TOP")
+    local top = row(m, "top", BAR_H)
+    row(m, "bottom", FOOT_H)
+    bar.zone = top.text
+    bar.slots = top.slots
+    bar.row = top
+    bar.coords = rows.bottom.text
     bar:RegisterEvent("ZONE_CHANGED")
     bar:RegisterEvent("ZONE_CHANGED_INDOORS")
     bar:RegisterEvent("ZONE_CHANGED_NEW_AREA")
@@ -263,17 +379,17 @@ local function buildBar(m)
     bar:SetScript("OnEvent", function() MM.UpdateZone() end)
 end
 
-local function slotFor(key, wide)
-    local s = bar.slots[key]
+local function slotFor(p)
+    local r = rows[p.tab]
+    local s = r.slots[p.key]
     if not s then
-        s = CreateFrame("Frame", nil, bar)
-        s:SetSize(wide and 40 or SLOT, SLOT)
-        bar.slots[key] = s
+        s = CreateFrame("Frame", nil, r)
+        s:SetSize(p.wide and 38 or SLOT, SLOT)
+        r.slots[p.key] = s
     end
     return s
 end
 
--- Put a game piece in a slot: in the middle, scaled to the slot's height.
 local function place(f, s)
     f.ruinPlacing = true
     f:ClearAllPoints()
@@ -284,19 +400,23 @@ end
 local function movePiece(p)
     local f = p.frame
     if not f or moved[f] then return end
-    local rec = { parent = f:GetParent(), scale = f.GetScale and f:GetScale() or 1, points = {}, slot = slotFor(p.key, p.wide), dress = dressing(f, p.dress) }
+    local s = slotFor(p)
+    local rec = { parent = f:GetParent(), scale = f.GetScale and f:GetScale() or 1, points = {}, slot = s, dress = dressing(f, p.dress), ghost = p.ghost }
     for i = 1, (f.GetNumPoints and f:GetNumPoints() or 0) do rec.points[i] = { f:GetPoint(i) } end
     moved[f] = rec
-    f:SetParent(rec.slot)
+    f:SetParent(s)
     local h = (f.GetHeight and f:GetHeight()) or SLOT
     if h and h > 0 and f.SetScale then f:SetScale(math.min(1, SLOT / h)) end
+    if p.ghost then
+        drawGhost(s, p.ghost)
+        dim(f, true, true)          -- unseen, but still takes the clicks
+    end
     for _, r in ipairs(rec.dress) do dim(r, true) end
     if p.key == "clock" then
         local t = rawget(_G, "TimeManagerClockTicker")
         if type(t) == "table" and t.SetFontObject then t:SetFontObject(GameFontHighlightSmall) end
     end
-    place(f, rec.slot)
-    -- the game lays some of these out again on its own: put them back on the bar
+    place(f, s)
     if not f.ruinPointHook and hooksecurefunc then
         f.ruinPointHook = true
         hooksecurefunc(f, "SetPoint", function(self)
@@ -312,6 +432,7 @@ local function restorePiece(f)
     moved[f] = nil
     f:SetParent(rec.parent)
     if f.SetScale then f:SetScale(rec.scale or 1) end
+    if rec.ghost then dim(f, false) end
     for _, r in ipairs(rec.dress) do dim(r, false) end
     f.ruinPlacing = true
     f:ClearAllPoints()
@@ -319,38 +440,97 @@ local function restorePiece(f)
     f.ruinPlacing = nil
 end
 
-local function layoutBar(m)
-    local size = m:GetWidth() or 140
-    bar:ClearAllPoints()
-    bar:SetPoint("BOTTOM", m, "TOP", 0, 8)
-    bar:SetWidth(size + 8)
-    -- left to right: tracking | zone | clock, calendar, addons
-    local left, right = 3, 3
-    local leftEdge, rightEdge
-    for _, p in ipairs(barPieces()) do
-        if p.frame then
-            movePiece(p)
-            local s = bar.slots[p.key]
-            s:ClearAllPoints()
-            if p.side == "left" then
-                s:SetPoint("LEFT", bar, "LEFT", left, 0)
-                left = left + s:GetWidth() + 2
-                leftEdge = s
-            else
-                s:SetPoint("RIGHT", bar, "RIGHT", -right, 0)
-                right = right + s:GetWidth() + 2
-                rightEdge = s
+-- Coordinates another addon (or the client) prints by the map: Pathfinder's
+-- foot shows them now.
+local COORD = "^%s*%d+%.?%d*%s*,%s*%d+%.?%d*%s*$"
+local function hideStrayCoords(off)
+    if not off then
+        for r in pairs(strayCoords) do dim(r, false) end
+        strayCoords = {}
+        return
+    end
+    local m, cl = minimap(), rawget(_G, "MinimapCluster")
+    local near = { [m or 0] = true, [cl or 0] = true }
+    local function fonts(frame, depth)
+        if type(frame) ~= "table" or not frame.GetRegions or frame == bar or frame == foot then return end
+        for _, r in ipairs({ frame:GetRegions() }) do
+            if r.GetObjectType and r:GetObjectType() == "FontString" and r ~= (rows.bottom and rows.bottom.text) then
+                local t = r.GetText and r:GetText()
+                if type(t) == "string" and t:match(COORD) then strayCoords[r] = true; dim(r, true) end
             end
-            s:Show()
-        elseif bar.slots[p.key] then
-            bar.slots[p.key]:Hide()
+        end
+        if depth > 0 and frame.GetChildren then
+            for _, c in ipairs({ frame:GetChildren() }) do fonts(c, depth - 1) end
         end
     end
-    bar.zone:ClearAllPoints()
-    bar.zone:SetPoint("LEFT", bar, "LEFT", left + 2, 0)
-    bar.zone:SetPoint("RIGHT", bar, "RIGHT", -right - 2, 0)
-    bar.zone:SetJustifyH(leftEdge and "LEFT" or "CENTER")
+    fonts(m, 2); fonts(cl, 2); fonts(rawget(_G, "MinimapBackdrop"), 1)
+    -- small frames of their own, pinned to the map
+    local ui = rawget(_G, "UIParent")
+    if ui and ui.GetChildren then
+        for _, c in ipairs({ ui:GetChildren() }) do
+            local _, rel = c.GetPoint and c:GetPoint(1)
+            if rel and near[rel] then fonts(c, 1) end
+        end
+    end
+end
+
+local function layoutRow(r)
+    local left, right = 3, 3
+    for _, p in ipairs(barPieces()) do
+        local s = r.slots[p.key]
+        if rows[p.tab] == r then
+            if p.frame then
+                movePiece(p)
+                s = r.slots[p.key]
+                s:ClearAllPoints()
+                if p.side == "left" then
+                    s:SetPoint("LEFT", r, "LEFT", left, 0)
+                    left = left + s:GetWidth() + 1
+                else
+                    s:SetPoint("RIGHT", r, "RIGHT", -right, 0)
+                    right = right + s:GetWidth() + 1
+                end
+                s:Show()
+            elseif s then
+                s:Hide()
+            end
+        end
+    end
+    -- the text in the room between
+    r.text:ClearAllPoints()
+    r.text:SetPoint("LEFT", r, "LEFT", left + 1, 0)
+    r.text:SetPoint("RIGHT", r, "RIGHT", -right - 1, 0)
+    r.text:SetJustifyH("CENTER")
+end
+
+local function layoutBar(m)
+    local size = m:GetWidth() or 140
+    local w = math.max(124, math.floor(size * 0.9 + 0.5))
+    local rad = size / 2
+    local half = math.min(w / 2, rad)
+    local dip = rad - math.sqrt(math.max(0, rad * rad - half * half)) + 3    -- down to where the circle meets the edges
+    bar:ClearAllPoints()
+    bar:SetPoint("TOP", m, "TOP", 0, LIFT + BAR_H)
+    bar:SetSize(w, BAR_H + LIFT + dip)
+    bar.rule:ClearAllPoints()
+    bar.rule:SetPoint("TOPLEFT", bar, "TOPLEFT", 4, -BAR_H)
+    bar.rule:SetPoint("TOPRIGHT", bar, "TOPRIGHT", -4, -BAR_H)
+    foot:ClearAllPoints()
+    foot:SetPoint("BOTTOM", m, "BOTTOM", 0, -(LIFT + FOOT_H))
+    foot:SetSize(w, FOOT_H + LIFT + dip)
+    foot.rule:ClearAllPoints()
+    foot.rule:SetPoint("BOTTOMLEFT", foot, "BOTTOMLEFT", 4, FOOT_H)
+    foot.rule:SetPoint("BOTTOMRIGHT", foot, "BOTTOMRIGHT", -4, FOOT_H)
+    rows.top:ClearAllPoints()
+    rows.top:SetPoint("BOTTOM", m, "TOP", 0, LIFT)
+    rows.top:SetWidth(w)
+    rows.bottom:ClearAllPoints()
+    rows.bottom:SetPoint("TOP", m, "BOTTOM", 0, -LIFT)
+    rows.bottom:SetWidth(w)
+    layoutRow(rows.top)
+    layoutRow(rows.bottom)
     MM.UpdateZone()
+    MM.Tick(true)
 end
 
 function MM.UpdateZone()
@@ -362,8 +542,55 @@ function MM.UpdateZone()
     if col then bar.zone:SetTextColor(col[1], col[2], col[3]) else bar.zone:SetTextColor(1, 0.82, 0) end
 end
 
--- The bar above the map (Pathfinder's style), or nil.
+-- Where you stand, as the foot shows it ("" where the game won't say).
+function MM.Coords()
+    if not (C_Map and C_Map.GetBestMapForUnit and C_Map.GetPlayerMapPosition) then return "" end
+    local id = C_Map.GetBestMapForUnit("player")
+    local pos = id and C_Map.GetPlayerMapPosition(id, "player")
+    if not pos then return "" end
+    local x, y
+    if pos.GetXY then x, y = pos:GetXY() else x, y = pos.x, pos.y end
+    if not x or (x == 0 and y == 0) then return "" end
+    return ("%.1f, %.1f"):format(x * 100, y * 100)
+end
+
+-- Keep the housing current: coordinates, the day on the calendar, the mail
+-- icon showing when the game's would, and a hover light on the flat icons.
+local tickCoords, tickDay = 0, 0
+function MM.Tick(now, elapsed)
+    if not (bar and bar:IsShown()) then return end
+    tickCoords = tickCoords + (elapsed or 0)
+    tickDay = tickDay + (elapsed or 0)
+    if now or tickCoords >= 0.1 then
+        tickCoords = 0
+        bar.coords:SetText(MM.Coords())
+        bar.coords:SetTextColor(0.82, 0.84, 0.88)
+    end
+    local c = accent()
+    for f, rec in pairs(moved) do
+        local s = rec.slot
+        if rec.ghost then
+            local over = f.IsMouseOver and f:IsMouseOver() or false
+            if s.icon then
+                s.icon:SetShown(f.IsShown == nil or f:IsShown())
+                if over then s.icon:SetVertexColor(c[1], c[2], c[3]) else s.icon:SetVertexColor(0.82, 0.84, 0.88) end
+            elseif s.day then
+                if now or tickDay >= 1 then
+                    s.day:SetText(date and date("%d"):gsub("^0", "") or "")
+                    local inv = C_Calendar and C_Calendar.GetNumPendingInvites and C_Calendar.GetNumPendingInvites() or 0
+                    s.dot:SetShown((inv or 0) > 0)
+                end
+                s.top:SetColorTexture(c[1], c[2], c[3], 1)
+                s.page:SetColorTexture(over and 1 or 0.85, over and 1 or 0.87, over and 1 or 0.9, 0.9)
+            end
+        end
+    end
+    if now or tickDay >= 1 then tickDay = 0 end
+end
+
+-- The cap above the map (Pathfinder's style), or nil: the tracker docks on it.
 function MM.Bar() return (bar and bar:IsShown()) and bar or nil end
+function MM.Foot() return (foot and foot:IsShown()) and foot or nil end
 
 -- Mouse-wheel zoom, where the + and - buttons are hidden.
 local function wheelZoom(m, on)
@@ -399,12 +626,14 @@ function MM.Apply()
         deco:Show()
         layoutDeco(m)
         if not bar then buildBar(m) end
-        bar:Show()
+        bar:Show(); foot:Show(); rows.top:Show(); rows.bottom:Show()
         layoutBar(m)
+        hideStrayCoords(true)
     else
         if deco then deco:Hide() end
         for f in pairs(moved) do restorePiece(f) end
-        if bar then bar:Hide() end
+        hideStrayCoords(false)
+        if bar then bar:Hide(); foot:Hide(); rows.top:Hide(); rows.bottom:Hide() end
     end
 end
 
@@ -417,12 +646,12 @@ local function gap(spot)
     local modern = MM.Style() == "pathfinder"
     local d = DOCKS[spot]
     if d.grow == "up" then return modern and 2 or 34 end
-    if d.grow == "down" then return modern and 26 or 28 end     -- room for the tracker's tabs above it
+    if d.grow == "down" then return modern and 22 or 28 end     -- room for the tracker's tabs above it
     return modern and 8 or 18
 end
 
 -- Anchor the tracker to the minimap; true when it's docked. Above the map
--- in Pathfinder's style, it sits on the bar, as wide as it.
+-- in Pathfinder's style it sits on the cap, below it under the foot.
 function MM.AnchorTracker(tracker)
     local spot = MM.Dock()
     local m = minimap()
@@ -431,8 +660,8 @@ function MM.AnchorTracker(tracker)
     local dx = (d.grow == "left" and -g) or (d.grow == "right" and g) or 0
     local dy = (d.grow == "up" and g) or (d.grow == "down" and -g) or 0
     tracker:ClearAllPoints()
-    local onBar = spot == "top" and MM.Bar()
-    tracker:SetPoint(d.pt, onBar or m, d.rel, dx, dy)
+    local on = (spot == "top" and MM.Bar()) or (spot == "bottom" and MM.Foot()) or m
+    tracker:SetPoint(d.pt, on, d.rel, dx, dy)
     return true
 end
 
@@ -485,6 +714,7 @@ local function watch(_, elapsed)
     if since < 0.03 then return end
     since = 0
     if rotating() then MM.PlaceNorth() end
+    MM.Tick(false, 0.03)
 end
 
 function MM.Init(cdb)

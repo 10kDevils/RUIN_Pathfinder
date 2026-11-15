@@ -205,16 +205,11 @@ local function buildDeco(m)
     deco.inner:SetTexture(MEDIA .. "MinimapRing")
     deco.inner:SetVertexColor(0, 0, 0, 0.6)
     -- N where north is: a badge that holds up on any ground, a dark disc
-    -- edged in Pathfinder's green with a bold white N, over a soft shadow
+    -- edged in Pathfinder's green with a bold white N
     deco.north = deco:CreateTexture(nil, "OVERLAY", nil, 1)
     deco.north:SetTexture(MEDIA .. "ModernDisc")
     deco.north:SetVertexColor(sc.bg[1] * 0.6, sc.bg[2] * 0.6, sc.bg[3] * 0.6, 1)
     deco.north:SetSize(22, 22)
-    deco.northShade = deco:CreateTexture(nil, "OVERLAY", nil, 0)
-    deco.northShade:SetTexture(MEDIA .. "MinimapShadow")
-    deco.northShade:SetVertexColor(0, 0, 0, 0.85)
-    deco.northShade:SetPoint("CENTER", deco.north, "CENTER", 0, -1)
-    deco.northShade:SetSize(36, 36)
     deco.northRing = deco:CreateTexture(nil, "OVERLAY", nil, 2)
     deco.northRing:SetTexture(MEDIA .. "ModernRing")
     deco.northRing:SetVertexColor(c[1], c[2], c[3], 1)

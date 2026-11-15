@@ -341,6 +341,46 @@ local function styleLog(frame, depth)
     end
 end
 
+-- The quest's details (its text, objectives and rewards) are written in the
+-- game's dark ink for parchment, unreadable on the suite's dark panel: any
+-- text drawn dark is lightened, headings in the look's color. Colored text
+-- (item names, money) is left alone.
+local BODY = { 0.86, 0.87, 0.90 }
+local function readable(frame, depth)
+    if type(frame) ~= "table" or depth > 8 then return end
+    if frame.IsForbidden and frame:IsForbidden() then return end
+    if frame.GetRegions then
+        for _, r in ipairs({ frame:GetRegions() }) do
+            if type(r) == "table" and r.GetObjectType and r:GetObjectType() == "FontString" and r.GetTextColor then
+                local cr, cg, cb = r:GetTextColor()
+                if type(cr) == "number" and not (issecretvalue and issecretvalue(cr)) then
+                    local lum = 0.3 * cr + 0.59 * (cg or 0) + 0.11 * (cb or 0)
+                    if lum < 0.45 or r.ruinLit then
+                        local n = tostring((r.GetName and r:GetName()) or ""):lower()
+                        local head = n:find("header") or n:find("title")
+                        local c = head and accent() or BODY
+                        if colored[r] == nil then colored[r] = { cr, cg, cb } end
+                        r.ruinLit = true
+                        r:SetTextColor(c[1], c[2], c[3])
+                    end
+                end
+            end
+        end
+    end
+    if frame.GetChildren then
+        for _, c in ipairs({ frame:GetChildren() }) do readable(c, depth + 1) end
+    end
+end
+local function readableDetails()
+    if not on() then return end
+    local q = questMap()
+    for _, f in ipairs({ q and q.DetailsFrame or false, rawget(_G, "QuestInfoFrame") or false,
+                         rawget(_G, "QuestMapDetailsScrollFrame") or false }) do
+        if f and visible(f) then pcall(readable, f, 1) end
+    end
+end
+WM.ReadableDetails = readableDetails
+
 local function styleSearch(box)
     if type(box) ~= "table" then return end
     dimArt(box, function(r)
@@ -386,6 +426,7 @@ function WM.Refresh()
             styleLog(scroll.Contents or scroll, 1)
             styleSearch(scroll.SearchBox or (q.QuestsFrame and q.QuestsFrame.SearchBox))
         end
+        readableDetails()
     end
 end
 
@@ -393,7 +434,10 @@ local function restore()
     if panel then panel:Hide() end
     unstyleHeaders()
     OT.UnskinOwner(OWNER)
-    for fs, c in pairs(colored) do if fs.SetTextColor and c[1] then fs:SetTextColor(c[1], c[2], c[3], c[4] or 1) end end
+    for fs, c in pairs(colored) do
+        fs.ruinLit = nil
+        if fs.SetTextColor and c[1] then fs:SetTextColor(c[1], c[2], c[3], c[4] or 1) end
+    end
     colored = {}
     MM.UndimOwner(OWNER)
     local box = rawget(_G, "QuestScrollFrame") and QuestScrollFrame.SearchBox
@@ -462,4 +506,10 @@ function WM.Init(cdb)
     local ticker = CreateFrame("Frame", nil, f)
     ticker:SetScript("OnUpdate", tick)
     f:HookScript("OnShow", function() if on() then WM.Apply() end end)
+    -- the game repaints the details when a quest is opened: light them again at once
+    for _, fn in ipairs({ "QuestInfo_Display", "QuestMapFrame_ShowQuestDetails" }) do
+        if type(rawget(_G, fn)) == "function" then
+            hooksecurefunc(fn, function() if on() then readableDetails() end end)
+        end
+    end
 end

@@ -6,6 +6,10 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.8.1 — 2026-11-15
+
+- Fixed: **a quest's details were unreadable in the modern looks** (its text, objectives and rewards stayed in the game's dark parchment ink on the dark panel). Dark text is lightened now, headings in the look's color; item names and other colored text keep their colors.
+
 ## 0.8.0 — 2026-11-15
 
 - **The square minimap is gone.** A rotating map leaves a square's corners empty, and the fixes didn't hold up on WoW Forever, so the minimap is round again. A tracker docked to a corner spot moves to that side.

@@ -20,6 +20,7 @@ L.LABEL = { blizzard = "Blizzard", ruin = "Ink", core = "RUIN", pathfinder = "Pa
 
 local GOLD = { 0.90, 0.72, 0.38 }
 local INK = { 0.035, 0.045, 0.075 }
+local INK_BLACK = { 0.010, 0.010, 0.013 }     -- the Ink look's background
 L.GOLD, L.INK = GOLD, INK
 local COLOR = {
     ruin = GOLD,
@@ -104,9 +105,10 @@ function L.Scheme(key)
     for k, v in pairs(base) do s[k] = v end
     s.color = COLOR[key]
     if key == "ruin" then
-        -- the waypoint's own: plain gold on ink
+        -- Ink: plain gold on a near-black, with only a breath of gold in its gradient
         s.accent = GOLD
-        s.bg = INK
+        s.bg = INK_BLACK
+        s.color = mix(INK_BLACK, GOLD, 0.35)
         s.edge = mix(base.edge or { 0.2, 0.25, 0.3 }, GOLD, 0.35)
     end
     if key == "core" then
@@ -121,7 +123,7 @@ function L.Scheme(key)
         return s
     end
     -- the waypoint's card: ink, tinted faintly in the look's color
-    s.ink = key == "ruin" and INK or mix(INK, COLOR[key], 0.10)
+    s.ink = key == "ruin" and INK_BLACK or mix(INK, COLOR[key], 0.10)
     schemes[key] = s
     return s
 end

@@ -31,6 +31,7 @@ Versioning: the third number counts the meaningful changes made since the second
 - **The N turns with a rotating minimap** (Pathfinder's style): it sits on the ring where north is, instead of staying on top.
 - `/path minimap blizzard | pathfinder | debug`.
 - **The tracker and waypoint start in the game's own look** (Blizzard), like the minimap, objective tracker and world map.
+- **Mark on Map and View Location** on the Quests page: *Show on Map* is now *Mark on Map* (puts the pin down), and *View Location* tracks the quest and opens your world map on where it is.
 
 ## 0.7.5 — 2026-11-13
 

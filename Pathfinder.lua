@@ -1034,7 +1034,7 @@ local ALERT_KEEP, ALERT_SECONDS, ALERT_W = 3, 25, 360
 local ALERT_PAD = 14            -- the window's inner margin
 local alertWin, alerts = nil, {}
 -- Mark on map: close the alerts and open the world map on the quest's giver
--- (a pin there), as the Quests page's Show on map does.
+-- (a pin there), as the Quests page's Mark on Map does.
 local function markGiver(q)
     if alertWin then wipe(alerts); alertWin:Hide() end
     M:ShowQuestOnMap(q, "start")
@@ -2740,19 +2740,39 @@ local function buildQuests(page)
     ui.qBody:SetPoint("RIGHT", card, "RIGHT", -12, 0)
     ui.qBody:SetJustifyV("TOP")
     ui.qBody:SetWordWrap(true)
-    ui.qMap = W.Button(card, "Show on map", 110, function()
-        local q = ui.qSel
-        if not q then return end
+    -- Mark on Map: a pin where the quest is done or handed in.
+    -- View Location: the same, then the world map open there, the quest tracked.
+    local function markQuest(q, quiet)
         local _, ready = QB.InLog(q)
         local map, x, y = R.Map:PlayerPos()
         local spot = QB.Spot(q, ready and "finish" or "objective", map, x, y) or QB.Spot(q, "finish", map, x, y)
-        if not spot then return M:Print("The quest database doesn't have a place for this quest.") end
+        if not spot then M:Print("The quest database doesn't have a place for this quest."); return nil end
         R.Map:SetPin("Pathfinder", "quest", { map = spot.map, x = spot.x, y = spot.y, icon = "Interface\\AddOns\\RUIN_Core\\Media\\EmblemIcon", plain = true, shadow = true,
             color = W.MARKERS[ready and "turnin" or "quest"], title = "Pathfinder: " .. (C_QuestLog and C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(q) or "quest"),
             text = ready and ("Hand in: " .. (spot.name or "")) or (spot.name or "") })
-        M:Print("Marked on your map: " .. (spot.name or "the quest") .. ".")
-    end)
+        if not quiet then M:Print("Marked on your map: " .. (spot.name or "the quest") .. ".") end
+        return spot
+    end
+    M.MarkQuest = markQuest
+    function M.ViewQuestLocation(q)
+        local spot = markQuest(q, true)
+        if not spot then return false end
+        -- track it the game's way, so the map and its arrow follow it
+        if QB.InLog(q) then
+            if C_QuestLog and C_QuestLog.AddQuestWatch then pcall(C_QuestLog.AddQuestWatch, q) end
+            if C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID then pcall(C_SuperTrack.SetSuperTrackedQuestID, q) end
+        end
+        local open = OpenWorldMap or (ToggleWorldMap and function() if not (WorldMapFrame and WorldMapFrame:IsShown()) then ToggleWorldMap() end end)
+        if open then pcall(open, spot.map) end
+        if WorldMapFrame and WorldMapFrame.SetMapID and WorldMapFrame:IsShown() then pcall(WorldMapFrame.SetMapID, WorldMapFrame, spot.map) end
+        return true
+    end
+    ui.qMap = W.Button(card, "Mark on Map", 110, function() if ui.qSel then markQuest(ui.qSel) end end)
+    ui.qMap.tip = "Put a pin on your map where this quest is done (or handed in)."
     ui.qMap:SetPoint("BOTTOMLEFT", 12, 12)
+    ui.qView = W.Button(card, "View Location", 116, function() if ui.qSel then M.ViewQuestLocation(ui.qSel) end end)
+    ui.qView.tip = "Open your map where this quest is done (or handed in), with the quest tracked."
+    ui.qView:SetPoint("LEFT", ui.qMap, "RIGHT", 6, 0)
     ui.qInvite = W.Button(card, "Invite them", 104, function()
         local have = whoHas(ui.qSel)
         local invite = (C_PartyInfo and C_PartyInfo.InviteUnit) or InviteUnit
@@ -2764,7 +2784,7 @@ local function buildQuests(page)
         end
         M:Print("Invited " .. nameList(have, 6) .. ".")
     end)
-    ui.qInvite:SetPoint("LEFT", ui.qMap, "RIGHT", 6, 0)
+    ui.qInvite:SetPoint("LEFT", ui.qView, "RIGHT", 6, 0)
     ui.qInvite.tip = "Invite the RUIN members who have this quest to your group."
 
     -- database footer
@@ -2798,7 +2818,7 @@ local function refreshQuests()
     if not sel then
         ui.qName:SetText(C.dim .. "No quest picked.|r")
         ui.qBody:SetText("")
-        ui.qMap:SetEnabled(false); ui.qInvite:SetEnabled(false)
+        ui.qMap:SetEnabled(false); ui.qView:SetEnabled(false); ui.qInvite:SetEnabled(false)
     else
         ui.qName:SetText(sel.title)
         local lines = {}
@@ -2818,7 +2838,7 @@ local function refreshQuests()
         if #ready > 0 then lines[#lines + 1] = C.good .. "Ready to hand in: |r" .. nameList(ready, 8) end
         if #done > 0 then lines[#lines + 1] = C.dim .. "Done it: |r" .. nameList(done, 8) end
         ui.qBody:SetText(table.concat(lines, "\n"))
-        ui.qMap:SetEnabled(QB.Has())
+        ui.qMap:SetEnabled(QB.Has()); ui.qView:SetEnabled(QB.Has())
         ui.qInvite:SetEnabled(#have > 0)
     end
     if QB.Has() then

@@ -16,7 +16,7 @@ local OT = {}
 ns.Objectives = OT
 
 OT.STYLES = { "blizzard", "pathfinder" }
-OT.STYLE_LABEL = { blizzard = "Blizzard / WoW Forever", pathfinder = "Pathfinder (modern)" }
+OT.STYLE_LABEL = { blizzard = "Blizzard", pathfinder = "Pathfinder" }
 
 local PAD = 8
 local TITLE = { 1, 1, 1 }           -- quest names: bright, with a firm shadow

@@ -3326,8 +3326,13 @@ SlashCmdList.RUINPATH = function(input)
     elseif msg:match("^worldmap") and ns.WorldMap then
         local arg = msg:match("^worldmap%s+(%S+)")
         local wm = ns.WorldMap
+        if arg == "debug" then
+            local ok, err = pcall(wm.Debug, function(t) M:Print(t) end)
+            if not ok then M:Print("Couldn't finish looking: " .. tostring(err)) end
+            return
+        end
         if arg == "blizzard" or arg == "pathfinder" then wm.SetStyle(arg)
-        else return M:Print("/path worldmap blizzard | pathfinder") end
+        else return M:Print("/path worldmap blizzard | pathfinder | debug") end
         if ui.wmStyle then ui.wmStyle:Refresh() end
         M:Print(("World map: %s style."):format(wm.STYLE_LABEL[wm.Style()]))
     elseif msg:match("^objectives") and ns.Objectives then

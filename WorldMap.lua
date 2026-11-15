@@ -17,7 +17,7 @@ local WM = {}
 ns.WorldMap = WM
 
 WM.STYLES = { "blizzard", "pathfinder" }
-WM.STYLE_LABEL = { blizzard = "Blizzard / WoW Forever", pathfinder = "Pathfinder (modern)" }
+WM.STYLE_LABEL = { blizzard = "Blizzard", pathfinder = "Pathfinder" }
 
 local OWNER = "worldmap"
 local LINE = { 0.60, 0.64, 0.70 }
@@ -79,6 +79,47 @@ local function dimTree(frame, depth, skip)
             if t ~= "Button" and t ~= "CheckButton" and t ~= "EditBox" then dimTree(c, depth + 1, skip) end
         end
     end
+end
+
+-- The quest log side: its backgrounds may sit on any frame at any depth, even
+-- inside its buttons (header bars), and may be plain color: hide every big
+-- picture there, and every picture on the log's own frames.
+local function bigArt(r)
+    local w, h = (r.GetWidth and r:GetWidth()) or 0, (r.GetHeight and r:GetHeight()) or 0
+    return (w >= 100 and h >= 40) or (h >= 100 and w >= 40) or frameArt(r)
+end
+local function dimLog(frame, depth)
+    if type(frame) ~= "table" or depth > 8 then return end
+    if frame.ruinEdge then return end
+    local t = frame.GetObjectType and frame:GetObjectType()
+    if t == "EditBox" then return end
+    dimArt(frame, depth <= 2 and nil or bigArt)
+    if frame.GetChildren then
+        for _, c in ipairs({ frame:GetChildren() }) do dimLog(c, depth + 1) end
+    end
+end
+
+-- What's still drawn over the quest log: big pictures, for finding art the
+-- style misses (/path worldmap debug).
+function WM.Debug(print)
+    local q = questMap()
+    if type(q) ~= "table" then return print("No quest log.") end
+    local n = 0
+    local function walk(frame, depth, path)
+        if type(frame) ~= "table" or depth > 8 or not visible(frame) then return end
+        for _, r in ipairs({ frame:GetRegions() }) do
+            if isTexture(r) and r:IsVisible() and (r:GetAlpha() or 0) > 0.05 then
+                local w, h = r:GetWidth() or 0, r:GetHeight() or 0
+                if w >= 60 and h >= 30 and n < 25 then
+                    n = n + 1
+                    print(("%s: %s %dx%d tex=%s atlas=%s"):format(path, tostring(r:GetName()), w, h, tostring(r:GetTexture()), tostring(r.GetAtlas and r:GetAtlas())))
+                end
+            end
+        end
+        for i, c in ipairs({ frame:GetChildren() }) do walk(c, depth + 1, path .. "." .. tostring(c:GetName() or c:GetObjectType() .. i)) end
+    end
+    walk(q, 1, "QuestMapFrame")
+    print(n .. " pictures still showing over the quest log.")
 end
 
 local function buildPanel(f)
@@ -207,10 +248,10 @@ function WM.Refresh()
     styleNav(f)
     local q = questMap()
     if type(q) == "table" and visible(q) then
-        dimTree(q, 1, skip)
+        dimLog(q, 1)
         local scroll = rawget(_G, "QuestScrollFrame") or (q.QuestsFrame and q.QuestsFrame.ScrollFrame)
         if type(scroll) == "table" then
-            dimTree(scroll, 1)
+            dimLog(scroll, 1)
             styleLog(scroll.Contents or scroll, 1)
             styleSearch(scroll.SearchBox or (q.QuestsFrame and q.QuestsFrame.SearchBox))
         end

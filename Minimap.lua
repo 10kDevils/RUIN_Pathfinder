@@ -19,7 +19,7 @@ ns.Minimap = MM
 local MEDIA = "Interface\\AddOns\\RUIN_Pathfinder\\Media\\"
 
 MM.STYLES = { "blizzard", "pathfinder" }
-MM.STYLE_LABEL = { blizzard = "Blizzard / WoW Forever", pathfinder = "Pathfinder (modern)" }
+MM.STYLE_LABEL = { blizzard = "Blizzard", pathfinder = "Pathfinder" }
 
 -- Where the tracker can sit: the tracker's point, the minimap's point, which
 -- way it grows.

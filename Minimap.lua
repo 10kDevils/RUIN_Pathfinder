@@ -295,53 +295,20 @@ end
 
 -- WoW Forever's own day / night dial wears the game's "Minimap-DayCycle"
 -- art (a sun or moon in a "Minimap-Frame-Cycle" ring), on an unnamed frame.
-local function cycleArt(t) return t:find("daycycle", 1, true) or t:find("frame%-cycle") or t:find("moon") or t:find("daynight") or t:find("sun_") or t:find("timeofday") end
-
-local dnFound
 local function dayNight()
-    if dnFound then return dnFound end
+    -- a frame named for it, on the map or its frames
     local function search(frame, depth)
-        if type(frame) ~= "table" or depth > 4 or not frame.GetChildren then return nil end
+        if type(frame) ~= "table" or depth > 3 or not frame.GetChildren then return nil end
         for _, c in ipairs({ frame:GetChildren() }) do
             local name = c.GetName and c:GetName()
-            local low = tostring(name or ""):lower()
-            if not low:find("ruin") then
-                if nightish(name) then return c end
-                if c.GetRegions then
-                    for _, r in ipairs({ c:GetRegions() }) do
-                        if r.GetObjectType and r:GetObjectType() == "Texture" and cycleArt(texText(r)) then return c end
-                    end
-                end
-                local deeper = search(c, depth + 1)
-                if deeper then return deeper end
-            end
+            if nightish(name) then return c end
+            local deeper = search(c, depth + 1)
+            if deeper then return deeper end
         end
     end
     for _, holder in ipairs({ minimap(), rawget(_G, "MinimapBackdrop"), rawget(_G, "MinimapCluster") }) do
         local hit = search(holder, 1)
-        if hit then dnFound = hit; return hit end
-    end
-    -- Forever's dial has no parent at all: look through every frame for its
-    -- art (now and then, not on every layout)
-    local now = GetTime and GetTime() or 0
-    if EnumerateFrames and not (MM.dnLooked and now - MM.dnLooked < 10) then
-        MM.dnLooked = now
-        local f = EnumerateFrames()
-        while f do
-            local ok, hit = pcall(function()
-                if f.IsForbidden and f:IsForbidden() then return false end
-                if tostring(f:GetName() or ""):lower():find("ruin") then return false end
-                for _, r in ipairs({ f:GetRegions() }) do
-                    if r.GetObjectType and r:GetObjectType() == "Texture" then
-                        local a = tostring(r.GetAtlas and r:GetAtlas() or ""):lower()
-                        if a:find("daycycle", 1, true) or a:find("frame-cycle", 1, true) then return true end
-                    end
-                end
-                return false
-            end)
-            if ok and hit then dnFound = f; return f end
-            f = EnumerateFrames(f)
-        end
+        if hit then return hit end
     end
     -- an addon's minimap button (LibDBIcon names them LibDBIcon10_<addon>);
     -- looked for now and then, not on every layout
@@ -399,7 +366,54 @@ local function dayNightButton()
     end
     return makeDayNight()
 end
-function MM.HideStrayDayNight(on) if strayDayNight then dim(strayDayNight, on) end end
+
+-- WoW Forever's own day / night dial: an unnamed frame with no parent,
+-- drawn with the game's "UI-HUD-Minimap-DayCycle" art in a
+-- "UI-HUD-Minimap-Frame-Cycle" ring. Every picture wearing that art, and the
+-- frame holding it, is hidden (and kept hidden) while Pathfinder's style is on.
+local dials = {}        -- picture or frame -> true
+local dialLooked = 0
+local function dialArt(r)
+    local a = r.GetAtlas and r:GetAtlas()
+    if type(a) ~= "string" then return false end
+    a = a:lower()
+    return a:find("minimap%-daycycle") or a:find("minimap%-frame%-cycle") or a:find("daycycle", 1, true) ~= nil
+end
+local function findDials()
+    dialLooked = GetTime and GetTime() or 0
+    local f = EnumerateFrames and EnumerateFrames()
+    while f do
+        pcall(function()
+            if f.IsForbidden and f:IsForbidden() then return end
+            if tostring(f:GetName() or ""):find("^RUIN") then return end
+            for _, r in ipairs({ f:GetRegions() }) do
+                if r.GetObjectType and r:GetObjectType() == "Texture" and dialArt(r) then
+                    dials[r] = true
+                    dials[f] = true
+                end
+            end
+        end)
+        f = EnumerateFrames(f)
+    end
+end
+MM.Dials = function() local n = 0; for _ in pairs(dials) do n = n + 1 end; return n end
+
+local function hideDials(on)
+    if on then findDials() end
+    for x in pairs(dials) do
+        dim(x, on)
+        -- and if the client shows it again, straight back to unseen
+        if on and x.Show and not x.ruinDialHook and hooksecurefunc then
+            x.ruinDialHook = true
+            hooksecurefunc(x, "Show", function(self) if keepDim[self] then self.ruinSetting = true; self:SetAlpha(0); self.ruinSetting = nil end end)
+        end
+    end
+end
+
+function MM.HideStrayDayNight(on)
+    if strayDayNight then dim(strayDayNight, on) end
+    hideDials(on)
+end
 
 -- The game's pieces that move into the housing. ghost: Pathfinder draws it
 -- (the game's frame stays, unseen, to take the clicks); dress: which of its
@@ -822,7 +836,14 @@ function MM.Tick(now, elapsed)
     if now or tickDay >= 1 then
         tickDay = 0
         -- the client may put its day / night dial up late: hide it when it comes
-        if not strayDayNight then dayNightButton(); MM.HideStrayDayNight(true) end
+        if not strayDayNight then dayNightButton() end
+        -- the client may put its dial up late: look again now and then
+        local t = GetTime and GetTime() or 0
+        local none = MM.Dials() == 0
+        if t - dialLooked > (none and 5 or 30) and (not none or (MM.dialTries or 0) < 12) then
+            if none then MM.dialTries = (MM.dialTries or 0) + 1 end
+            MM.HideStrayDayNight(true)
+        end
     end
 end
 
@@ -959,6 +980,7 @@ function MM.Debug(print)
     for _ in pairs(keepDim) do dimmed = dimmed + 1 end
     for _, p in ipairs(barPieces()) do onBar[#onBar + 1] = p.key .. "=" .. (p.frame and tostring(p.frame:GetName() or "found") or "missing") end
     print("RUIN is hiding " .. dimmed .. " of the game's minimap pieces. Bar: " .. table.concat(onBar, ", "))
+    print("Day / night dial: " .. MM.Dials() .. " piece(s) hidden.")
 end
 
 -- Everything drawn over the map that's about icon-sized: frames anywhere in

@@ -1382,6 +1382,8 @@ function M.ApplyTrackerLook()
     if tracker.band then tracker.band:SetShown(not game) end
     if tracker.sheen then tracker.sheen:SetShown(not game) end
     L.GameEdge(tracker, game)
+    L.FitInside(tracker.skinBg, tracker, game)
+    if tracker.sheen and game then tracker.sheen:Hide() end
     local ac = sc.accent
     tracker.themeColor = ac
     if tracker.band then tracker.band:SetColorTexture(ac[1], ac[2], ac[3], 0.9) end

@@ -229,7 +229,10 @@ local function recolor(p)
     p.card.top:SetShown(not game)
     for _, e in ipairs(p.card.edges or {}) do e:SetShown(not game) end
     p.tag.edge:SetShown(not game)
-    if ns and ns.Looks then ns.Looks.GameEdge(p.card, game); ns.Looks.GameEdge(p.tag, game) end
+    if ns and ns.Looks then
+        ns.Looks.GameEdge(p.card, game); ns.Looks.GameEdge(p.tag, game)
+        ns.Looks.FitInside(p.card.bg, p.card, game); ns.Looks.FitInside(p.tag.bg, p.tag, game)
+    end
 end
 function M.PinRestyle()
     takeLook()

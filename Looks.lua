@@ -53,6 +53,19 @@ function L.GameEdge(f, on)
     if e then e:SetShown(on and true or false) end
 end
 
+-- A background that sits inside the game's rounded edge (so its square
+-- corners don't poke out past it), or fills the frame again.
+function L.FitInside(bg, frame, on)
+    if not (bg and frame and bg.ClearAllPoints) then return end
+    bg:ClearAllPoints()
+    if on then
+        bg:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -4)
+        bg:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -4, 4)
+    else
+        bg:SetAllPoints(frame)
+    end
+end
+
 local function mix(a, b, t) return { a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t } end
 L.Mix = mix
 

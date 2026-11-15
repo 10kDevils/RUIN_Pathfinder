@@ -299,7 +299,7 @@ local function cycleArt(t) return t:find("daycycle", 1, true) or t:find("frame%-
 
 local dnFound
 local function dayNight()
-    if dnFound and dnFound.GetParent and dnFound:GetParent() then return dnFound end
+    if dnFound then return dnFound end
     local function search(frame, depth)
         if type(frame) ~= "table" or depth > 4 or not frame.GetChildren then return nil end
         for _, c in ipairs({ frame:GetChildren() }) do
@@ -320,6 +320,28 @@ local function dayNight()
     for _, holder in ipairs({ minimap(), rawget(_G, "MinimapBackdrop"), rawget(_G, "MinimapCluster") }) do
         local hit = search(holder, 1)
         if hit then dnFound = hit; return hit end
+    end
+    -- Forever's dial has no parent at all: look through every frame for its
+    -- art (now and then, not on every layout)
+    local now = GetTime and GetTime() or 0
+    if EnumerateFrames and not (MM.dnLooked and now - MM.dnLooked < 10) then
+        MM.dnLooked = now
+        local f = EnumerateFrames()
+        while f do
+            local ok, hit = pcall(function()
+                if f.IsForbidden and f:IsForbidden() then return false end
+                if tostring(f:GetName() or ""):lower():find("ruin") then return false end
+                for _, r in ipairs({ f:GetRegions() }) do
+                    if r.GetObjectType and r:GetObjectType() == "Texture" then
+                        local a = tostring(r.GetAtlas and r:GetAtlas() or ""):lower()
+                        if a:find("daycycle", 1, true) or a:find("frame-cycle", 1, true) then return true end
+                    end
+                end
+                return false
+            end)
+            if ok and hit then dnFound = f; return f end
+            f = EnumerateFrames(f)
+        end
     end
     -- an addon's minimap button (LibDBIcon names them LibDBIcon10_<addon>);
     -- looked for now and then, not on every layout
@@ -797,7 +819,11 @@ function MM.Tick(now, elapsed)
             end
         end
     end
-    if now or tickDay >= 1 then tickDay = 0 end
+    if now or tickDay >= 1 then
+        tickDay = 0
+        -- the client may put its day / night dial up late: hide it when it comes
+        if not strayDayNight then dayNightButton(); MM.HideStrayDayNight(true) end
+    end
 end
 
 -- The cap above the map (Pathfinder's style), or nil: the tracker docks on it.

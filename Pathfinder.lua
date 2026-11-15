@@ -548,7 +548,7 @@ function M.AllStyles()
 end
 -- One background opacity for everything; "mixed" when they differ.
 local function alphas()
-    local list = { M.TrackerAlpha(), db.pinCardAlpha or 0.86 }
+    local list = { M.TrackerAlpha(), db.pinAlpha or 1 }
     if ns.Minimap then list[#list + 1] = ns.Minimap.Alpha() end
     if ns.Objectives then list[#list + 1] = ns.Objectives.Alpha() end
     if ns.WorldMap then list[#list + 1] = ns.WorldMap.Alpha() end
@@ -569,7 +569,7 @@ function M.SetAllAlpha(a)
     if ns.Objectives then try("objective tracker", ns.Objectives.SetAlpha, a) end
     if ns.WorldMap then try("world map", ns.WorldMap.SetAlpha, a) end
     try("tracker", M.SetTrackerAlpha, a)
-    db.pinCardAlpha = a
+    db.pinAlpha = a
     for _, d in ipairs({ ui.mmAlpha, ui.otAlpha, ui.wmAlpha, ui.trackerAlpha, ui.pinAlpha, ui.allAlpha }) do if d and d.Refresh then d:Refresh() end end
     return true
 end
@@ -3211,9 +3211,9 @@ local function buildOptions(page)
     divider(w, -76 - ROW * 2 + 2)
     ui.pinStyle, ui.pinAlpha = lookRow(w, -76 - ROW * 2 - 12, "Look", looks.MODERN,
         function() return M.PinStyle() end, function(v) M.SetPinStyle(v) end,
-        function() return db.pinCardAlpha or 0.86 end, function(v) db.pinCardAlpha = v end,
+        function() return db.pinAlpha or 1 end, function(v) db.pinAlpha = v; if M.RefreshPin then M.RefreshPin() end end,
         "The RUIN Waypoint's colors: RUIN's gold, the core app's blue and gold, or a module's color",
-        "How see-through the RUIN Waypoint's card is")
+        "How see-through the whole RUIN Waypoint is: its marker, card, stem and distance")
 
     -- The game's frames: every look at once, then each frame
     local ot, wm = ns.Objectives, ns.WorldMap
@@ -3223,7 +3223,7 @@ local function buildOptions(page)
         function() return M.AllStyles() end, function(v) M.SetAllStyles(v) end,
         function() return M.AllAlpha() end, function(v) M.SetAllAlpha(v) end,
         "One look for the minimap, the objective tracker, the world map, the tracker and the waypoint. Blizzard puts the game's frames back in their own look; the tracker and waypoint keep theirs.",
-        "One background opacity for the minimap, the objective tracker, the world map, the tracker and the waypoint's card")
+        "One opacity for the minimap's, the objective tracker's, the world map's and the tracker's backgrounds, and the whole waypoint")
     divider(g, -70)
     if mm then
         style, ui.mmAlpha = lookRow(g, -84, "Minimap", mm.STYLES,

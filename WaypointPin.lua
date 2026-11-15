@@ -117,6 +117,7 @@ local function look()
         distance = opt("pinShowDistance", true), walk = opt("pinWalk", true), edge = opt("pinEdge", true), edgeCard = opt("pinEdgeCard", true),
         markerStyle = opt("pinMarkerStyle", "emblem"), textSize = opt("pinTextSize", "normal"),
         cardAlpha = opt("pinCardAlpha", 0.86), size = opt("pinScale", 1) or 1,
+        alpha = opt("pinAlpha", 1) or 1,      -- the whole waypoint's opacity (Options > Waypoint > Background)
     }
 end
 M.PinLook = look
@@ -458,7 +459,7 @@ local function update(_, elapsed)
         pin.fade = f
     end
     if f <= 0 then pin:Hide(); return end
-    pin:SetAlpha(f)
+    pin:SetAlpha(f * (lk.alpha or 1))
 
     pin:ClearAllPoints()
     local d = { title = title, sub = sub, yards = yards, clamped = clamped }
@@ -593,6 +594,7 @@ local function refreshEditor()
     local lk = look()
     -- on screen: the dot near the bottom of the preview, as it would sit on the spot
     local p = editor.preview
+    if p.SetAlpha then p:SetAlpha(look().alpha or 1) end
     p:SetScale(lk.size)
     p:ClearAllPoints()
     -- the nudges move it off the shadow on the ground, as they would in the world

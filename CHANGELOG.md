@@ -39,6 +39,8 @@ Versioning: the third number counts the meaningful changes made since the second
 - **Travel time follows your speed**: the waypoint's time is worked out at the speed you're going (on foot, mounted, swimming, flying, or with a speed boost), by road on the ground with a straight cut across for the last stretch, and along the flight path in the air. (The Waypoint Editor's *Walking time* is now *Travel time*.)
 - **The waypoint rises over faraway spots**: a faraway spot sits low on the ground, so the whole waypoint eases up toward the horizon, from 100 yards to a twentieth of the screen at 800 yards and beyond.
 - Fixed: **constant Lua errors in combat** from the waypoint's travel time. Retail 12 hides your speed (and can hide the distance) in combat; the waypoint now keeps the last ones it was told instead.
+- **Lighter**: the waypoint reads its settings and what's tracked four times a second instead of every frame, and reuses one table instead of making new ones each frame; the minimap housing updates ten times a second (the N turns 30 times a second, only on a rotating minimap) and does nothing at all in the game's own look; the objective tracker's restyle backstop runs once a second (the game's own update still restyles at once); the zone and coordinates aren't redrawn while you stand still.
+- **No errors from hidden values**: the tracker's arrow and distance, the minimap's coordinates and N, and loot recording skip what Retail 12 hides in combat.
 
 ## 0.7.5 — 2026-11-13
 

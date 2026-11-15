@@ -890,7 +890,8 @@ local function arrowTick(nav, elapsed)
         arrow:Hide()
         local q = C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID and C_SuperTrack.GetSuperTrackedQuestID()
         local yd = q and q > 0 and C_Navigation and C_Navigation.GetFrame and C_Navigation.GetFrame() and C_Navigation.GetDistance and C_Navigation.GetDistance()
-        dist:SetText(yd and ("%d yards"):format(yd) or "")
+        if issecretvalue and issecretvalue(yd) then return end      -- hidden in combat: keep the last text
+        dist:SetText(type(yd) == "number" and ("%d yards"):format(yd) or "")
         return
     end
     local s, map, x, y, elsewhere = navStep()
@@ -902,6 +903,7 @@ local function arrowTick(nav, elapsed)
     end
     local east, north, yards = R.Map:Offset(map, x, y)
     local facing = GetPlayerFacing and GetPlayerFacing()
+    if type(facing) ~= "number" or (issecretvalue and issecretvalue(facing)) then facing = nil end
     if not yards then
         arrow:Hide()
         local info = C_Map.GetMapInfo and C_Map.GetMapInfo(map)
@@ -2097,7 +2099,8 @@ end
 local function onLootRecord(_, text, looter)
     if not adb.rec.on or type(text) ~= "string" or (issecretvalue and issecretvalue(text)) then return end
     local me = UnitName("player")
-    if looter and looter ~= "" and (looter:gsub("%-.*$", "")) ~= me then return end
+    if issecretvalue and issecretvalue(looter) then return end
+    if type(looter) == "string" and looter ~= "" and (looter:gsub("%-.*$", "")) ~= me then return end
     -- works with both "|cff..." and the newer "|cnIQ3:" link colors
     for itemString, name in text:gmatch("|H(item:[^|]+)|h%[(.-)%]|h") do
         local id = tonumber(itemString:match("^item:(%d+)"))

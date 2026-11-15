@@ -462,7 +462,7 @@ end
 local ticker, since = nil, 0
 local function tick(_, elapsed)
     since = since + (elapsed or 0)
-    if since < 0.25 then return end
+    if since < 1 then return end            -- the game's Update hook restyles at once; this is a backstop
     since = 0
     if modern() then OT.Refresh() end
 end

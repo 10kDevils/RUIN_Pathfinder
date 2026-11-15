@@ -502,6 +502,7 @@ function M.EdgeSide(x, y, b)
 end
 
 local lastQuest, objTick, lastText = nil, 0, nil
+local frameLook, frameAt, frameTarget, frameD = nil, 0, {}, {}
 local function update(_, elapsed)
     if not (navFrame and C_Navigation.HasValidScreenPosition and C_Navigation.HasValidScreenPosition()) then
         pin:Hide(); return
@@ -514,8 +515,15 @@ local function update(_, elapsed)
     -- a hidden distance (Retail 12 in combat) can't be compared or shown: keep the last one
     if secret(yards) or type(yards) ~= "number" then yards = pin and pin.lastYards or 0 else if pin then pin.lastYards = yards end end
     local clamped = C_Navigation.WasClampedToScreen and C_Navigation.WasClampedToScreen()
-    local title, sub, qid = target()
-    local lk = look()
+    -- what's tracked and the pin's settings change rarely: read them four times a second, not every frame
+    local now = GetTime()
+    if not frameLook or M.pinDirty or now - frameAt > 0.25 then
+        frameAt = now
+        frameLook = look()
+        frameTarget[1], frameTarget[2], frameTarget[3] = target()
+    end
+    local title, sub, qid = frameTarget[1], frameTarget[2], frameTarget[3]
+    local lk = frameLook
     -- the edge boundaries (Options): a spot this close to a side of the screen
     -- already counts as off screen, and the edge pin waits at that line
     local w, h = UIParent:GetWidth(), UIParent:GetHeight()
@@ -534,7 +542,8 @@ local function update(_, elapsed)
     pin:SetAlpha(f * (lk.alpha or 1))
 
     pin:ClearAllPoints()
-    local d = { title = title, sub = sub, yards = yards, clamped = clamped }
+    local d = frameD                    -- one table, reused each frame
+    d.title, d.sub, d.yards, d.clamped, d.angle, d.side = title, sub, yards, clamped, nil, nil
     if clamped then
         -- at the edge: pull the marker in from the border and point the arrow at the spot
         d.angle = math.atan2(ny - h / 2, nx - w / 2)
@@ -621,6 +630,7 @@ events:SetScript("OnEvent", function(_, event)
     elseif event == "NAVIGATION_FRAME_DESTROYED" then detach()
     elseif event == "NAVIGATION_DESTINATION_REACHED" then reached()
     elseif event == "PLAYER_LOGIN" or event == "SUPER_TRACKING_CHANGED" then
+        frameLook = nil                 -- read what's tracked again on the next frame
         if C_Navigation and C_Navigation.GetFrame and C_Navigation.GetFrame() then attach() else detach() end
     end
 end)

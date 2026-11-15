@@ -237,7 +237,7 @@ function MM.PlaceNorth()
     local m = minimap()
     local half = ((m and m:GetWidth()) or 140) / 2
     local a = rotating() and GetPlayerFacing and GetPlayerFacing() or 0
-    if type(a) ~= "number" then a = 0 end
+    if type(a) ~= "number" or (issecretvalue and issecretvalue(a)) then a = 0 end
     deco.north:ClearAllPoints()
     deco.north:SetPoint("CENTER", m, "CENTER", math.sin(a) * (half + 1), math.cos(a) * (half + 1))
 end
@@ -781,6 +781,8 @@ function MM.DrawTop()
     local coords = MM.Coords()
     local text = "|cff" .. hex(scheme().accent) .. (bar.zoneName or "") .. "|r"
     if coords ~= "" then text = text .. "  |cffb4b9c2" .. coords .. "|r" end
+    if bar.zoneText == text then return end          -- standing still: nothing to redraw
+    bar.zoneText = text
     bar.zone:SetText(text)
     bar.zone:SetTextColor(1, 1, 1)
 end
@@ -793,6 +795,7 @@ function MM.Coords()
     if not pos then return "" end
     local x, y
     if pos.GetXY then x, y = pos:GetXY() else x, y = pos.x, pos.y end
+    if issecretvalue and (issecretvalue(x) or issecretvalue(y)) then return "" end
     if not x or (x == 0 and y == 0) then return "" end
     return ("%.1f, %.1f"):format(x * 100, y * 100)
 end
@@ -1058,14 +1061,17 @@ function MM.Find(print)
     print(#lines .. " found" .. (#lines >= 40 and " (first 40)" or "") .. ".")
 end
 
--- Turn the N as you turn (on a rotating map).
-local watcher, since = nil, 0
+-- Turn the N as you turn (on a rotating map: smoothly, 30 times a second),
+-- and keep the housing current (ten times a second). Nothing at all in the
+-- game's own look.
+local watcher, since, sinceTick, rotCheck, isRot = nil, 0, 0, 1, false
 local function watch(_, elapsed)
-    since = since + (elapsed or 0)
-    if since < 0.03 then return end
-    since = 0
-    if rotating() then MM.PlaceNorth() end
-    MM.Tick(false, 0.03)
+    if not (db and db.mmStyle ~= "blizzard") then return end
+    elapsed = elapsed or 0
+    since, sinceTick, rotCheck = since + elapsed, sinceTick + elapsed, rotCheck + elapsed
+    if rotCheck >= 1 then rotCheck = 0; isRot = rotating() end      -- the setting barely changes
+    if isRot and since >= 0.033 then since = 0; MM.PlaceNorth() end
+    if sinceTick >= 0.1 then MM.Tick(false, sinceTick); sinceTick = 0 end
 end
 
 function MM.Init(cdb)

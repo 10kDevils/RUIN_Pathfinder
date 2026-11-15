@@ -262,6 +262,9 @@ function WM.Refresh()
     if not panel then buildPanel(f) end
     layoutPanel(f)
     local skip = { [f.ScrollContainer or 0] = true }
+    -- the window's own background (WorldMapFrameBg: the grey behind the log)
+    dimArt(f, frameArt)
+    if type(rawget(_G, "WorldMapFrameBg")) == "table" then MM.Dim(WorldMapFrameBg, true) end
     if type(f.BorderFrame) == "table" then
         dimTree(f.BorderFrame, 1, skip)
         local title = f.BorderFrame.TitleContainer and f.BorderFrame.TitleContainer.TitleText or f.BorderFrame.TitleText

@@ -60,7 +60,7 @@ local function isTexture(r) return type(r) == "table" and r.GetObjectType and r:
 local function dimArt(frame, test)
     if type(frame) ~= "table" or not frame.GetRegions then return end
     for _, r in ipairs({ frame:GetRegions() }) do
-        if isTexture(r) and (not test or test(r)) then MM.Dim(r, true) end
+        if isTexture(r) and not r.ruinOwn and (not test or test(r)) then MM.Dim(r, true) end
     end
 end
 
@@ -222,6 +222,103 @@ local function styleNav(f)
     end
 end
 
+-- Zone headers stand out in every look: a band of color fading across each,
+-- an edge down its left and a line under it, and larger text that keeps its
+-- color (the game repaints it on hover). Blizzard's look uses WoW Forever's
+-- gold and bronze.
+local heads = {}
+local BLIZZ_TEXT, BLIZZ_BAND = { 1, 0.82, 0 }, { 0.80, 0.58, 0.30 }
+local function headColors()
+    if on() then local a = accent(); return a, a end
+    return BLIZZ_TEXT, BLIZZ_BAND
+end
+local function paintBand(tex, c, a1, a2)
+    local ok = false
+    if tex.SetGradient and CreateColor then
+        tex:SetColorTexture(1, 1, 1, 1)
+        ok = pcall(tex.SetGradient, tex, "HORIZONTAL", CreateColor(c[1], c[2], c[3], a1), CreateColor(c[1], c[2], c[3], a2))
+    end
+    if not ok then tex:SetColorTexture(c[1], c[2], c[3], (a1 + a2) / 2) end
+end
+local function styleHeader(frame, text)
+    if type(text) ~= "table" or not text.SetTextColor then return end
+    local h = heads[frame]
+    if not h then
+        if not frame.CreateTexture then return end
+        h = {}
+        h.band = frame:CreateTexture(nil, "BACKGROUND", nil, 2)
+        h.band:SetPoint("TOPLEFT", 0, -1)
+        h.band:SetPoint("BOTTOMRIGHT", 0, 1)
+        h.edge = frame:CreateTexture(nil, "ARTWORK", nil, 2)
+        h.edge:SetPoint("TOPLEFT", 0, -1)
+        h.edge:SetPoint("BOTTOMLEFT", 0, 1)
+        h.edge:SetWidth(3)
+        h.line = frame:CreateTexture(nil, "ARTWORK", nil, 2)
+        h.line:SetPoint("BOTTOMLEFT", 0, 1)
+        h.line:SetPoint("BOTTOMRIGHT", 0, 1)
+        h.line:SetHeight(1)
+        h.band.ruinOwn, h.edge.ruinOwn, h.line.ruinOwn = true, true, true
+        heads[frame] = h
+    end
+    if h.text ~= text then
+        h.text = text
+        h.font = text.GetFont and { text:GetFont() } or nil
+    end
+    local tc, bc = headColors()
+    paintBand(h.band, bc, on() and 0.24 or 0.30, 0.02)
+    h.edge:SetColorTexture(bc[1], bc[2], bc[3], 0.95)
+    paintBand(h.line, bc, 0.6, 0)
+    h.band:Show(); h.edge:Show(); h.line:Show()
+    if h.font and h.font[1] and h.font[2] and not h.bigger then
+        pcall(text.SetFont, text, h.font[1], h.font[2] + 2, h.font[3] or "")
+        h.bigger = true
+    end
+    if text.SetShadowOffset then text:SetShadowOffset(1, -1) end
+    text.ruinHeadColor = tc
+    if not text.ruinHeadHooked and hooksecurefunc then
+        text.ruinHeadHooked = true
+        hooksecurefunc(text, "SetTextColor", function(fs)
+            local c = fs.ruinHeadColor
+            if c and not fs.ruinHeadPainting then
+                fs.ruinHeadPainting = true
+                fs:SetTextColor(c[1], c[2], c[3])
+                fs.ruinHeadPainting = false
+            end
+        end)
+    end
+    if colored[text] == nil and text.GetTextColor then colored[text] = { text:GetTextColor() } end
+    text.ruinHeadPainting = true
+    text:SetTextColor(tc[1], tc[2], tc[3])
+    text.ruinHeadPainting = false
+end
+WM.Heads = heads
+
+local function unstyleHeaders()
+    for _, h in pairs(heads) do
+        h.band:Hide(); h.edge:Hide(); h.line:Hide()
+        if h.text then
+            h.text.ruinHeadColor = nil
+            if h.bigger and h.font and h.font[1] then pcall(h.text.SetFont, h.text, h.font[1], h.font[2], h.font[3] or "") end
+            h.bigger = nil
+        end
+    end
+end
+
+local function headerOf(frame)
+    local cb = frame.CollapseButton
+    return type(cb) == "table" and (frame.ButtonText or frame.Text or frame.text) or nil
+end
+
+-- Blizzard's look: only the headers
+local function styleHeaders(frame, depth)
+    if type(frame) ~= "table" or depth > 6 or not visible(frame) then return end
+    local t = headerOf(frame)
+    if t then styleHeader(frame, t) end
+    if frame.GetChildren then
+        for _, c in ipairs({ frame:GetChildren() }) do styleHeaders(c, depth + 1) end
+    end
+end
+
 -- The quest log: zone headers in Pathfinder's color with flat collapse
 -- buttons, quest markers drawn flat, objectives in the suite's grey. Quest
 -- titles keep the game's difficulty colors.
@@ -232,8 +329,8 @@ local function styleLog(frame, depth)
     local cb = frame.CollapseButton
     local headText = frame.ButtonText or (cb and (frame.Text or frame.text))
     if headText and type(cb) == "table" then
-        color(headText, accent())
         dimArt(frame)
+        styleHeader(frame, headText)
         OT.SkinButton(cb, "collapse", OWNER, on, WM.Scheme)
     elseif frame.Text and (frame.Dash or frame.dash) then
         color(frame.Text, LINE)
@@ -294,6 +391,7 @@ end
 
 local function restore()
     if panel then panel:Hide() end
+    unstyleHeaders()
     OT.UnskinOwner(OWNER)
     for fs, c in pairs(colored) do if fs.SetTextColor and c[1] then fs:SetTextColor(c[1], c[2], c[3], c[4] or 1) end end
     colored = {}
@@ -345,8 +443,15 @@ local function tick(self, elapsed)
     since = since + (elapsed or 0)
     if since < 0.3 then return end
     since = 0
-    if on() then WM.Apply() end
+    if on() then
+        WM.Apply()
+    elseif db then
+        local scroll = rawget(_G, "QuestScrollFrame")
+        if type(scroll) == "table" and visible(scroll) then styleHeaders(scroll.Contents or scroll, 1) end
+    end
 end
+
+WM.Tick = tick
 
 function WM.Init(cdb)
     db = cdb

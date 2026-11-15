@@ -947,50 +947,44 @@ function MM.Find(print)
     local ml, mb, mw, mh = m:GetRect()
     if not ml then return print("The minimap has no place on screen yet.") end
     ml, mb, mw, mh = ml * ms, mb * ms, mw * ms, mh * ms
-    local function onMap(r)
+    -- where something sits, as a share of the map from its top left
+    local function onMap(r, minS, maxS)
         local l, b, w, h = r:GetRect()
         if not l then return nil end
         local es = (r.GetEffectiveScale and r:GetEffectiveScale()) or ms
         l, b, w, h = l * es, b * es, w * es, h * es
+        if w < minS or w > maxS or h < minS or h > maxS then return nil end
+        if l > ml + mw + 10 or l + w < ml - 10 or b > mb + mh + 10 or b + h < mb - 10 then return nil end
         local cx, cy = l + w / 2, b + h / 2
-        if w < 14 or w > 70 or h < 14 or h > 70 then return nil end
-        if cx < ml - 20 or cx > ml + mw + 20 or cy < mb - 20 or cy > mb + mh + 20 then return nil end
-        return ("%dx%d at %d,%d from the map's top left"):format(w, h, cx - ml, (mb + mh) - cy)
+        return ("%dx%d at %d%% across, %d%% down"):format(w, h, (cx - ml) / mw * 100, ((mb + mh) - cy) / mh * 100)
     end
-    local function who(f)
+    local lines = {}
+    local function add(t) if #lines < 40 then lines[#lines + 1] = t end end
+    local function owner(f)
         local p = f.GetParent and f:GetParent()
-        return ("%s (%s, parent %s%s)"):format(tostring(f:GetName()), f:GetObjectType(), tostring(p and p:GetName()),
-            (f.IsMouseEnabled and f:IsMouseEnabled()) and ", clickable" or "")
+        return ("%s (%s, parent %s%s, strata %s)"):format(tostring(f:GetName()), f:GetObjectType(), tostring(p and p:GetName()),
+            (f.IsMouseEnabled and f:IsMouseEnabled()) and ", clickable" or "", tostring(f.GetFrameStrata and f:GetFrameStrata()))
     end
-    local n = 0
     local f = EnumerateFrames and EnumerateFrames()
     while f do
-        if f.IsVisible and f:IsVisible() and f ~= m and (f.GetAlpha and f:GetAlpha() > 0) then
-            local where = onMap(f)
-            local name = tostring(f:GetName() or "")
-            if where and not name:find("^RUIN") then
-                n = n + 1
-                print("Frame: " .. who(f) .. " " .. where)
+        local name = tostring(f:GetName() or "")
+        if f ~= m and not name:find("^RUIN") and f.IsVisible and f:IsVisible() and (f.GetEffectiveAlpha and f:GetEffectiveAlpha() or 1) > 0.05 then
+            local where = onMap(f, 8, 160)
+            if where then add("Frame " .. owner(f) .. ": " .. where) end
+            for _, r in ipairs({ f:GetRegions() }) do
+                if r.GetObjectType and r:GetObjectType() == "Texture" and r:IsVisible() and (r:GetAlpha() or 0) > 0.05 then
+                    local rw = onMap(r, 8, 90)
+                    if rw then
+                        add(("  picture %s on %s: tex=%s atlas=%s %s"):format(tostring(r:GetName()), name ~= "" and name or owner(f),
+                            tostring(r:GetTexture()), tostring(r.GetAtlas and r:GetAtlas()), rw))
+                    end
+                end
             end
         end
         f = EnumerateFrames(f)
     end
-    local function pics(frame, depth)
-        if type(frame) ~= "table" or depth > 3 or not frame.GetRegions then return end
-        for _, r in ipairs({ frame:GetRegions() }) do
-            if r.GetObjectType and r:GetObjectType() == "Texture" and r:IsVisible() and (r:GetAlpha() or 0) > 0 then
-                local where = onMap(r)
-                if where then
-                    n = n + 1
-                    print(("Picture on %s: %s tex=%s atlas=%s %s"):format(tostring(frame:GetName()), tostring(r:GetName()), tostring(r:GetTexture()),
-                        tostring(r.GetAtlas and r:GetAtlas()), where))
-                end
-            end
-        end
-        for _, c in ipairs({ frame:GetChildren() }) do pics(c, depth + 1) end
-    end
-    pics(m, 0); pics(rawget(_G, "MinimapCluster"), 0)
-    print(n .. " found.")
+    for _, t in ipairs(lines) do print(t) end
+    print(#lines .. " found" .. (#lines >= 40 and " (first 40)" or "") .. ".")
 end
 
 -- Turn the N as you turn (on a rotating map).

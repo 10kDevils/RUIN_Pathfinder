@@ -37,7 +37,8 @@ Versioning: the third number counts the meaningful changes made since the second
 - **Quest log zone headers stand out** in every look: a band of the look's color fading across each, an edge down its left and a line under it, and larger text that keeps its color when you hover it. Blizzard's look gets them in WoW Forever's gold and bronze.
 - **Ink is darker**: its background (minimap, objective tracker, world map, tracker and waypoint card) is a near-black now, with only a faint gold cast at the top.
 - **Travel time follows your speed**: the waypoint's time is worked out at the speed you're going (on foot, mounted, swimming, flying, or with a speed boost), by road on the ground with a straight cut across for the last stretch, and along the flight path in the air. (The Waypoint Editor's *Walking time* is now *Travel time*.)
-- **The waypoint rises over faraway spots**: the further the spot (from 60 yards, fully by 600), the higher the marker and card sit, up to an eighth of the screen, with the stem stretched so its dot still sits on the spot.
+- **The waypoint rises over faraway spots**: a faraway spot sits low on the ground, so the whole waypoint eases up toward the horizon, from 100 yards to a twentieth of the screen at 800 yards and beyond.
+- Fixed: **constant Lua errors in combat** from the waypoint's travel time. Retail 12 hides your speed (and can hide the distance) in combat; the waypoint now keeps the last ones it was told instead.
 
 ## 0.7.5 — 2026-11-13
 

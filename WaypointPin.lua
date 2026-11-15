@@ -64,14 +64,15 @@ local function on()
     return M.PinOn and M.PinOn() and C_Navigation and C_Navigation.GetFrame and C_SuperTrack ~= nil
 end
 
--- How far the waypoint rises over a faraway spot (screen units): nothing
--- close by, growing from 60 yards to its full height (an eighth of the
--- screen) at 600 yards and beyond.
-local LIFT_FROM, LIFT_FULL, LIFT_SHARE = 60, 600, 0.125
+-- How far the whole waypoint rises over a faraway spot (screen units): a
+-- faraway spot's height isn't known and the game puts it low on the ground,
+-- so the waypoint eases up toward the horizon: nothing close by, growing
+-- from 100 yards to a twentieth of the screen at 800 yards and beyond.
+local LIFT_FROM, LIFT_FULL, LIFT_SHARE = 100, 800, 0.05
 function M.PinLift(yards, screenH)
+    if (issecretvalue and issecretvalue(yards)) or type(yards) ~= "number" then return 0 end
     local t = ((tonumber(yards) or 0) - LIFT_FROM) / (LIFT_FULL - LIFT_FROM)
     t = math.max(0, math.min(1, t))
-    t = math.sqrt(t)                                   -- most of the rise early on
     return t * (screenH or 768) * LIFT_SHARE
 end
 
@@ -85,25 +86,39 @@ end
 -- is a straight line, so: on the ground you take the roads for the long part
 -- and cut straight across, around what's in the way, for the last stretch;
 -- flying follows the flight path's curves.
+local function secret(v) return issecretvalue ~= nil and issecretvalue(v) == true end
+local lastSpeed, lastFlying = RUN_SPEED, false   -- the last speed the game would tell us (in combat it may not)
 local NEAR_STRETCH = 150       -- yards you'd cut straight across to get there
 local ROADS, ACROSS, FLIGHT = 1.35, 1.15, 1.25   -- the way you go, against a straight line
 function M.TravelSpeed()
     local cur, run, fly, swim = 0, RUN_SPEED, nil, nil
     if GetUnitSpeed then
         local ok, a, b, c, d = pcall(GetUnitSpeed, "player")
-        if ok then cur, run, fly, swim = tonumber(a) or 0, tonumber(b) or RUN_SPEED, tonumber(c), tonumber(d) end
+        -- in combat, Retail 12 hides these numbers: touching one is an error,
+        -- so the last speed it did tell us stands in
+        if not ok or secret(a) or secret(b) or secret(c) or secret(d) then
+            return lastSpeed, lastFlying
+        end
+        cur, run, fly, swim = tonumber(a) or 0, tonumber(b) or RUN_SPEED, tonumber(c), tonumber(d)
     end
-    local taxi = UnitOnTaxi and UnitOnTaxi("player")
-    local flying = taxi or (IsFlying and IsFlying())
+    local function yes(f)
+        if not f then return false end
+        local ok, v = pcall(f, "player")
+        if not ok or secret(v) then return false end
+        return v and true or false
+    end
+    local flying = yes(UnitOnTaxi) or yes(IsFlying)
     local speed
     if flying then speed = (fly and fly > 0) and fly or run
-    elseif IsSwimming and IsSwimming() then speed = (swim and swim > 0) and swim or run
+    elseif yes(IsSwimming) then speed = (swim and swim > 0) and swim or run
     else speed = run end
     if cur > speed then speed = cur end                    -- a charge, a taxi, a boost the numbers above miss
     if not speed or speed <= 0 then speed = RUN_SPEED end
+    lastSpeed, lastFlying = speed, flying and true or false
     return speed, flying and true or false
 end
 function M.TravelSeconds(y)
+    if secret(y) or type(y) ~= "number" then return nil end
     local speed, flying = M.TravelSpeed()
     local way
     if flying then way = y * FLIGHT
@@ -112,7 +127,9 @@ function M.TravelSeconds(y)
 end
 
 local function walkText(y)
-    local secs = math.floor(M.TravelSeconds(y) + 0.5)
+    local t = M.TravelSeconds(y)
+    if not t then return nil end
+    local secs = math.floor(t + 0.5)
     if secs < 5 then return nil end
     if secs < 60 then return ("%d sec"):format(secs) end
     return ("%d min %02d"):format(math.floor(secs / 60), secs % 60)
@@ -494,6 +511,8 @@ local function update(_, elapsed)
     if not nx then pin:Hide(); return end
     nx, ny = nx * scale, ny * scale
     local yards = C_Navigation.GetDistance and C_Navigation.GetDistance() or 0
+    -- a hidden distance (Retail 12 in combat) can't be compared or shown: keep the last one
+    if secret(yards) or type(yards) ~= "number" then yards = pin and pin.lastYards or 0 else if pin then pin.lastYards = yards end end
     local clamped = C_Navigation.WasClampedToScreen and C_Navigation.WasClampedToScreen()
     local title, sub, qid = target()
     local lk = look()
@@ -538,11 +557,9 @@ local function update(_, elapsed)
         pin:SetScale(sc)
         local fx = nx + (opt("pinOffsetX", 0) or 0)
         local fy = ny + FOOT_LIFT + (opt("pinOffsetY", 0) or 0)
-        -- far away, the spot sits low on the ground near the horizon: raise the
-        -- marker and card, and stretch the stem so its dot still sits on the spot
+        -- far away the spot sits low on the ground: the whole waypoint eases up
         local lift = M.PinLift(yards, h) / sc
-        pin.beam:SetSize(1, STEM + lift)
-        pin:SetPoint("CENTER", UIParent, "BOTTOMLEFT", fx / sc, fy / sc + STEM + lift + PIN / 2)
+        pin:SetPoint("CENTER", UIParent, "BOTTOMLEFT", fx / sc, fy / sc + lift + STEM + PIN / 2)
     end
 
     objTick = objTick + (elapsed or 0)

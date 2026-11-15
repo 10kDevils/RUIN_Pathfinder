@@ -293,35 +293,33 @@ local function nightish(name)
     return false
 end
 
+-- WoW Forever's own day / night dial wears the game's "Minimap-DayCycle"
+-- art (a sun or moon in a "Minimap-Frame-Cycle" ring), on an unnamed frame.
+local function cycleArt(t) return t:find("daycycle", 1, true) or t:find("frame%-cycle") or t:find("moon") or t:find("daynight") or t:find("sun_") or t:find("timeofday") end
+
+local dnFound
 local function dayNight()
-    local cl = rawget(_G, "MinimapCluster")
-    for _, holder in ipairs({ minimap(), rawget(_G, "MinimapBackdrop"), cl }) do
-        if type(holder) == "table" and holder.GetChildren then
-            for _, c in ipairs({ holder:GetChildren() }) do
-                local name = c.GetName and c:GetName()
-                local hit = nightish(name)
-                if not hit and c.GetRegions and not tostring(name or ""):lower():find("ruin") then
+    if dnFound and dnFound.GetParent and dnFound:GetParent() then return dnFound end
+    local function search(frame, depth)
+        if type(frame) ~= "table" or depth > 4 or not frame.GetChildren then return nil end
+        for _, c in ipairs({ frame:GetChildren() }) do
+            local name = c.GetName and c:GetName()
+            local low = tostring(name or ""):lower()
+            if not low:find("ruin") then
+                if nightish(name) then return c end
+                if c.GetRegions then
                     for _, r in ipairs({ c:GetRegions() }) do
-                        if r.GetObjectType and r:GetObjectType() == "Texture" then
-                            local t = texText(r)
-                            if t:find("moon") or t:find("daynight") or t:find("sun_") or t:find("timeofday") then hit = true; break end
-                        end
+                        if r.GetObjectType and r:GetObjectType() == "Texture" and cycleArt(texText(r)) then return c end
                     end
                 end
-                if hit then return c end
+                local deeper = search(c, depth + 1)
+                if deeper then return deeper end
             end
         end
     end
-    -- WoW Forever's own: an unnamed button on the map's backdrop, about 32
-    -- pixels square, sitting on the ring
-    local bd = rawget(_G, "MinimapBackdrop")
-    if type(bd) == "table" and bd.GetChildren then
-        for _, c in ipairs({ bd:GetChildren() }) do
-            local w, h = c.GetWidth and c:GetWidth() or 0, c.GetHeight and c:GetHeight() or 0
-            if not (c.GetName and c:GetName()) and w >= 24 and w <= 48 and math.abs(w - h) <= 4 then
-                return c
-            end
-        end
+    for _, holder in ipairs({ minimap(), rawget(_G, "MinimapBackdrop"), rawget(_G, "MinimapCluster") }) do
+        local hit = search(holder, 1)
+        if hit then dnFound = hit; return hit end
     end
     -- an addon's minimap button (LibDBIcon names them LibDBIcon10_<addon>);
     -- looked for now and then, not on every layout

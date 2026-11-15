@@ -548,10 +548,15 @@ function M.AllStyles()
 end
 function M.SetAllStyles(v)
     if not ns.Looks.Valid(v) then return false end
-    if ns.Minimap then ns.Minimap.SetStyle(v) end
-    if ns.Objectives then ns.Objectives.SetStyle(v) end
-    if ns.WorldMap then ns.WorldMap.SetStyle(v) end
-    if ns.Looks.Modern(v) then M.SetTrackerStyle(v); M.SetPinStyle(v) end
+    -- each in its own pcall: one that trips can't stop the rest
+    local function try(label, f, ...)
+        local ok, err = pcall(f, ...)
+        if not ok then M:Print(("Couldn't restyle the %s: %s"):format(label, tostring(err))) end
+    end
+    if ns.Minimap then try("minimap", ns.Minimap.SetStyle, v) end
+    if ns.Objectives then try("objective tracker", ns.Objectives.SetStyle, v) end
+    if ns.WorldMap then try("world map", ns.WorldMap.SetStyle, v) end
+    if ns.Looks.Modern(v) then try("tracker", M.SetTrackerStyle, v); try("waypoint", M.SetPinStyle, v) end
     for _, d in ipairs({ ui.mmStyle, ui.otStyle, ui.wmStyle, ui.pinStyle, ui.trackerStyle, ui.allStyles }) do if d and d.Refresh then d:Refresh() end end
     return true
 end

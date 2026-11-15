@@ -15,8 +15,9 @@ local MM = ns.Minimap
 local OT = {}
 ns.Objectives = OT
 
-OT.STYLES = { "blizzard", "pathfinder" }
-OT.STYLE_LABEL = { blizzard = "Blizzard", pathfinder = "Pathfinder" }
+local L = ns.Looks
+OT.STYLES = L.KEYS
+OT.STYLE_LABEL = L.LABEL
 
 local PAD = 8
 local TITLE = { 1, 1, 1 }           -- quest names: bright, with a firm shadow
@@ -30,10 +31,20 @@ local rules = {}       -- module header -> its accent rule
 
 local function tracker() return rawget(_G, "ObjectiveTrackerFrame") end
 
-function OT.Style() return (db and db.otStyle == "pathfinder") and "pathfinder" or "blizzard" end
+function OT.Style()
+    local s = db and db.otStyle
+    return (s and L.Valid(s)) and s or "blizzard"
+end
+local function modern() return OT.Style() ~= "blizzard" end
+OT.Modern = modern
+function OT.Scheme() local s = OT.Style(); return L.Scheme(s ~= "blizzard" and s or "pathfinder") end
+function OT.Theme() local s = OT.Style(); return L.Theme(s ~= "blizzard" and s or "pathfinder") end
+-- the colors the icon being drawn takes (its owner's look)
+local CUR
+local function sch() return CUR or OT.Scheme() end
 function OT.Alpha() return (db and db.otAlpha) or 0.85 end
 
-local function accent() return MM.Scheme().accent end
+local function accent() return OT.Scheme().accent end
 
 local function color(fs, c)
     if type(fs) ~= "table" or not fs.SetTextColor then return end
@@ -98,7 +109,7 @@ function PAINT.poi(btn, o)
         o.glyph:SetPoint("TOPLEFT", o, "TOPLEFT", 4, -4)
         o.glyph:SetPoint("BOTTOMRIGHT", o, "BOTTOMRIGHT", -4, 4)
     end
-    local sc, state, picked = MM.Scheme(), questState(btn)
+    local sc, state, picked = sch(), questState(btn)
     local a = sc.accent
     o.glyph:SetTexture(MEDIA .. (state == "done" and "Question" or "Dots"))
     local glyph = state == "done" and GOLD or GREY
@@ -129,7 +140,7 @@ function PAINT.collapse(btn, o)
         elseif atlas:find("minus") or atlas:find("collapse") then shut = false end
     end
     o.glyph:SetTexture(MEDIA .. (shut and "Plus" or "Minus"))
-    local c = hovered(btn) and { 1, 1, 1 } or MM.Scheme().accent
+    local c = hovered(btn) and { 1, 1, 1 } or sch().accent
     o.glyph:SetVertexColor(c[1], c[2], c[3], 1)
 end
 function PAINT.item(btn, o)
@@ -138,7 +149,7 @@ function PAINT.item(btn, o)
         o.slot:SetPoint("TOPLEFT", -2, 2)
         o.slot:SetPoint("BOTTOMRIGHT", 2, -2)
     end
-    local c = hovered(btn) and MM.Scheme().accent or (W.BTN_EDGE or { 0.3, 0.34, 0.38 })
+    local c = hovered(btn) and sch().accent or (W.BTN_EDGE or { 0.3, 0.34, 0.38 })
     o.slot:SetVertexColor(c[1], c[2], c[3], 1)
 end
 function PAINT.arrow(btn, o)
@@ -147,7 +158,7 @@ function PAINT.arrow(btn, o)
         o.glyph:SetPoint("CENTER")
         o.glyph:SetSize(12, 12)
     end
-    local c = hovered(btn) and { 1, 1, 1 } or MM.Scheme().accent
+    local c = hovered(btn) and { 1, 1, 1 } or sch().accent
     o.glyph:SetVertexColor(c[1], c[2], c[3], 1)
 end
 
@@ -155,17 +166,21 @@ local function paint(btn)
     local s = skins[btn]
     if not s then return end
     s.overlay:SetShown(visible(btn) and s.on())
-    if s.overlay:IsShown() then PAINT[s.kind](btn, s.overlay) end
+    if s.overlay:IsShown() then
+        CUR = s.scheme()
+        PAINT[s.kind](btn, s.overlay)
+        CUR = nil
+    end
 end
 
 local function itemArt(btn) return btn.icon or btn.Icon or btn.IconTexture end
 
 -- Take a game button into Pathfinder's look.
-local function skin(btn, kind, owner, on)
+local function skin(btn, kind, owner, on, schemeFn)
     owner = owner or "tracker"
     local s = skins[btn]
     if not s then
-        s = { kind = kind, owner = owner, overlay = overlay(btn, owner), on = on or function() return OT.Style() == "pathfinder" end }
+        s = { kind = kind, owner = owner, overlay = overlay(btn, owner), on = on or modern, scheme = schemeFn or OT.Scheme }
         skins[btn] = s
         if btn.HookScript and not btn.ruinOTHook then
             btn.ruinOTHook = true
@@ -232,7 +247,7 @@ OT.MEDIA = MEDIA
 
 -- For Pathfinder's other skins (the world map): redraw a game button in
 -- this style under an owner's name, and give an owner's buttons back.
-function OT.SkinButton(btn, kind, owner, on) if type(btn) == "table" and btn.GetObjectType then skin(btn, kind, owner, on) end end
+function OT.SkinButton(btn, kind, owner, on, schemeFn) if type(btn) == "table" and btn.GetObjectType then skin(btn, kind, owner, on, schemeFn) end end
 function OT.Repaint(btn) paint(btn) end
 function OT.UnskinOwner(owner)
     for btn, sk in pairs(skins) do if sk.owner == owner then unskin(btn, sk) end end
@@ -248,7 +263,7 @@ local function glyph(name, size, rot)
             o.glyph:SetSize(size, size)
             if rot and o.glyph.SetRotation then o.glyph:SetRotation(rot) end
         end
-        local c = hovered(btn) and { 1, 1, 1 } or MM.Scheme().accent
+        local c = hovered(btn) and { 1, 1, 1 } or sch().accent
         o.glyph:SetVertexColor(c[1], c[2], c[3], 1)
     end
 end
@@ -359,7 +374,7 @@ local function buildBack(f)
     back = CreateFrame("Frame", "RUIN_PathfinderObjectivesBack", f)
     if back.SetFrameStrata then back:SetFrameStrata("BACKGROUND") end
     if back.EnableMouse then back:EnableMouse(false) end
-    back.ruinTheme = { color = (MM.Scheme().color) or { 0.31, 0.60, 0.23 } }
+    back.ruinTheme = OT.Theme()
     if W.Skin then W.Skin(back, "bg", 0.9, "border") end
     if W.Sheen then back.sheen = W.Sheen(back, 0.04) end
     back.band = back:CreateTexture(nil, "ARTWORK")
@@ -382,14 +397,14 @@ local function layoutBack(f)
     end
     local c = accent()
     back.band:SetColorTexture(c[1], c[2], c[3], 0.9)
-    MM.Paint(back, OT.Alpha(), 0.14, -0.6)
+    MM.Paint(back, OT.Alpha(), 0.14, -0.6, OT.Scheme())
     back:SetShown(shown(f))
 end
 
 -- One pass over the tracker: the panel's size, the colors.
 function OT.Refresh()
     local f = tracker()
-    if not (db and f) or OT.Style() ~= "pathfinder" then return end
+    if not (db and f) or not modern() then return end
     if not back then buildBack(f) end
     layoutBack(f)
     styleHeader(f.Header)
@@ -421,21 +436,25 @@ end
 
 function OT.Apply()
     if not db then return end
-    if OT.Style() == "pathfinder" then OT.Refresh() else restore() end
+    if modern() then OT.Refresh() else restore() end
 end
 
 function OT.SetStyle(style)
-    if style ~= "blizzard" and style ~= "pathfinder" then return false end
+    if not L.Valid(style) then return false end
     local was = db.otStyle
     db.otStyle = style
-    if was ~= style or style == "pathfinder" then OT.Apply() end
+    if back and style ~= "blizzard" then
+        back.ruinTheme, back.ruinThemeFound = OT.Theme(), nil
+        if W.Skin then W.Skin(back, "bg", 0.9, "border") end
+    end
+    if was ~= style or style ~= "blizzard" then OT.Apply() end
     return true
 end
 
 function OT.SetAlpha(a)
     if type(a) ~= "number" then return false end
     db.otAlpha = math.max(0, math.min(1, a))
-    if back and back:IsShown() then MM.Paint(back, db.otAlpha, 0.14, -0.6) end
+    if back and back:IsShown() then MM.Paint(back, db.otAlpha, 0.14, -0.6, OT.Scheme()) end
     return true
 end
 
@@ -445,7 +464,7 @@ local function tick(_, elapsed)
     since = since + (elapsed or 0)
     if since < 0.25 then return end
     since = 0
-    if OT.Style() == "pathfinder" then OT.Refresh() end
+    if modern() then OT.Refresh() end
 end
 
 function OT.Init(cdb)
@@ -456,7 +475,7 @@ function OT.Init(cdb)
     ticker:SetScript("OnUpdate", tick)
     local f = tracker()
     if type(f) == "table" and hooksecurefunc and type(f.Update) == "function" then
-        hooksecurefunc(f, "Update", function() if OT.Style() == "pathfinder" then OT.Refresh() end end)
+        hooksecurefunc(f, "Update", function() if modern() then OT.Refresh() end end)
     end
     if db.otStyle ~= "blizzard" and C_Timer then C_Timer.After(1, OT.Apply) end
 end

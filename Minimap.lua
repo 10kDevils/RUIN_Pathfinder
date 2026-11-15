@@ -18,8 +18,9 @@ ns.Minimap = MM
 
 local MEDIA = "Interface\\AddOns\\RUIN_Pathfinder\\Media\\"
 
-MM.STYLES = { "blizzard", "pathfinder" }
-MM.STYLE_LABEL = { blizzard = "Blizzard", pathfinder = "Pathfinder" }
+local L = ns.Looks
+MM.STYLES = L.KEYS
+MM.STYLE_LABEL = L.LABEL
 
 -- Where the tracker can sit: the tracker's point, the minimap's point, which
 -- way it grows.
@@ -42,15 +43,14 @@ local function minimap() return rawget(_G, "Minimap") end
 ---------------------------------------------------------------------------
 -- Settings
 ---------------------------------------------------------------------------
-function MM.Style() return (db and db.mmStyle == "pathfinder") and "pathfinder" or "blizzard" end
-function MM.Dock()
-    local d = db and db.trackerDock
-    if type(d) ~= "string" then return nil end
-    if DOCKS[d] then return d end
-    -- a spot saved by an older Pathfinder ("topleft", "righttop"...): its side
-    local side = d:match("^(top)") or d:match("^(bottom)") or d:match("^(left)") or d:match("^(right)")
-    return side
+function MM.Style()
+    local s = db and db.mmStyle
+    return (s and L.Valid(s)) and s or "blizzard"
 end
+local function modern() return MM.Style() ~= "blizzard" end
+MM.Modern = modern
+-- Docking the tracker to the minimap is retired: the tracker always moves freely.
+function MM.Dock() return nil end
 
 function MM.DockChoices()
     local out = { "off" }
@@ -155,18 +155,11 @@ end
 ---------------------------------------------------------------------------
 -- Pathfinder's ring
 ---------------------------------------------------------------------------
--- Pathfinder's color, as its tracker wears it
-local function accent()
-    local f = rawget(_G, "RUIN_PathfinderTracker")
-    return (f and f.themeColor) or { 0.48, 0.70, 0.41 }
-end
--- Pathfinder's theme and colors, as its tracker and pages wear them
-local THEME = { color = { 0.31, 0.60, 0.23 } }
-local function theme()
-    local f = rawget(_G, "RUIN_PathfinderTracker")
-    return (f and f.ruinTheme) or THEME
-end
-local function scheme() return W.SchemeFor and W.SchemeFor(theme()) or { accent = accent(), edge = { 0.2, 0.3, 0.2 }, bg = { 0.05, 0.06, 0.08 } } end
+-- The chosen look's theme and colors (Pathfinder's while in the game's look)
+local function lookKey() local s = MM.Style(); return s ~= "blizzard" and s or "pathfinder" end
+local function theme() return L.Theme(lookKey()) end
+local function scheme() return L.Scheme(lookKey()) end
+local function accent() return scheme().accent end
 local function mixed(a, b, t) return { a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t } end
 MM.Scheme = scheme
 
@@ -177,9 +170,9 @@ function MM.OpacityLabel(v) return ("%d%%"):format(math.floor((v or 0) * 100 + 0
 -- Paint a panel's background: a slight gradient from Pathfinder's green
 -- (t > 0: how much green) to black (t < 0: how much black), top to bottom,
 -- at the given opacity.
-function MM.Paint(h, alpha, topT, botT)
+function MM.Paint(h, alpha, topT, botT, sc)
     if not (h and h.skinBg) then return end
-    local sc = scheme()
+    sc = sc or scheme()
     local green, black = sc.color or sc.accent, { 0.008, 0.01, 0.012 }
     local function at(t) if t >= 0 then return mixed(sc.bg, green, t) end return mixed(sc.bg, black, -t) end
     local top, bot = at(topT), at(botT)
@@ -731,7 +724,7 @@ local function fitMap(m, on)
     if not m.ruinFitHook and hooksecurefunc then
         m.ruinFitHook = true
         hooksecurefunc(m, "SetPoint", function(self)
-            if mapHome and not self.ruinPlacing and MM.Style() == "pathfinder" then
+            if mapHome and not self.ruinPlacing and modern() then
                 self.ruinPlacing = true
                 self:ClearAllPoints()
                 self:SetPoint("CENTER", cl, "CENTER", 0, mapHome.dy or 0)
@@ -878,7 +871,7 @@ end
 function MM.Apply()
     local m = minimap()
     if not (db and m) then return end
-    local modern = MM.Style() == "pathfinder"
+    local modern = modern()
     for _, r in ipairs(blizzardBits()) do dim(r, modern) end
     for _, b in ipairs(zoomButtons()) do dim(b, modern) end
     dim(zoneText(), modern)
@@ -909,7 +902,7 @@ end
 -- How far the tracker sits from the map's edge: past the game's ring and
 -- zone text, or past Pathfinder's slimmer ring.
 local function gap(spot)
-    local modern = MM.Style() == "pathfinder"
+    local modern = modern()
     local d = DOCKS[spot]
     if d.grow == "up" then return modern and 2 or 34 end
     if d.grow == "down" then return modern and 22 or 28 end     -- room for the tracker's tabs above it
@@ -947,9 +940,30 @@ function MM.SetAlpha(a)
     return true
 end
 
+-- A new look's colors on what's already built.
+function MM.Recolor()
+    local sc = scheme()
+    for _, h in ipairs({ bar, foot }) do
+        if h then
+            h.ruinTheme, h.ruinThemeFound = theme(), nil
+            if W.Skin then W.Skin(h, "bg", 0.94, "border") end
+            local open = (h == bar) and "BOTTOM" or "TOP"
+            if h.skinEdges and h.skinEdges[open] then h.skinEdges[open]:SetColorTexture(0, 0, 0, 0) end
+            if h.band then h.band:SetColorTexture(sc.accent[1], sc.accent[2], sc.accent[3], 0.9) end
+        end
+    end
+    if deco then
+        local rc = mixed(sc.edge, sc.accent, 0.55)
+        deco.ring:SetVertexColor(rc[1], rc[2], rc[3], 1)
+        deco.north:SetVertexColor(sc.bg[1] * 0.6, sc.bg[2] * 0.6, sc.bg[3] * 0.6, 1)
+        deco.northRing:SetVertexColor(sc.accent[1], sc.accent[2], sc.accent[3], 1)
+    end
+end
+
 function MM.SetStyle(style)
-    if style ~= "blizzard" and style ~= "pathfinder" then return false end
+    if not L.Valid(style) then return false end
     db.mmStyle = style
+    if style ~= "blizzard" then MM.Recolor() end
     MM.Apply()
     if MM.OnDockChanged then MM.OnDockChanged() end
     return true
@@ -1053,7 +1067,8 @@ end
 
 function MM.Init(cdb)
     db = cdb
-    db.mmShape = nil      -- an old setting, no longer used
+    db.mmShape = nil      -- old settings, no longer used
+    db.trackerDock = nil
     if db.mmStyle == nil then db.mmStyle = "blizzard" end
     if type(db.mmAlpha) ~= "number" then db.mmAlpha = 0.94 end
     -- the game's own look needs nothing; Pathfinder's is applied once the UI

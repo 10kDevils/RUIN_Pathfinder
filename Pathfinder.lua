@@ -516,6 +516,17 @@ end
 function M.PinOn() return db and db.pin ~= false end
 -- the pin's settings, read live by WaypointPin.lua
 function M.PinSetting(key) return db and db[key] end
+-- The waypoint's look (its colors): one of the suite's modern looks.
+function M.PinStyle()
+    local v = db and db.pinStyle
+    return (v and ns.Looks.Modern(v)) and v or "ruin"
+end
+function M.SetPinStyle(v)
+    if not ns.Looks.Modern(v) then return false end
+    db.pinStyle = v
+    if M.PinRestyle then M.PinRestyle() end
+    return true
+end
 function M.SetPinSetting(key, v) if db then db[key] = v end; M.pinDirty = true end
 
 -- What the RUIN pin should call the current target, when it's Pathfinder's.
@@ -3023,6 +3034,16 @@ local function buildOptions(page)
     local edit = W.Button(w, "Waypoint Editor", 140, function() if M.OpenWaypointEditor then M.OpenWaypointEditor() end end)
     edit:SetPoint("LEFT", pinCheck.label, "RIGHT", 18, 0)
     edit.tip = "What the RUIN Waypoint shows and how it looks, where it sits over the spot, when it hides and when it moves to the screen edge, with a live preview. /path editor"
+    -- the waypoint's colors: RUIN's gold, or a module's
+    local pl = W.Label(w, C.dim .. "Style|r", "GameFontHighlightSmall")
+    pl:SetPoint("LEFT", edit, "RIGHT", 24, 0)
+    local looks = ns.Looks
+    local ps = W.Dropdown(w, 150, looks.MODERN, function() return M.PinStyle() end, function(v) M.SetPinStyle(v) end)
+    ps.format = function(v) return looks.LABEL[v] or v end
+    ps:SetPoint("LEFT", pl, "RIGHT", 8, 0)
+    ps.tipTitle = "The RUIN Waypoint's colors: RUIN's gold, or the color of one of the suite's modules"
+    ps:Refresh()
+    ui.pinStyle = ps
     check(w, "Put a waypoint on each step", "waypoint", "The game's waypoint on the step's spot, so the pin (and the game's navigation) leads you there. /path waypoint", nil, 12, -62)
     check(w, "Track quest steps the game's way", "trackQuests", "For a quest in your log, track the quest itself (like clicking it in the objective tracker) so the pin follows its objective or turn-in.", nil, COL2, -62)
     local navCheck = W.Check(w, "In-Game Navigation", function()
@@ -3036,7 +3057,7 @@ local function buildOptions(page)
     share.tip = "Pathfinder's atlas: where you pick up, do and hand in quests, shared with RUIN so routes follow where things really are on WoW Forever. Only quest numbers and map spots. /path atlas"
     checks[#checks + 1] = share
 
-    -- the minimap: its look, and the tracker docked to it
+    -- the minimap: its look
     local mm = ns.Minimap
     local mc = card("Minimap", -244, 122, "left")
     local stl = W.Label(mc, C.dim .. "Style|r", "GameFontHighlightSmall")
@@ -3044,32 +3065,9 @@ local function buildOptions(page)
     local style = W.Dropdown(mc, 190, mm.STYLES, function() return mm.Style() end, function(v) mm.SetStyle(v) end)
     style.format = function(v) return mm.STYLE_LABEL[v] or v end
     style:SetPoint("LEFT", stl, "RIGHT", 8, 0)
-    style.tipTitle = "The game's own look, or Pathfinder's: a square frame in the suite's look around the map, a slim ring, an N where north is, mouse-wheel zoom, and the tracking button, zone, calendar, addon list, mail, coordinates and clock in its corners"
+    style.tipTitle = "The game's own look, or the suite's modern one in RUIN's gold or a module's color: a square frame in the suite's look around the map, a slim ring, an N where north is, mouse-wheel zoom, and the tracking button, zone, calendar, addon list, mail, coordinates and clock in its corners"
     style:Refresh()
-    local dl = W.Label(mc, C.dim .. "Dock the tracker|r", "GameFontHighlightSmall")
-    dl:SetPoint("TOPLEFT", 12, -66)
-    local dock = W.Dropdown(mc, 200, function() return mm.DockChoices() end, function() return mm.Dock() or "off" end,
-        function(v) mm.SetDock(v) end)
-    dock.format = function(v) return mm.DockLabel(v) end
-    dock:SetPoint("LEFT", dl, "RIGHT", 8, 0)
-    dock.tipTitle = "Attach the tracker to the minimap. On top it grows up (in Pathfinder's style it sits on the bar above the map), below it grows down, on a side it grows away from the map. Drag it off to free it."
-    dock:Refresh()
-    ui.dock, ui.mmStyle = dock, style
-    local dh = W.Label(mc, "", "GameFontHighlightSmall")
-    dh:SetPoint("TOPLEFT", 200, -100)
-    dh:SetPoint("RIGHT", mc, "RIGHT", -12, 0)
-    dh:SetJustifyH("LEFT")
-    dh:SetWordWrap(false)
-    ui.dockHint = dh
-    local function dockHint()
-        local g = mm.Grow()
-        dh:SetText(C.dim .. (g and ("Grows " .. g .. " as it fills.") or "Free: drag it anywhere.") .. "|r")
-    end
-    dockHint()
-    mm.OnDockChanged = function()
-        if tracker then anchorTracker(); fitTracker() end
-        dock:Refresh(); dockHint()
-    end
+    ui.mmStyle = style
 
     -- background opacity, for the modern look
     local function opacity(parent, y, getter, setter, tip)
@@ -3087,7 +3085,7 @@ local function buildOptions(page)
         for _, o in ipairs(mm.OPACITY) do if math.abs(o - v) < gap then best, gap = o, math.abs(o - v) end end
         return best
     end
-    ui.mmAlpha = opacity(mc, -96, function() return near(mm.Alpha()) end, function(v) mm.SetAlpha(v) end,
+    ui.mmAlpha = opacity(mc, -66, function() return near(mm.Alpha()) end, function(v) mm.SetAlpha(v) end,
         "How see-through the frame around the minimap is, in Pathfinder's style")
 
     -- the game's objective tracker: its look
@@ -3114,14 +3112,14 @@ local function buildOptions(page)
     local oc = card("Objective Tracker", -244, 60, "right")
     if ot then
         ui.otStyle, ui.otAlpha = lookRow(oc, ot,
-            "The game's own look, or Pathfinder's: a panel in the suite's look behind the tracker, headers in Pathfinder's color, quest titles and objectives in the suite's text colors",
+            "The game's own look, or the suite's modern one in RUIN's gold or a module's color: a panel behind the tracker, headers in that color, quest titles and objectives in the suite's text colors",
             "How see-through the panel behind the objective tracker is, in Pathfinder's style")
     end
     local wm = ns.WorldMap
     local wc = card("World Map & Quest Log", -306, 60, "right")
     if wm then
         ui.wmStyle, ui.wmAlpha = lookRow(wc, wm,
-            "The game's own look, or Pathfinder's: the map window and quest log in the suite's look, with flat quest markers and buttons",
+            "The game's own look, or the suite's modern one in RUIN's gold or a module's color: the map window and quest log in the suite's look, with flat quest markers and buttons",
             "How see-through the map window's background is, in Pathfinder's style")
     end
 
@@ -3131,11 +3129,12 @@ local function buildOptions(page)
     kl:SetPoint("RIGHT", k, "RIGHT", -12, 0)
     kl:SetWordWrap(false)
     kl:SetText(C.white .. "Keys:|r " .. C.dim .. "Options > Keybindings > AddOns > RUIN Pathfinder.|r   "
-        .. C.white .. "Chat:|r " .. C.dim .. "/path next, prev, clear, pin, editor, waypoint, nav, remind, minimap, objectives, worldmap, dock|r")
+        .. C.white .. "Chat:|r " .. C.dim .. "/path next, prev, clear, pin, editor, waypoint, nav, remind, minimap, objectives, worldmap|r")
 
     page:SetScript("OnShow", function()
         for _, c in ipairs(checks) do c:Refresh() end
-        style:Refresh(); dock:Refresh(); dockHint()
+        style:Refresh()
+        for _, d in ipairs({ ui.otStyle, ui.wmStyle, ui.pinStyle }) do if d then d:Refresh() end end
     end)
     ui.optionChecks = checks
 end
@@ -3320,8 +3319,8 @@ SlashCmdList.RUINPATH = function(input)
             if not ok then M:Print("Couldn't finish looking: " .. tostring(err)) end
             return
         end
-        if arg == "blizzard" or arg == "pathfinder" then mm.SetStyle(arg)
-        else return M:Print("/path minimap blizzard | pathfinder | debug | find") end
+        if ns.Looks.Valid(arg) then mm.SetStyle(arg)
+        else return M:Print("/path minimap " .. table.concat(ns.Looks.KEYS, " | ") .. " | debug | find") end
         M:Print(("Minimap: %s style."):format(mm.STYLE_LABEL[mm.Style()]))
     elseif msg:match("^worldmap") and ns.WorldMap then
         local arg = msg:match("^worldmap%s+(%S+)")
@@ -3331,25 +3330,17 @@ SlashCmdList.RUINPATH = function(input)
             if not ok then M:Print("Couldn't finish looking: " .. tostring(err)) end
             return
         end
-        if arg == "blizzard" or arg == "pathfinder" then wm.SetStyle(arg)
-        else return M:Print("/path worldmap blizzard | pathfinder | debug") end
+        if ns.Looks.Valid(arg) then wm.SetStyle(arg)
+        else return M:Print("/path worldmap " .. table.concat(ns.Looks.KEYS, " | ") .. " | debug") end
         if ui.wmStyle then ui.wmStyle:Refresh() end
         M:Print(("World map: %s style."):format(wm.STYLE_LABEL[wm.Style()]))
     elseif msg:match("^objectives") and ns.Objectives then
         local arg = msg:match("^objectives%s+(%S+)")
         local ot = ns.Objectives
-        if arg == "blizzard" or arg == "pathfinder" then ot.SetStyle(arg)
-        else return M:Print("/path objectives blizzard | pathfinder") end
+        if ns.Looks.Valid(arg) then ot.SetStyle(arg)
+        else return M:Print("/path objectives " .. table.concat(ns.Looks.KEYS, " | ") .. "") end
         if ui.otStyle then ui.otStyle:Refresh() end
         M:Print(("Objective tracker: %s style."):format(ot.STYLE_LABEL[ot.Style()]))
-    elseif msg:match("^dock") and ns.Minimap then
-        local arg = msg:match("^dock%s+(%S+)")
-        local mm = ns.Minimap
-        local ok = false
-        for _, c in ipairs(mm.DockChoices()) do if c == arg then ok = true end end
-        if not ok then return M:Print("/path dock " .. table.concat(mm.DockChoices(), " | ")) end
-        mm.SetDock(arg)
-        M:Print("Tracker dock: " .. mm.DockLabel(mm.Dock()) .. ".")
     elseif msg == "pin" then
         db.pin = db.pin == false
         if M.RefreshPin then M.RefreshPin() end

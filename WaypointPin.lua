@@ -7,6 +7,7 @@
 -- with an arrow pointing the way. Under it: what it is, how far, and roughly
 -- how long on foot. A tracked quest also lists its objectives.
 
+local _, ns = ...
 local R = RUIN_API
 if not R then return end
 local M = R:GetModule("Pathfinder")
@@ -23,8 +24,17 @@ local FADE = 0.5              -- seconds to fade out in the quest's area
 local NEAR = 12                -- fade the card when you're on top of it
 local OBJ_LINES = 5
 local CARD_MIN, CARD_MAX, PAD = 40, 250, 10   -- the card hugs its text, up to the max
+-- the look's colors (RUIN's gold on ink to start; Options > Waypoint > Style)
 local GOLD = { 0.90, 0.72, 0.38 }
 local INK = { 0.035, 0.045, 0.075 }
+local built = {}       -- every pin built (the live one, the editor's preview)
+local function takeLook()
+    local L = ns and ns.Looks
+    if not (L and M.PinStyle) then return end
+    local sc = L.Scheme(M.PinStyle())
+    GOLD[1], GOLD[2], GOLD[3] = sc.accent[1], sc.accent[2], sc.accent[3]
+    INK[1], INK[2], INK[3] = sc.ink[1], sc.ink[2], sc.ink[3]
+end
 local MEDIA = "Interface\\AddOns\\RUIN_Core\\Media\\"
 local GAME_PARTS = { "Icon", "Arrow", "DistanceText", "IconBorder" }
 
@@ -114,7 +124,9 @@ M.PinLook = look
 -- One pin's frames. The live pin sits on UIParent; the Waypoint Editor
 -- builds another as its preview.
 local function build(parent, name)
+    takeLook()
     local p = CreateFrame("Frame", name, parent)
+    built[#built + 1] = p
     p:SetSize(PIN, PIN)
     if parent == UIParent then p:SetFrameStrata("LOW") end
     p:EnableMouse(false)
@@ -164,8 +176,10 @@ local function build(parent, name)
     card.bg = fill(card, "BACKGROUND", INK[1], INK[2], INK[3], 0.86); card.bg:SetAllPoints()
     card.top = fill(card, "BORDER", GOLD[1], GOLD[2], GOLD[3], 0.95)
     card.top:SetPoint("TOPLEFT"); card.top:SetPoint("TOPRIGHT"); card.top:SetHeight(2)
+    card.edges = {}
     for _, side in ipairs({ "BOTTOM", "LEFT", "RIGHT" }) do
         local e = fill(card, "BORDER", GOLD[1], GOLD[2], GOLD[3], 0.28)
+        card.edges[#card.edges + 1] = e
         if side == "BOTTOM" then e:SetPoint("BOTTOMLEFT"); e:SetPoint("BOTTOMRIGHT"); e:SetHeight(1)
         else e:SetPoint("TOP" .. side); e:SetPoint("BOTTOM" .. side); e:SetWidth(1) end
     end
@@ -191,6 +205,27 @@ local function build(parent, name)
     p.dist:SetPoint("CENTER", 0, 1)
     p.dist:SetJustifyH("CENTER")
     return p
+end
+
+-- A new look's colors on the pins already built.
+local function recolor(p)
+    if p.beam.SetGradient and CreateColor then
+        p.beam:SetGradient("VERTICAL", CreateColor(GOLD[1], GOLD[2], GOLD[3], 0.15), CreateColor(GOLD[1], GOLD[2], GOLD[3], 0.85))
+    else
+        p.beam:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.5)
+    end
+    p.foot:SetVertexColor(GOLD[1], GOLD[2], GOLD[3], 0.9)
+    p.arrow:SetVertexColor(GOLD[1], GOLD[2], GOLD[3])
+    p.card.top:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.95)
+    for _, e in ipairs(p.card.edges or {}) do e:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.28) end
+    p.sub:SetTextColor(GOLD[1], GOLD[2], GOLD[3])
+    p.tag.bg:SetColorTexture(INK[1], INK[2], INK[3], 0.80)
+    p.tag.edge:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.30)
+    if p.markerStyle == "dot" then p.icon:SetVertexColor(GOLD[1], GOLD[2], GOLD[3], 1) end
+end
+function M.PinRestyle()
+    takeLook()
+    for _, p in ipairs(built) do recolor(p) end
 end
 
 -- The marker's style: the emblem, or a small gold dot.

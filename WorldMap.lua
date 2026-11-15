@@ -16,8 +16,9 @@ local OT = ns.Objectives
 local WM = {}
 ns.WorldMap = WM
 
-WM.STYLES = { "blizzard", "pathfinder" }
-WM.STYLE_LABEL = { blizzard = "Blizzard", pathfinder = "Pathfinder" }
+local L = ns.Looks
+WM.STYLES = L.KEYS
+WM.STYLE_LABEL = L.LABEL
 
 local OWNER = "worldmap"
 local LINE = { 0.60, 0.64, 0.70 }
@@ -30,11 +31,16 @@ local colored = {}     -- fontstring -> its own color, to give back
 local function map() return rawget(_G, "WorldMapFrame") end
 local function questMap() return rawget(_G, "QuestMapFrame") end
 
-function WM.Style() return (db and db.wmStyle == "pathfinder") and "pathfinder" or "blizzard" end
+function WM.Style()
+    local s = db and db.wmStyle
+    return (s and L.Valid(s)) and s or "blizzard"
+end
+function WM.Scheme() local s = WM.Style(); return L.Scheme(s ~= "blizzard" and s or "pathfinder") end
+function WM.Theme() local s = WM.Style(); return L.Theme(s ~= "blizzard" and s or "pathfinder") end
 function WM.Alpha() return (db and db.wmAlpha) or 0.95 end
-local function on() return WM.Style() == "pathfinder" end
+local function on() return WM.Style() ~= "blizzard" end
 
-local function accent() return MM.Scheme().accent end
+local function accent() return WM.Scheme().accent end
 
 local function color(fs, c)
     if type(fs) ~= "table" or not fs.SetTextColor then return end
@@ -151,7 +157,7 @@ local function buildPanel(f)
     panel = CreateFrame("Frame", "RUIN_PathfinderWorldMapBack", f)
     panel:SetFrameLevel(math.max(0, (f:GetFrameLevel() or 1)))
     if panel.EnableMouse then panel:EnableMouse(false) end
-    panel.ruinTheme = { color = (MM.Scheme().color) or { 0.31, 0.60, 0.23 } }
+    panel.ruinTheme = WM.Theme()
     if W.Skin then W.Skin(panel, "bg", 0.95, "border") end
     if W.Sheen then panel.sheen = W.Sheen(panel, 0.04) end
     panel.band = panel:CreateTexture(nil, "ARTWORK")
@@ -170,7 +176,7 @@ local function layoutPanel(f)
     panel:SetPoint("BOTTOMRIGHT", border, "BOTTOMRIGHT", 0, 0)
     local c = accent()
     panel.band:SetColorTexture(c[1], c[2], c[3], 0.9)
-    MM.Paint(panel, WM.Alpha(), 0.12, -0.55)
+    MM.Paint(panel, WM.Alpha(), 0.12, -0.55, WM.Scheme())
     local q = questMap()
     if visible(q) then
         local e = W.BTN_EDGE or { 0.3, 0.34, 0.38 }
@@ -189,11 +195,11 @@ end
 local function styleButtons(f)
     local b = f.BorderFrame
     if type(b) ~= "table" then return end
-    OT.SkinButton(b.CloseButton or rawget(_G, "WorldMapFrameCloseButton"), "close", OWNER, on)
+    OT.SkinButton(b.CloseButton or rawget(_G, "WorldMapFrameCloseButton"), "close", OWNER, on, WM.Scheme)
     local mm = b.MaximizeMinimizeFrame or f.MaximizeMinimizeFrame
     if type(mm) == "table" then
-        OT.SkinButton(mm.MaximizeButton, "expand", OWNER, on)
-        OT.SkinButton(mm.MinimizeButton, "shrink", OWNER, on)
+        OT.SkinButton(mm.MaximizeButton, "expand", OWNER, on, WM.Scheme)
+        OT.SkinButton(mm.MinimizeButton, "shrink", OWNER, on, WM.Scheme)
         dimArt(mm)
     end
 end
@@ -212,7 +218,7 @@ local function styleNav(f)
         local text = b.text or b.Text or (b.GetFontString and b:GetFontString())
         color(text, i == #list and accent() or TEXT)
         local arrow = b.MenuArrowButton
-        if type(arrow) == "table" then OT.SkinButton(arrow, "menu", OWNER, on) end
+        if type(arrow) == "table" then OT.SkinButton(arrow, "menu", OWNER, on, WM.Scheme) end
     end
 end
 
@@ -222,13 +228,13 @@ end
 local function styleLog(frame, depth)
     if type(frame) ~= "table" or depth > 6 or not visible(frame) then return end
     local kind = OT.KindOf(frame, false)
-    if kind == "poi" then OT.SkinButton(frame, "poi", OWNER, on); return end
+    if kind == "poi" then OT.SkinButton(frame, "poi", OWNER, on, WM.Scheme); return end
     local cb = frame.CollapseButton
     local headText = frame.ButtonText or (cb and (frame.Text or frame.text))
     if headText and type(cb) == "table" then
         color(headText, accent())
         dimArt(frame)
-        OT.SkinButton(cb, "collapse", OWNER, on)
+        OT.SkinButton(cb, "collapse", OWNER, on, WM.Scheme)
     elseif frame.Text and (frame.Dash or frame.dash) then
         color(frame.Text, LINE)
         color(frame.Dash or frame.dash, accent())
@@ -310,8 +316,18 @@ function WM.Apply()
 end
 
 function WM.SetStyle(style)
-    if style ~= "blizzard" and style ~= "pathfinder" then return false end
+    if not L.Valid(style) then return false end
     db.wmStyle = style
+    if style ~= "blizzard" then
+        local qs = rawget(_G, "QuestScrollFrame")
+        local box = type(qs) == "table" and type(qs.SearchBox) == "table" and qs.SearchBox or nil
+        for _, x in ipairs({ panel or false, (box and type(box.ruinEdge) == "table" and box.ruinEdge) or false }) do
+            if x then
+                x.ruinTheme, x.ruinThemeFound = WM.Theme(), nil
+                if W.Skin then W.Skin(x, "bg", 0.95, "border") end
+            end
+        end
+    end
     WM.Apply()
     return true
 end
@@ -319,7 +335,7 @@ end
 function WM.SetAlpha(a)
     if type(a) ~= "number" then return false end
     db.wmAlpha = math.max(0, math.min(1, a))
-    if panel and panel:IsShown() then MM.Paint(panel, db.wmAlpha, 0.12, -0.55) end
+    if panel and panel:IsShown() then MM.Paint(panel, db.wmAlpha, 0.12, -0.55, WM.Scheme()) end
     return true
 end
 

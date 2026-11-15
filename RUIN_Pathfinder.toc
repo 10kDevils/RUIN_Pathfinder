@@ -14,6 +14,7 @@ Routes.lua
 QuestData\Data.lua
 QuestData\Horde.lua
 QuestDB.lua
+Looks.lua
 Minimap.lua
 ObjectiveTracker.lua
 WorldMap.lua

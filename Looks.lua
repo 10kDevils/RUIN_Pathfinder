@@ -1,8 +1,9 @@
 -- RUIN Pathfinder: the looks Pathfinder can give the game's own frames (the
 -- minimap, the objective tracker, the world map and quest log) and its
 -- waypoint: the game's own (Blizzard), or the suite's modern style in one of
--- its colors. RUIN wears the core app's gold on ink, as the waypoint always
--- has; the others wear their module's color, as the module's pages do.
+-- its colors. RUIN wears gold on ink, as the waypoint always has; Blue & Gold
+-- the core app's navy and gold; the others their module's color, as the
+-- module's pages do.
 local ADDON, ns = ...
 local R = RUIN_API
 if not R then return end
@@ -11,9 +12,9 @@ local W = R.Widgets
 local L = {}
 ns.Looks = L
 
-L.KEYS = { "blizzard", "ruin", "pathfinder", "finder", "muster", "codex", "exchange" }
-L.MODERN = { "ruin", "pathfinder", "finder", "muster", "codex", "exchange" }      -- the waypoint's (it has no Blizzard look)
-L.LABEL = { blizzard = "Blizzard", ruin = "RUIN", pathfinder = "Pathfinder", finder = "Finder",
+L.KEYS = { "blizzard", "ruin", "core", "pathfinder", "finder", "muster", "codex", "exchange" }
+L.MODERN = { "ruin", "core", "pathfinder", "finder", "muster", "codex", "exchange" }      -- the waypoint's (it has no Blizzard look)
+L.LABEL = { blizzard = "Blizzard", ruin = "RUIN", core = "Blue & Gold", pathfinder = "Pathfinder", finder = "Finder",
             muster = "Muster", codex = "Codex", exchange = "Exchange" }
 
 local GOLD = { 0.90, 0.72, 0.38 }
@@ -21,6 +22,7 @@ local INK = { 0.035, 0.045, 0.075 }
 L.GOLD, L.INK = GOLD, INK
 local COLOR = {
     ruin = GOLD,
+    core = GOLD,
     pathfinder = { 0.31, 0.60, 0.23 },
     finder = { 0.82, 0.31, 0.54 },
     muster = { 0.85, 0.38, 0.17 },
@@ -39,7 +41,7 @@ function L.Modern(key) return COLOR[key] ~= nil end
 local themes, schemes = {}, {}
 function L.Theme(key)
     key = COLOR[key] and key or "pathfinder"
-    themes[key] = themes[key] or { color = COLOR[key], core = (key == "ruin") or nil }
+    themes[key] = themes[key] or { color = COLOR[key], core = (key == "ruin" or key == "core") or nil }
     return themes[key]
 end
 
@@ -55,6 +57,17 @@ function L.Scheme(key)
         s.accent = GOLD
         s.bg = INK
         s.edge = mix(base.edge or { 0.2, 0.25, 0.3 }, GOLD, 0.35)
+    end
+    if key == "core" then
+        -- the core app's own: gold on its navy panels, a blue cast to the gradient
+        local P = W.PALETTE or {}
+        s.accent = P.gold or GOLD
+        s.bg = P.bg or { 0.04, 0.06, 0.11 }
+        s.edge = P.border or { 0.2, 0.26, 0.38 }
+        s.color = { 0.20, 0.34, 0.62 }
+        s.ink = { 0.05, 0.08, 0.16 }
+        schemes[key] = s
+        return s
     end
     -- the waypoint's card: ink, tinted faintly in the look's color
     s.ink = key == "ruin" and INK or mix(INK, COLOR[key], 0.10)

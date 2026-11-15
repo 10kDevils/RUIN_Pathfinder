@@ -645,8 +645,11 @@ local function hideStrayCoords(off)
     local ui = rawget(_G, "UIParent")
     if ui and ui.GetChildren then
         for _, c in ipairs({ ui:GetChildren() }) do
-            local _, rel = c.GetPoint and c:GetPoint(1)
-            if rel and near[rel] then fonts(c, 1) end
+            -- some of the game's frames are off limits to addons: leave them be
+            if not (c.IsForbidden and c:IsForbidden()) then
+                local ok, _, rel = pcall(c.GetPoint, c, 1)
+                if ok and rel and near[rel] then pcall(fonts, c, 1) end
+            end
         end
     end
 end

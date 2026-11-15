@@ -16,6 +16,9 @@ Versioning: the third number counts the meaningful changes made since the second
 - **Eight looks for the minimap, the objective tracker and the world map**: Blizzard (the game's own), RUIN (gold on ink, as the RUIN Waypoint wears it), Blue & Gold (the core app's navy and gold), Pathfinder, Finder, Muster, Codex and Exchange (the modern style in that module's color). Also `/path minimap <look>`, `/path objectives <look>`, `/path worldmap <look>`.
 - **The RUIN Waypoint has a Style too** (Options > Waypoint): RUIN's gold, or any module's color, and a Background setting for how see-through its card is.
 - **So does Pathfinder's tracker** (Options > Tracker): a Style (RUIN or any module's color) and a Background opacity, with the same slight gradient as the others.
+- **A roomier Options tab** that scrolls: Tracker, Waypoint, Game Frames and Controls, each with space to breathe. Each section's look sits on its own row (Style and Background), and the minimap, objective tracker and world map share one Game Frames section under All styles.
+- **One opacity for everything**: beside All styles, a Background setting for the minimap, objective tracker, world map, tracker and waypoint card at once (Mixed when they differ).
+- Fixed: choosing a minimap style could report an error from a game frame addons can't touch.
 - **All Styles** (Options): one setting that sets the minimap, objective tracker, world map, tracker and waypoint to the same look. It reads Mixed when they differ; Blizzard puts the game's frames back and leaves the tracker and waypoint as they are.
 - **Docking the tracker to the minimap is gone**: the tracker always moves freely (the Dock setting and `/path dock` are removed).
 - The Options tab's Objective Tracker and World Map settings sit side by side with the Minimap's, a style and background each on one row.

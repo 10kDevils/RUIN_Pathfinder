@@ -3191,7 +3191,7 @@ local function buildOptions(page)
     ui.trackerStyle, ui.trackerAlpha = lookRow(t, -38 - ROW * 3 - 12, "Look", looks.KEYS,
         function() return M.TrackerStyle() end, function(v) M.SetTrackerStyle(v) end,
         function() return M.TrackerAlpha() end, function(v) M.SetTrackerAlpha(v) end,
-        "The tracker's look: the game's own (tooltip black and gold), RUIN's gold, the core app's blue and gold, or a module's color",
+        "The tracker's look: the game's own (WoW Forever's bronze and gold), RUIN's gold, the core app's blue and gold, or a module's color",
         "How see-through the tracker's background is")
 
     -- Waypoint
@@ -3218,7 +3218,7 @@ local function buildOptions(page)
     ui.pinStyle, ui.pinAlpha = lookRow(w, -76 - ROW * 2 - 12, "Look", looks.KEYS,
         function() return M.PinStyle() end, function(v) M.SetPinStyle(v) end,
         function() return db.pinAlpha or 1 end, function(v) db.pinAlpha = v; if M.RefreshPin then M.RefreshPin() end end,
-        "The RUIN Waypoint's look: the game's own (tooltip black and gold), RUIN's gold, the core app's blue and gold, or a module's color",
+        "The RUIN Waypoint's look: the game's own (WoW Forever's bronze and gold), RUIN's gold, the core app's blue and gold, or a module's color",
         "How see-through the whole RUIN Waypoint is: its marker, card, stem and distance")
 
     -- The game's frames: every look at once, then each frame

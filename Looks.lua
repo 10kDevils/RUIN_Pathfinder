@@ -45,7 +45,8 @@ function L.GameEdge(f, on)
         if e.SetFrameLevel and f.GetFrameLevel then e:SetFrameLevel(f:GetFrameLevel() or 1) end
         if e.SetBackdrop then
             pcall(e.SetBackdrop, e, TIP_EDGE)
-            if e.SetBackdropBorderColor then pcall(e.SetBackdropBorderColor, e, 0.62, 0.62, 0.66, 1) end
+            -- WoW Forever's bronze, as on its minimap ring and unit frames
+            if e.SetBackdropBorderColor then pcall(e.SetBackdropBorderColor, e, 0.80, 0.58, 0.30, 1) end
         end
         f.ruinGameEdge = e
     end
@@ -62,7 +63,7 @@ function L.Modern(key) return COLOR[key] ~= nil end
 -- color it) and its scheme (accent, edge, bg...).
 local themes, schemes = {}, {}
 -- The game's own look, for Pathfinder's own frames (the tracker, the
--- waypoint): tooltip black edged like the game's tooltips, in its gold.
+-- waypoint): a warm near-black edged in WoW Forever's bronze, in the game's gold.
 local BLIZZ = { 1, 0.82, 0 }
 function L.Theme(key)
     if key == "blizzard" then
@@ -76,8 +77,9 @@ end
 
 function L.Scheme(key)
     if key == "blizzard" then
-        schemes.blizzard = schemes.blizzard or { accent = BLIZZ, color = { 0.1, 0.1, 0.12 }, bg = { 0, 0, 0 },
-            edge = { 0.6, 0.6, 0.6 }, ink = { 0.03, 0.03, 0.05 }, panel = { 0.03, 0.03, 0.05 }, panelHi = { 0.08, 0.08, 0.1 },
+        -- WoW Forever's own: bronze edges and gold on a warm near-black
+        schemes.blizzard = schemes.blizzard or { accent = BLIZZ, color = { 0.22, 0.15, 0.07 }, bg = { 0.035, 0.026, 0.016 },
+            edge = { 0.80, 0.58, 0.30 }, ink = { 0.05, 0.036, 0.022 }, panel = { 0.05, 0.036, 0.022 }, panelHi = { 0.10, 0.075, 0.045 },
             mark = BLIZZ, core = true, blizzard = true }
         return schemes.blizzard
     end

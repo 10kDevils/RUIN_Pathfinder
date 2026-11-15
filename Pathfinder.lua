@@ -3092,18 +3092,37 @@ local function buildOptions(page)
 
     -- the game's objective tracker: its look
     local ot = ns.Objectives
-    local oc = card("Objective Tracker", -244, 122, "right")
+    -- the right column: the objective tracker and the world map, a style
+    -- and a background opacity each, on one row
+    local function lookRow(c, mod, tipStyle, tipBack)
+        local l = W.Label(c, C.dim .. "Style|r", "GameFontHighlightSmall")
+        l:SetPoint("TOPLEFT", 12, -34)
+        local st = W.Dropdown(c, 168, mod.STYLES, function() return mod.Style() end, function(v) mod.SetStyle(v) end)
+        st.format = function(v) return mod.STYLE_LABEL[v] or v end
+        st:SetPoint("LEFT", l, "RIGHT", 8, 0)
+        st.tipTitle = tipStyle
+        st:Refresh()
+        local bl = W.Label(c, C.dim .. "Background|r", "GameFontHighlightSmall")
+        bl:SetPoint("LEFT", st, "RIGHT", 12, 0)
+        local bd = W.Dropdown(c, 74, mm.OPACITY, function() return near(mod.Alpha()) end, function(v) mod.SetAlpha(v) end)
+        bd.format = function(v) return mm.OpacityLabel(v) end
+        bd:SetPoint("LEFT", bl, "RIGHT", 6, 0)
+        bd.tipTitle = tipBack
+        bd:Refresh()
+        return st, bd
+    end
+    local oc = card("Objective Tracker", -244, 60, "right")
     if ot then
-        local ol = W.Label(oc, C.dim .. "Style|r", "GameFontHighlightSmall")
-        ol:SetPoint("TOPLEFT", 12, -36)
-        local ost = W.Dropdown(oc, 190, ot.STYLES, function() return ot.Style() end, function(v) ot.SetStyle(v) end)
-        ost.format = function(v) return ot.STYLE_LABEL[v] or v end
-        ost:SetPoint("LEFT", ol, "RIGHT", 8, 0)
-        ost.tipTitle = "The game's own look, or Pathfinder's: a panel in the suite's look behind the tracker, headers in Pathfinder's color, quest titles and objectives in the suite's text colors"
-        ost:Refresh()
-        ui.otStyle = ost
-        ui.otAlpha = opacity(oc, -66, function() return near(ot.Alpha()) end, function(v) ot.SetAlpha(v) end,
+        ui.otStyle, ui.otAlpha = lookRow(oc, ot,
+            "The game's own look, or Pathfinder's: a panel in the suite's look behind the tracker, headers in Pathfinder's color, quest titles and objectives in the suite's text colors",
             "How see-through the panel behind the objective tracker is, in Pathfinder's style")
+    end
+    local wm = ns.WorldMap
+    local wc = card("World Map & Quest Log", -306, 60, "right")
+    if wm then
+        ui.wmStyle, ui.wmAlpha = lookRow(wc, wm,
+            "The game's own look, or Pathfinder's: the map window and quest log in the suite's look, with flat quest markers and buttons",
+            "How see-through the map window's background is, in Pathfinder's style")
     end
 
     local k = card("Controls", -374, 56)
@@ -3112,7 +3131,7 @@ local function buildOptions(page)
     kl:SetPoint("RIGHT", k, "RIGHT", -12, 0)
     kl:SetWordWrap(false)
     kl:SetText(C.white .. "Keys:|r " .. C.dim .. "Options > Keybindings > AddOns > RUIN Pathfinder.|r   "
-        .. C.white .. "Chat:|r " .. C.dim .. "/path next, prev, clear, pin, editor, waypoint, nav, remind, minimap, objectives, dock|r")
+        .. C.white .. "Chat:|r " .. C.dim .. "/path next, prev, clear, pin, editor, waypoint, nav, remind, minimap, objectives, worldmap, dock|r")
 
     page:SetScript("OnShow", function()
         for _, c in ipairs(checks) do c:Refresh() end
@@ -3194,6 +3213,7 @@ function M:OnEnable()
     end
     for k, v in pairs(DEFAULTS) do if db[k] == nil then db[k] = v end end
     if ns.Objectives then ns.Objectives.Init(db) end
+    if ns.WorldMap then ns.WorldMap.Init(db) end
     if ns.Minimap then
         ns.Minimap.Init(db)
         ns.Minimap.OnDockChanged = ns.Minimap.OnDockChanged or function() if tracker then anchorTracker(); fitTracker() end end
@@ -3303,6 +3323,13 @@ SlashCmdList.RUINPATH = function(input)
         if arg == "blizzard" or arg == "pathfinder" then mm.SetStyle(arg)
         else return M:Print("/path minimap blizzard | pathfinder | debug | find") end
         M:Print(("Minimap: %s style."):format(mm.STYLE_LABEL[mm.Style()]))
+    elseif msg:match("^worldmap") and ns.WorldMap then
+        local arg = msg:match("^worldmap%s+(%S+)")
+        local wm = ns.WorldMap
+        if arg == "blizzard" or arg == "pathfinder" then wm.SetStyle(arg)
+        else return M:Print("/path worldmap blizzard | pathfinder") end
+        if ui.wmStyle then ui.wmStyle:Refresh() end
+        M:Print(("World map: %s style."):format(wm.STYLE_LABEL[wm.Style()]))
     elseif msg:match("^objectives") and ns.Objectives then
         local arg = msg:match("^objectives%s+(%S+)")
         local ot = ns.Objectives

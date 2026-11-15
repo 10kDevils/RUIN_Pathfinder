@@ -1,0 +1,275 @@
+-- RUIN Pathfinder: the world map and quest log, in the game's own look or in
+-- Pathfinder's, the same design language as its minimap and objective
+-- tracker: the game's gold frame, portrait, parchment and header bars give
+-- way to a panel in the suite's HUD look (its edges, the accent band, a
+-- slight green to black gradient at the opacity you pick); the title, the
+-- breadcrumb bar and the quest log's zone headers take Pathfinder's color;
+-- quest markers, collapse buttons and the window's buttons are drawn flat.
+-- The game still lays out and runs the map and the log.
+local ADDON, ns = ...
+local R = RUIN_API
+if not R then return end
+local W = R.Widgets
+local MM = ns.Minimap
+local OT = ns.Objectives
+
+local WM = {}
+ns.WorldMap = WM
+
+WM.STYLES = { "blizzard", "pathfinder" }
+WM.STYLE_LABEL = { blizzard = "Blizzard / WoW Forever", pathfinder = "Pathfinder (modern)" }
+
+local OWNER = "worldmap"
+local LINE = { 0.60, 0.64, 0.70 }
+local TEXT = { 0.92, 0.94, 0.96 }
+
+local db
+local panel            -- the panel behind the window
+local colored = {}     -- fontstring -> its own color, to give back
+
+local function map() return rawget(_G, "WorldMapFrame") end
+local function questMap() return rawget(_G, "QuestMapFrame") end
+
+function WM.Style() return (db and db.wmStyle == "pathfinder") and "pathfinder" or "blizzard" end
+function WM.Alpha() return (db and db.wmAlpha) or 0.95 end
+local function on() return WM.Style() == "pathfinder" end
+
+local function accent() return MM.Scheme().accent end
+
+local function color(fs, c)
+    if type(fs) ~= "table" or not fs.SetTextColor then return end
+    if colored[fs] == nil and fs.GetTextColor then colored[fs] = { fs:GetTextColor() } end
+    fs:SetTextColor(c[1], c[2], c[3])
+end
+
+local function visible(x)
+    if type(x) ~= "table" then return false end
+    if x.IsVisible then return x:IsVisible() end
+    return x.IsShown == nil or x:IsShown()
+end
+
+local function isTexture(r) return type(r) == "table" and r.GetObjectType and r:GetObjectType() == "Texture" end
+
+-- The game's art on a frame: every picture it holds (not its children's).
+local function dimArt(frame, test)
+    if type(frame) ~= "table" or not frame.GetRegions then return end
+    for _, r in ipairs({ frame:GetRegions() }) do
+        if isTexture(r) and (not test or test(r)) then MM.Dim(r, true) end
+    end
+end
+
+-- Large pictures (backgrounds, parchment) and anything named or drawn as a
+-- border, background or inset: frame art, not icons.
+local function frameArt(r)
+    local w, h = (r.GetWidth and r:GetWidth()) or 0, (r.GetHeight and r:GetHeight()) or 0
+    if w > 60 and h > 60 then return true end
+    local id = (tostring((r.GetName and r:GetName()) or "") .. " " .. tostring((r.GetAtlas and r:GetAtlas()) or "")):lower()
+    return id:find("border") or id:find("background") or id:find("inset") or id:find("frame") or id:find("bg") or id:find("divider")
+        or id:find("parchment") or id:find("tile") or id:find("streak") or id:find("header") or false
+end
+
+-- Walk a part of the window and hide its frame art, sparing buttons' icons
+-- and the map itself.
+local function dimTree(frame, depth, skip)
+    if type(frame) ~= "table" or depth > 4 or (skip and skip[frame]) then return end
+    dimArt(frame, frameArt)
+    if frame.GetChildren then
+        for _, c in ipairs({ frame:GetChildren() }) do
+            local t = c.GetObjectType and c:GetObjectType()
+            if t ~= "Button" and t ~= "CheckButton" and t ~= "EditBox" then dimTree(c, depth + 1, skip) end
+        end
+    end
+end
+
+local function buildPanel(f)
+    panel = CreateFrame("Frame", "RUIN_PathfinderWorldMapBack", f)
+    panel:SetFrameLevel(math.max(0, (f:GetFrameLevel() or 1)))
+    if panel.EnableMouse then panel:EnableMouse(false) end
+    panel.ruinTheme = { color = (MM.Scheme().color) or { 0.31, 0.60, 0.23 } }
+    if W.Skin then W.Skin(panel, "bg", 0.95, "border") end
+    if W.Sheen then panel.sheen = W.Sheen(panel, 0.04) end
+    panel.band = panel:CreateTexture(nil, "ARTWORK")
+    panel.band:SetHeight(2)
+    panel.band:SetPoint("TOPLEFT", 0, 0)
+    panel.band:SetPoint("TOPRIGHT", 0, 0)
+    -- a hairline between the map and the quest log
+    panel.split = panel:CreateTexture(nil, "ARTWORK")
+    panel.split:SetWidth(1)
+end
+
+local function layoutPanel(f)
+    local border = f.BorderFrame or f
+    panel:ClearAllPoints()
+    panel:SetPoint("TOPLEFT", border, "TOPLEFT", 0, 0)
+    panel:SetPoint("BOTTOMRIGHT", border, "BOTTOMRIGHT", 0, 0)
+    local c = accent()
+    panel.band:SetColorTexture(c[1], c[2], c[3], 0.9)
+    MM.Paint(panel, WM.Alpha(), 0.12, -0.55)
+    local q = questMap()
+    if visible(q) then
+        local e = W.BTN_EDGE or { 0.3, 0.34, 0.38 }
+        panel.split:SetColorTexture(e[1], e[2], e[3], 0.9)
+        panel.split:ClearAllPoints()
+        panel.split:SetPoint("TOPLEFT", q, "TOPLEFT", -1, 0)
+        panel.split:SetPoint("BOTTOMLEFT", q, "BOTTOMLEFT", -1, 0)
+        panel.split:Show()
+    else
+        panel.split:Hide()
+    end
+    panel:Show()
+end
+
+-- The window's own buttons: close, maximize / minimize.
+local function styleButtons(f)
+    local b = f.BorderFrame
+    if type(b) ~= "table" then return end
+    OT.SkinButton(b.CloseButton or rawget(_G, "WorldMapFrameCloseButton"), "close", OWNER, on)
+    local mm = b.MaximizeMinimizeFrame or f.MaximizeMinimizeFrame
+    if type(mm) == "table" then
+        OT.SkinButton(mm.MaximizeButton, "expand", OWNER, on)
+        OT.SkinButton(mm.MinimizeButton, "shrink", OWNER, on)
+        dimArt(mm)
+    end
+end
+
+-- The breadcrumb bar: plain words, the place you're on in Pathfinder's color,
+-- the game's arrows drawn as small chevrons.
+local function styleNav(f)
+    local nav = f.NavBar
+    if type(nav) ~= "table" then return end
+    dimTree(nav, 1)
+    local list = {}
+    if type(nav.homeButton) == "table" then list[#list + 1] = nav.homeButton end
+    if type(nav.navList) == "table" then for _, b in ipairs(nav.navList) do list[#list + 1] = b end end
+    for i, b in ipairs(list) do
+        dimArt(b)
+        local text = b.text or b.Text or (b.GetFontString and b:GetFontString())
+        color(text, i == #list and accent() or TEXT)
+        local arrow = b.MenuArrowButton
+        if type(arrow) == "table" then OT.SkinButton(arrow, "menu", OWNER, on) end
+    end
+end
+
+-- The quest log: zone headers in Pathfinder's color with flat collapse
+-- buttons, quest markers drawn flat, objectives in the suite's grey. Quest
+-- titles keep the game's difficulty colors.
+local function styleLog(frame, depth)
+    if type(frame) ~= "table" or depth > 6 or not visible(frame) then return end
+    local kind = OT.KindOf(frame, false)
+    if kind == "poi" then OT.SkinButton(frame, "poi", OWNER, on); return end
+    local cb = frame.CollapseButton
+    local headText = frame.ButtonText or (cb and (frame.Text or frame.text))
+    if headText and type(cb) == "table" then
+        color(headText, accent())
+        dimArt(frame)
+        OT.SkinButton(cb, "collapse", OWNER, on)
+    elseif frame.Text and (frame.Dash or frame.dash) then
+        color(frame.Text, LINE)
+        color(frame.Dash or frame.dash, accent())
+    end
+    if frame.GetChildren then
+        for _, c in ipairs({ frame:GetChildren() }) do styleLog(c, depth + 1) end
+    end
+end
+
+local function styleSearch(box)
+    if type(box) ~= "table" then return end
+    dimArt(box, function(r)
+        local n = tostring((r.GetName and r:GetName()) or ""):lower()
+        return n:find("left") or n:find("right") or n:find("middle") or n:find("mid") or frameArt(r)
+    end)
+    if not box.ruinEdge and W.Skin then
+        local e = CreateFrame("Frame", nil, box)
+        e:SetPoint("TOPLEFT", -4, 2)
+        e:SetPoint("BOTTOMRIGHT", 2, -2)
+        if e.SetFrameLevel then e:SetFrameLevel(math.max(0, (box:GetFrameLevel() or 1) - 1)) end
+        e.ruinTheme = panel and panel.ruinTheme
+        W.Skin(e, "bg", 0.9, "border")
+        box.ruinEdge = e
+    end
+    box.ruinEdge:Show()
+end
+
+function WM.Refresh()
+    local f = map()
+    if not (db and f) or not on() or not visible(f) then return end
+    if not panel then buildPanel(f) end
+    layoutPanel(f)
+    local skip = { [f.ScrollContainer or 0] = true }
+    if type(f.BorderFrame) == "table" then
+        dimTree(f.BorderFrame, 1, skip)
+        local title = f.BorderFrame.TitleContainer and f.BorderFrame.TitleContainer.TitleText or f.BorderFrame.TitleText
+        color(title, accent())
+        local portrait = f.BorderFrame.PortraitContainer or f.BorderFrame.portrait or f.BorderFrame.Portrait
+        if type(portrait) == "table" then MM.Dim(portrait, true) end
+    end
+    styleButtons(f)
+    styleNav(f)
+    local q = questMap()
+    if type(q) == "table" and visible(q) then
+        dimTree(q, 1, skip)
+        local scroll = rawget(_G, "QuestScrollFrame") or (q.QuestsFrame and q.QuestsFrame.ScrollFrame)
+        if type(scroll) == "table" then
+            dimTree(scroll, 1)
+            styleLog(scroll.Contents or scroll, 1)
+            styleSearch(scroll.SearchBox or (q.QuestsFrame and q.QuestsFrame.SearchBox))
+        end
+    end
+end
+
+local function restore()
+    if panel then panel:Hide() end
+    OT.UnskinOwner(OWNER)
+    for fs, c in pairs(colored) do if fs.SetTextColor and c[1] then fs:SetTextColor(c[1], c[2], c[3], c[4] or 1) end end
+    colored = {}
+    MM.UndimOwner(OWNER)
+    local box = rawget(_G, "QuestScrollFrame") and QuestScrollFrame.SearchBox
+    if type(box) == "table" and box.ruinEdge then box.ruinEdge:Hide() end
+    -- the game repaints the log's own colors on its next update: ask for one
+    if QuestMapFrame_UpdateAll then pcall(QuestMapFrame_UpdateAll) end
+end
+
+function WM.Apply()
+    if not db then return end
+    if on() then
+        MM.DimOwner(OWNER)            -- what's dimmed from here on is the map's, to give back
+        WM.Refresh()
+        MM.DimOwner(nil)
+    else
+        restore()
+    end
+end
+
+function WM.SetStyle(style)
+    if style ~= "blizzard" and style ~= "pathfinder" then return false end
+    db.wmStyle = style
+    WM.Apply()
+    return true
+end
+
+function WM.SetAlpha(a)
+    if type(a) ~= "number" then return false end
+    db.wmAlpha = math.max(0, math.min(1, a))
+    if panel and panel:IsShown() then MM.Paint(panel, db.wmAlpha, 0.12, -0.55) end
+    return true
+end
+
+-- Keep it styled while the map is open: the log rebuilds as quests change.
+local since = 0
+local function tick(self, elapsed)
+    since = since + (elapsed or 0)
+    if since < 0.3 then return end
+    since = 0
+    if on() then WM.Apply() end
+end
+
+function WM.Init(cdb)
+    db = cdb
+    if db.wmStyle == nil then db.wmStyle = "blizzard" end
+    if type(db.wmAlpha) ~= "number" then db.wmAlpha = 0.95 end
+    local f = map()
+    if type(f) ~= "table" or not f.HookScript then return end
+    local ticker = CreateFrame("Frame", nil, f)
+    ticker:SetScript("OnUpdate", tick)
+    f:HookScript("OnShow", function() if on() then WM.Apply() end end)
+end

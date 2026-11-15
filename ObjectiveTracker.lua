@@ -65,8 +65,8 @@ local function tex(f, name, layer, sub)
     return t
 end
 
-local function overlay(btn)
-    local o = CreateFrame("Frame", nil, tracker() or btn:GetParent())
+local function overlay(btn, owner)
+    local o = CreateFrame("Frame", nil, (owner == "tracker" and tracker()) or btn:GetParent() or UIParent)
     if o.SetFrameStrata and btn.GetFrameStrata then o:SetFrameStrata(btn:GetFrameStrata() or "MEDIUM") end
     if o.SetFrameLevel then o:SetFrameLevel(((btn.GetFrameLevel and btn:GetFrameLevel()) or 1) + 3) end
     if o.EnableMouse then o:EnableMouse(false) end
@@ -120,6 +120,14 @@ function PAINT.collapse(btn, o)
     end
     local owner = btn:GetParent() and btn:GetParent():GetParent()
     local shut = owner and ((owner.IsCollapsed and owner:IsCollapsed()) or owner.collapsed or owner.isCollapsed)
+    -- the game's own art says it best: a plus (or "expand") when shut
+    local art = btn.Icon or btn.icon or (btn.GetNormalTexture and btn:GetNormalTexture())
+    local atlas = type(art) == "table" and art.GetAtlas and art:GetAtlas()
+    if type(atlas) == "string" then
+        atlas = atlas:lower()
+        if atlas:find("plus") or atlas:find("expand") then shut = true
+        elseif atlas:find("minus") or atlas:find("collapse") then shut = false end
+    end
     o.glyph:SetTexture(MEDIA .. (shut and "Plus" or "Minus"))
     local c = hovered(btn) and { 1, 1, 1 } or MM.Scheme().accent
     o.glyph:SetVertexColor(c[1], c[2], c[3], 1)
@@ -146,17 +154,18 @@ end
 local function paint(btn)
     local s = skins[btn]
     if not s then return end
-    s.overlay:SetShown(visible(btn) and OT.Style() == "pathfinder")
+    s.overlay:SetShown(visible(btn) and s.on())
     if s.overlay:IsShown() then PAINT[s.kind](btn, s.overlay) end
 end
 
 local function itemArt(btn) return btn.icon or btn.Icon or btn.IconTexture end
 
 -- Take a game button into Pathfinder's look.
-local function skin(btn, kind)
+local function skin(btn, kind, owner, on)
+    owner = owner or "tracker"
     local s = skins[btn]
     if not s then
-        s = { kind = kind, overlay = overlay(btn) }
+        s = { kind = kind, owner = owner, overlay = overlay(btn, owner), on = on or function() return OT.Style() == "pathfinder" end }
         skins[btn] = s
         if btn.HookScript and not btn.ruinOTHook then
             btn.ruinOTHook = true
@@ -218,6 +227,35 @@ local function kindOf(x, inBlock)
     end
 end
 OT.KindOf = kindOf
+OT.PAINT = PAINT
+OT.MEDIA = MEDIA
+
+-- For Pathfinder's other skins (the world map): redraw a game button in
+-- this style under an owner's name, and give an owner's buttons back.
+function OT.SkinButton(btn, kind, owner, on) if type(btn) == "table" and btn.GetObjectType then skin(btn, kind, owner, on) end end
+function OT.Repaint(btn) paint(btn) end
+function OT.UnskinOwner(owner)
+    for btn, sk in pairs(skins) do if sk.owner == owner then unskin(btn, sk) end end
+end
+function OT.SkinCheck(t) skinCheck(t) end
+
+-- plain glyphs in Pathfinder's green, white under the mouse
+local function glyph(name, size, rot)
+    return function(btn, o)
+        if not o.glyph then
+            o.glyph = tex(o, name)
+            o.glyph:SetPoint("CENTER")
+            o.glyph:SetSize(size, size)
+            if rot and o.glyph.SetRotation then o.glyph:SetRotation(rot) end
+        end
+        local c = hovered(btn) and { 1, 1, 1 } or MM.Scheme().accent
+        o.glyph:SetVertexColor(c[1], c[2], c[3], 1)
+    end
+end
+PAINT.close = glyph("Close", 12)
+PAINT.expand = glyph("Expand", 13)
+PAINT.shrink = glyph("Shrink", 13)
+PAINT.menu = glyph("Chevron", 10, -math.pi / 2)
 
 -- A header (the tracker's or a section's): accent text, the game's backdrop
 -- hidden, a short accent rule under the text.
@@ -371,7 +409,7 @@ local function restore()
         if h.Background then MM.Dim(h.Background, false) end
     end
     styled = {}
-    for btn, sk in pairs(skins) do unskin(btn, sk) end
+    for btn, sk in pairs(skins) do if sk.owner == "tracker" then unskin(btn, sk) end end
     for t, was in pairs(checks) do unskinCheck(t, was) end
     checks = {}
     -- the game repaints its own colors on its next update: ask for one now

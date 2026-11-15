@@ -125,8 +125,12 @@ local function hookAlpha(r)
     end)
 end
 
+local dimOwner          -- while set, what's dimmed is that owner's to give back
+local owned = {}        -- region -> owner
 local function dim(r, off, keepMouse)
     if type(r) ~= "table" or not r.SetAlpha then return end
+    if off and dimOwner and saved[r] == nil then owned[r] = dimOwner end
+    if not off then owned[r] = nil end
     keepDim[r] = off or nil
     if off then
         if saved[r] == nil then saved[r] = (r.GetAlpha and r:GetAlpha()) or 1 end
@@ -143,6 +147,10 @@ local function dim(r, off, keepMouse)
     end
 end
 MM.Dim = dim
+function MM.DimOwner(owner) dimOwner = owner end
+function MM.UndimOwner(owner)
+    for r, o in pairs(owned) do if o == owner then dim(r, false) end end
+end
 
 ---------------------------------------------------------------------------
 -- Pathfinder's ring

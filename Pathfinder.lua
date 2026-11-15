@@ -3201,48 +3201,6 @@ local function buildOptions(page)
         return st, bd
     end
 
-    -- Tracker
-    local t = card("Tracker", 168)
-    check(t, "Show the tracker", "tracker", "The small window with the Route and Tracked tabs: < and > on its sides, the x to clear, double-click to open Pathfinder.", nil, PAD, -38)
-    check(t, "Tracker arrow and map pin", "arrow", "The arrow on the tracker pointing to the step, and the step's pin on the world map.", nil, COL2, -38)
-    check(t, "Skip done quests", "skipDone", "Steps for quests you've already done, or already have, tick themselves off.", nil, PAD, -38 - ROW)
-    check(t, "Say each new waypoint in chat", "announce", "\"Waypoint set: ... (N yards)\" when you move to a step.", nil, COL2, -38 - ROW)
-    check(t, "Remind me of pick-ups I walk past", "remindPickups", "When you come near the giver of a quest your route picks up next and leave without taking it.", nil, PAD, -38 - ROW * 2)
-    check(t, "Remind me at a quest I don't have", "remindArea", "When you walk into the area where a quest's targets are and you could take that quest but don't have it (your route's, or this zone's for your level).", nil, COL2, -38 - ROW * 2)
-    divider(t, -38 - ROW * 3 + 2)
-    ui.trackerStyle, ui.trackerAlpha = lookRow(t, -38 - ROW * 3 - 12, "Look", looks.KEYS,
-        function() return M.TrackerStyle() end, function(v) M.SetTrackerStyle(v) end,
-        function() return M.TrackerAlpha() end, function(v) M.SetTrackerAlpha(v) end,
-        "The tracker's look: the game's own (WoW Forever's bronze and gold), RUIN's gold, the core app's blue and gold, or a module's color",
-        "How see-through the tracker's background is")
-
-    -- Waypoint
-    local w = card("Waypoint", 186)
-    local pinCheck = check(w, "Show the RUIN Waypoint", "pin", "RUIN's marker over whatever the game is navigating to. Off: the game's own marker shows instead. /path pin", nil, PAD, -38)
-    if pinCheck.label.SetFontObject then pinCheck.label:SetFontObject("GameFontNormalLarge") end
-    if pinCheck.SetHitRectInsets then pinCheck:SetHitRectInsets(0, -((pinCheck.label:GetStringWidth() or 160) + 6), 0, 0) end
-    local edit = W.Button(w, "Waypoint Editor", 150, function() if M.OpenWaypointEditor then M.OpenWaypointEditor() end end)
-    edit:SetPoint("LEFT", pinCheck.label, "RIGHT", 20, 0)
-    edit.tip = "What the RUIN Waypoint shows and how it looks, where it sits over the spot, when it hides and when it moves to the screen edge, with a live preview. /path editor"
-    check(w, "Put a waypoint on each step", "waypoint", "The game's waypoint on the step's spot, so the pin (and the game's navigation) leads you there. /path waypoint", nil, PAD, -76)
-    check(w, "Track quest steps the game's way", "trackQuests", "For a quest in your log, track the quest itself (like clicking it in the objective tracker) so the pin follows its objective or turn-in.", nil, COL2, -76)
-    local navCheck = W.Check(w, "In-Game Navigation", function()
-        return db.autoNav ~= false
-    end, function(v) M.SetInGameNavigation(v) end)
-    navCheck:SetPoint("TOPLEFT", PAD, -76 - ROW)
-    navCheck.tip = "The game's In-Game Navigation option: the waypoint drawn in the world (the RUIN Waypoint rides on it). On: Pathfinder turns it on, and keeps it on when it places a waypoint. Off: it's turned off, so nothing is drawn in the world; the map pin and tracker still work."
-    checks[#checks + 1] = navCheck
-    local share = W.Check(w, "Share quest locations with RUIN", function() return adb.atlasShare ~= false end, function(v) adb.atlasShare = v end)
-    share:SetPoint("TOPLEFT", COL2, -76 - ROW)
-    share.tip = "Pathfinder's atlas: where you pick up, do and hand in quests, shared with RUIN so routes follow where things really are on WoW Forever. Only quest numbers and map spots. /path atlas"
-    checks[#checks + 1] = share
-    divider(w, -76 - ROW * 2 + 2)
-    ui.pinStyle, ui.pinAlpha = lookRow(w, -76 - ROW * 2 - 12, "Look", looks.KEYS,
-        function() return M.PinStyle() end, function(v) M.SetPinStyle(v) end,
-        function() return db.pinAlpha or 1 end, function(v) db.pinAlpha = v; if M.RefreshPin then M.RefreshPin() end end,
-        "The RUIN Waypoint's look: the game's own (WoW Forever's bronze and gold), RUIN's gold, the core app's blue and gold, or a module's color",
-        "How see-through the whole RUIN Waypoint is: its marker, card, stem and distance")
-
     -- The game's frames: every look at once, then each frame
     local ot, wm = ns.Objectives, ns.WorldMap
     local g = card("Game Frames", 214)
@@ -3275,6 +3233,48 @@ local function buildOptions(page)
             "The game's own look, or the suite's modern one: the map window and quest log in the suite's look, with flat quest markers and buttons",
             "How see-through the map window's background is")
     end
+
+    -- Tracker
+    local t = card("Tracker", 168)
+    check(t, "Show the tracker", "tracker", "The small window with the Route and Tracked tabs: < and > on its sides, the x to clear, double-click to open Pathfinder.", nil, PAD, -38)
+    check(t, "Tracker arrow and map pin", "arrow", "The arrow on the tracker pointing to the step, and the step's pin on the world map.", nil, COL2, -38)
+    check(t, "Skip done quests", "skipDone", "Steps for quests you've already done, or already have, tick themselves off.", nil, PAD, -38 - ROW)
+    check(t, "Say each new waypoint in chat", "announce", "\"Waypoint set: ... (N yards)\" when you move to a step.", nil, COL2, -38 - ROW)
+    check(t, "Remind me of pick-ups I walk past", "remindPickups", "When you come near the giver of a quest your route picks up next and leave without taking it.", nil, PAD, -38 - ROW * 2)
+    check(t, "Remind me at a quest I don't have", "remindArea", "When you walk into the area where a quest's targets are and you could take that quest but don't have it (your route's, or this zone's for your level).", nil, COL2, -38 - ROW * 2)
+    divider(t, -38 - ROW * 3 + 2)
+    ui.trackerStyle, ui.trackerAlpha = lookRow(t, -38 - ROW * 3 - 12, "Look", looks.KEYS,
+        function() return M.TrackerStyle() end, function(v) M.SetTrackerStyle(v) end,
+        function() return M.TrackerAlpha() end, function(v) M.SetTrackerAlpha(v) end,
+        "The tracker's look: the game's own (WoW Forever's bronze and gold), RUIN's blue and gold, Ink's gold on ink, or a module's color",
+        "How see-through the tracker's background is")
+
+    -- Waypoint
+    local w = card("Waypoint", 186)
+    local pinCheck = check(w, "Show the RUIN Waypoint", "pin", "RUIN's marker over whatever the game is navigating to. Off: the game's own marker shows instead. /path pin", nil, PAD, -38)
+    if pinCheck.label.SetFontObject then pinCheck.label:SetFontObject("GameFontNormalLarge") end
+    if pinCheck.SetHitRectInsets then pinCheck:SetHitRectInsets(0, -((pinCheck.label:GetStringWidth() or 160) + 6), 0, 0) end
+    local edit = W.Button(w, "Waypoint Editor", 150, function() if M.OpenWaypointEditor then M.OpenWaypointEditor() end end)
+    edit:SetPoint("LEFT", pinCheck.label, "RIGHT", 20, 0)
+    edit.tip = "What the RUIN Waypoint shows and how it looks, where it sits over the spot, when it hides and when it moves to the screen edge, with a live preview. /path editor"
+    check(w, "Put a waypoint on each step", "waypoint", "The game's waypoint on the step's spot, so the pin (and the game's navigation) leads you there. /path waypoint", nil, PAD, -76)
+    check(w, "Track quest steps the game's way", "trackQuests", "For a quest in your log, track the quest itself (like clicking it in the objective tracker) so the pin follows its objective or turn-in.", nil, COL2, -76)
+    local navCheck = W.Check(w, "In-Game Navigation", function()
+        return db.autoNav ~= false
+    end, function(v) M.SetInGameNavigation(v) end)
+    navCheck:SetPoint("TOPLEFT", PAD, -76 - ROW)
+    navCheck.tip = "The game's In-Game Navigation option: the waypoint drawn in the world (the RUIN Waypoint rides on it). On: Pathfinder turns it on, and keeps it on when it places a waypoint. Off: it's turned off, so nothing is drawn in the world; the map pin and tracker still work."
+    checks[#checks + 1] = navCheck
+    local share = W.Check(w, "Share quest locations with RUIN", function() return adb.atlasShare ~= false end, function(v) adb.atlasShare = v end)
+    share:SetPoint("TOPLEFT", COL2, -76 - ROW)
+    share.tip = "Pathfinder's atlas: where you pick up, do and hand in quests, shared with RUIN so routes follow where things really are on WoW Forever. Only quest numbers and map spots. /path atlas"
+    checks[#checks + 1] = share
+    divider(w, -76 - ROW * 2 + 2)
+    ui.pinStyle, ui.pinAlpha = lookRow(w, -76 - ROW * 2 - 12, "Look", looks.KEYS,
+        function() return M.PinStyle() end, function(v) M.SetPinStyle(v) end,
+        function() return db.pinAlpha or 1 end, function(v) db.pinAlpha = v; if M.RefreshPin then M.RefreshPin() end end,
+        "The RUIN Waypoint's look: the game's own (WoW Forever's bronze and gold), RUIN's blue and gold, Ink's gold on ink, or a module's color",
+        "How see-through the whole RUIN Waypoint is: its marker, card, stem and distance")
 
     -- Controls
     local k = card("Controls", 86)

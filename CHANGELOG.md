@@ -32,6 +32,8 @@ Versioning: the third number counts the meaningful changes made since the second
 - `/path minimap blizzard | pathfinder | debug`.
 - **The tracker and waypoint start in the game's own look** (Blizzard), like the minimap, objective tracker and world map.
 - **Mark on Map and View Location** on the Quests page: *Show on Map* is now *Mark on Map* (puts the pin down), and *View Location* tracks the quest and opens your world map on where it is.
+- **Game Frames is at the top of Customization**, above Tracker and Waypoint.
+- **Looks renamed**: the gold-on-ink look is now *Ink*, and the core app's navy and gold (was *Blue & Gold*) is now *RUIN*, listed right under Blizzard. Saved choices keep their look.
 
 ## 0.7.5 — 2026-11-13
 

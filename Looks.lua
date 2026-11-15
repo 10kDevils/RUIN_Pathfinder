@@ -1,8 +1,8 @@
 -- RUIN Pathfinder: the looks Pathfinder can give the game's own frames (the
 -- minimap, the objective tracker, the world map and quest log) and its
 -- waypoint: the game's own (Blizzard), or the suite's modern style in one of
--- its colors. RUIN wears gold on ink, as the waypoint always has; Blue & Gold
--- the core app's navy and gold; the others their module's color, as the
+-- its colors. RUIN wears the core app's navy and gold; Ink gold on ink, as
+-- the waypoint always has; the others their module's color, as the
 -- module's pages do.
 local ADDON, ns = ...
 local R = RUIN_API
@@ -12,9 +12,10 @@ local W = R.Widgets
 local L = {}
 ns.Looks = L
 
-L.KEYS = { "blizzard", "ruin", "core", "pathfinder", "finder", "muster", "codex", "exchange" }
-L.MODERN = { "ruin", "core", "pathfinder", "finder", "muster", "codex", "exchange" }
-L.LABEL = { blizzard = "Blizzard", ruin = "RUIN", core = "Blue & Gold", pathfinder = "Pathfinder", finder = "Finder",
+L.KEYS = { "blizzard", "core", "ruin", "pathfinder", "finder", "muster", "codex", "exchange" }
+L.MODERN = { "core", "ruin", "pathfinder", "finder", "muster", "codex", "exchange" }
+-- (the keys stay as saved: "core" is the RUIN look, "ruin" is Ink)
+L.LABEL = { blizzard = "Blizzard", ruin = "Ink", core = "RUIN", pathfinder = "Pathfinder", finder = "Finder",
             muster = "Muster", codex = "Codex", exchange = "Exchange" }
 
 local GOLD = { 0.90, 0.72, 0.38 }

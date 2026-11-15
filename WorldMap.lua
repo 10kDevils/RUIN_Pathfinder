@@ -103,23 +103,48 @@ end
 -- style misses (/path worldmap debug).
 function WM.Debug(print)
     local q = questMap()
-    if type(q) ~= "table" then return print("No quest log.") end
+    if type(q) ~= "table" or not q.GetRect or not q:GetRect() then return print("Open the map with the quest log first.") end
+    -- the middle of the quest log, on screen
+    local es = q:GetEffectiveScale()
+    local l, b, w, h = q:GetRect()
+    local px, py = (l + w / 2) * es, (b + h * 0.35) * es
+    local function covers(r)
+        local rl, rb, rw, rh = r:GetRect()
+        if not rl then return false end
+        local s = (r.GetEffectiveScale and r:GetEffectiveScale()) or es
+        rl, rb, rw, rh = rl * s, rb * s, rw * s, rh * s
+        return px >= rl and px <= rl + rw and py >= rb and py <= rb + rh, rw, rh
+    end
+    local function path(f)
+        local parts, x = {}, f
+        while x and #parts < 6 do
+            local n = x.GetName and x:GetName()
+            table.insert(parts, 1, n or ("(" .. x:GetObjectType() .. ")"))
+            if n then break end
+            x = x.GetParent and x:GetParent()
+        end
+        return table.concat(parts, ".")
+    end
     local n = 0
-    local function walk(frame, depth, path)
-        if type(frame) ~= "table" or depth > 8 or not visible(frame) then return end
-        for _, r in ipairs({ frame:GetRegions() }) do
-            if isTexture(r) and r:IsVisible() and (r:GetAlpha() or 0) > 0.05 then
-                local w, h = r:GetWidth() or 0, r:GetHeight() or 0
-                if w >= 60 and h >= 30 and n < 25 then
-                    n = n + 1
-                    print(("%s: %s %dx%d tex=%s atlas=%s"):format(path, tostring(r:GetName()), w, h, tostring(r:GetTexture()), tostring(r.GetAtlas and r:GetAtlas())))
+    local f = EnumerateFrames()
+    while f do
+        pcall(function()
+            if (f.IsForbidden and f:IsForbidden()) or not f:IsVisible() then return end
+            for _, r in ipairs({ f:GetRegions() }) do
+                if isTexture(r) and r:IsVisible() and (r:GetAlpha() or 0) > 0.05 then
+                    local hit, rw, rh = covers(r)
+                    if hit and n < 20 then
+                        n = n + 1
+                        local cr, cg, cb, ca = r:GetVertexColor()
+                        print(("%s: %s %dx%d tex=%s atlas=%s color=%.2f,%.2f,%.2f,%.2f layer=%s"):format(path(f), tostring(r:GetName()), rw, rh,
+                            tostring(r:GetTexture()), tostring(r.GetAtlas and r:GetAtlas()), cr or 0, cg or 0, cb or 0, ca or 0, tostring(r:GetDrawLayer())))
+                    end
                 end
             end
-        end
-        for i, c in ipairs({ frame:GetChildren() }) do walk(c, depth + 1, path .. "." .. tostring(c:GetName() or c:GetObjectType() .. i)) end
+        end)
+        f = EnumerateFrames(f)
     end
-    walk(q, 1, "QuestMapFrame")
-    print(n .. " pictures still showing over the quest log.")
+    print(n .. " pictures drawn at the middle of the quest log.")
 end
 
 local function buildPanel(f)

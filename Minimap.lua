@@ -965,22 +965,27 @@ function MM.Find(print)
         return ("%s (%s, parent %s%s, strata %s)"):format(tostring(f:GetName()), f:GetObjectType(), tostring(p and p:GetName()),
             (f.IsMouseEnabled and f:IsMouseEnabled()) and ", clickable" or "", tostring(f.GetFrameStrata and f:GetFrameStrata()))
     end
-    local f = EnumerateFrames and EnumerateFrames()
-    while f do
+    -- one frame at a time, each in its own pcall: some of the game's frames
+    -- are off limits to addons and throw if touched
+    local function look(f)
         local name = tostring(f:GetName() or "")
-        if f ~= m and not name:find("^RUIN") and f.IsVisible and f:IsVisible() and (f.GetEffectiveAlpha and f:GetEffectiveAlpha() or 1) > 0.05 then
-            local where = onMap(f, 8, 160)
-            if where then add("Frame " .. owner(f) .. ": " .. where) end
-            for _, r in ipairs({ f:GetRegions() }) do
-                if r.GetObjectType and r:GetObjectType() == "Texture" and r:IsVisible() and (r:GetAlpha() or 0) > 0.05 then
-                    local rw = onMap(r, 8, 90)
-                    if rw then
-                        add(("  picture %s on %s: tex=%s atlas=%s %s"):format(tostring(r:GetName()), name ~= "" and name or owner(f),
-                            tostring(r:GetTexture()), tostring(r.GetAtlas and r:GetAtlas()), rw))
-                    end
+        if f == m or name:find("^RUIN") or not (f.IsVisible and f:IsVisible()) then return end
+        if (f.GetEffectiveAlpha and f:GetEffectiveAlpha() or 1) <= 0.05 then return end
+        local where = onMap(f, 8, 160)
+        if where then add("Frame " .. owner(f) .. ": " .. where) end
+        for _, r in ipairs({ f:GetRegions() }) do
+            if r.GetObjectType and r:GetObjectType() == "Texture" and r:IsVisible() and (r:GetAlpha() or 0) > 0.05 then
+                local rw = onMap(r, 8, 90)
+                if rw then
+                    add(("  picture %s on %s: tex=%s atlas=%s %s"):format(tostring(r:GetName()), name ~= "" and name or owner(f),
+                        tostring(r:GetTexture()), tostring(r.GetAtlas and r:GetAtlas()), rw))
                 end
             end
         end
+    end
+    local f = EnumerateFrames and EnumerateFrames()
+    while f do
+        if not (f.IsForbidden and f:IsForbidden()) then pcall(look, f) end
         f = EnumerateFrames(f)
     end
     for _, t in ipairs(lines) do print(t) end

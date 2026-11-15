@@ -24,7 +24,7 @@ local FADE = 0.5              -- seconds to fade out in the quest's area
 local NEAR = 12                -- fade the card when you're on top of it
 local OBJ_LINES = 5
 local CARD_MIN, CARD_MAX, PAD = 40, 250, 10   -- the card hugs its text, up to the max
--- the look's colors (RUIN's gold on ink to start; Options > Waypoint > Style)
+-- the look's colors (the game's own to start; Customization > Waypoint > Style)
 local GOLD = { 0.90, 0.72, 0.38 }
 local INK = { 0.035, 0.045, 0.075 }
 local built = {}       -- every pin built (the live one, the editor's preview)
@@ -117,7 +117,7 @@ local function look()
         distance = opt("pinShowDistance", true), walk = opt("pinWalk", true), edge = opt("pinEdge", true), edgeCard = opt("pinEdgeCard", true),
         markerStyle = opt("pinMarkerStyle", "emblem"), textSize = opt("pinTextSize", "normal"),
         cardAlpha = opt("pinCardAlpha", 0.86), size = opt("pinScale", 1) or 1,
-        alpha = opt("pinAlpha", 1) or 1,      -- the whole waypoint's opacity (Options > Waypoint > Background)
+        alpha = opt("pinAlpha", 1) or 1,      -- the whole waypoint's opacity (Customization > Waypoint > Background)
     }
 end
 M.PinLook = look

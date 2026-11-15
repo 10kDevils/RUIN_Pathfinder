@@ -519,7 +519,7 @@ function M.PinSetting(key) return db and db[key] end
 -- The tracker's look (its colors) and background opacity.
 function M.TrackerStyle()
     local v = db and db.trackerStyle
-    return (v and ns.Looks.Valid(v)) and v or "pathfinder"
+    return (v and ns.Looks.Valid(v)) and v or "blizzard"
 end
 function M.TrackerAlpha() return (db and type(db.trackerAlpha) == "number") and db.trackerAlpha or 0.94 end
 function M.SetTrackerStyle(v)
@@ -592,7 +592,7 @@ end
 -- The waypoint's look (its colors): one of the suite's modern looks.
 function M.PinStyle()
     local v = db and db.pinStyle
-    return (v and ns.Looks.Valid(v)) and v or "ruin"
+    return (v and ns.Looks.Valid(v)) and v or "blizzard"
 end
 function M.SetPinStyle(v)
     if not ns.Looks.Valid(v) then return false end
@@ -2514,7 +2514,7 @@ local function buildCurrent(page)
     local arrowCheck = W.Check(page, "Waypoint", function() return db.waypoint ~= false end,
         function(v) db.waypoint = v; updateStepPin(); if M.RefreshPin then M.RefreshPin() end end)
     arrowCheck:SetPoint("LEFT", trackCheck, "RIGHT", 64, 0)
-    arrowCheck.tip = "Put a waypoint on each step (or track its quest the game's way) so the RUIN pin leads you there. More in the Options tab."
+    arrowCheck.tip = "Put a waypoint on each step (or track its quest the game's way) so the RUIN pin leads you there. More in the Customization tab."
     local skipCheck = W.Check(page, "Skip done quests", function() return db.skipDone end,
         function(v) db.skipDone = v; if v then M:SkipDone() end end)
     skipCheck:SetPoint("LEFT", arrowCheck, "RIGHT", 76, 0)
@@ -3275,7 +3275,7 @@ end
 
 local function buildPage(panel)
     ui.panel = panel
-    ui.tabs = W.SubTabs(panel, { "Quests", "Guide", "Routes", "Record", "Options" }, function() refreshPage() end)
+    ui.tabs = W.SubTabs(panel, { "Quests", "Guide", "Routes", "Record", "Customization" }, function() refreshPage() end)
     buildQuests(ui.tabs.pages[TAB_QUESTS])
     buildCurrent(ui.tabs.pages[TAB_GUIDE])
     buildLibrary(ui.tabs.pages[3])
@@ -3438,7 +3438,7 @@ SlashCmdList.RUINPATH = function(input)
         local on = not (db.remindPickups ~= false or db.remindArea ~= false)
         db.remindPickups, db.remindArea = on, on
         M.ResetReminders()
-        M:Print("Pick-up reminders " .. (on and "on." or "off.") .. " (Options > Reminders for each kind.)")
+        M:Print("Pick-up reminders " .. (on and "on." or "off.") .. " (Customization > Tracker for each kind.)")
     elseif msg == "atlas" then
         local n = M.AtlasCounts()
         M:Print(("Atlas: where %d quests are picked up, %d handed in, and the objectives of %d, from RUIN members playing WoW Forever. Sharing is %s."):format(

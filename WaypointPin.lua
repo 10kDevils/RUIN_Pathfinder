@@ -64,13 +64,55 @@ local function on()
     return M.PinOn and M.PinOn() and C_Navigation and C_Navigation.GetFrame and C_SuperTrack ~= nil
 end
 
+-- How far the waypoint rises over a faraway spot (screen units): nothing
+-- close by, growing from 60 yards to its full height (an eighth of the
+-- screen) at 600 yards and beyond.
+local LIFT_FROM, LIFT_FULL, LIFT_SHARE = 60, 600, 0.125
+function M.PinLift(yards, screenH)
+    local t = ((tonumber(yards) or 0) - LIFT_FROM) / (LIFT_FULL - LIFT_FROM)
+    t = math.max(0, math.min(1, t))
+    t = math.sqrt(t)                                   -- most of the rise early on
+    return t * (screenH or 768) * LIFT_SHARE
+end
+
 local function yardsText(y)
     if y >= 1000 then return ("%.1fk yd"):format(y / 1000) end
     return ("%d yd"):format(y)
 end
 
+-- How long the trip takes at the speed you're going (on foot, mounted,
+-- swimming, flying, or with a speed boost: the game's own numbers). Distance
+-- is a straight line, so: on the ground you take the roads for the long part
+-- and cut straight across, around what's in the way, for the last stretch;
+-- flying follows the flight path's curves.
+local NEAR_STRETCH = 150       -- yards you'd cut straight across to get there
+local ROADS, ACROSS, FLIGHT = 1.35, 1.15, 1.25   -- the way you go, against a straight line
+function M.TravelSpeed()
+    local cur, run, fly, swim = 0, RUN_SPEED, nil, nil
+    if GetUnitSpeed then
+        local ok, a, b, c, d = pcall(GetUnitSpeed, "player")
+        if ok then cur, run, fly, swim = tonumber(a) or 0, tonumber(b) or RUN_SPEED, tonumber(c), tonumber(d) end
+    end
+    local taxi = UnitOnTaxi and UnitOnTaxi("player")
+    local flying = taxi or (IsFlying and IsFlying())
+    local speed
+    if flying then speed = (fly and fly > 0) and fly or run
+    elseif IsSwimming and IsSwimming() then speed = (swim and swim > 0) and swim or run
+    else speed = run end
+    if cur > speed then speed = cur end                    -- a charge, a taxi, a boost the numbers above miss
+    if not speed or speed <= 0 then speed = RUN_SPEED end
+    return speed, flying and true or false
+end
+function M.TravelSeconds(y)
+    local speed, flying = M.TravelSpeed()
+    local way
+    if flying then way = y * FLIGHT
+    else way = math.min(y, NEAR_STRETCH) * ACROSS + math.max(0, y - NEAR_STRETCH) * ROADS end
+    return way / speed
+end
+
 local function walkText(y)
-    local secs = math.floor(y / RUN_SPEED + 0.5)
+    local secs = math.floor(M.TravelSeconds(y) + 0.5)
     if secs < 5 then return nil end
     if secs < 60 then return ("%d sec"):format(secs) end
     return ("%d min %02d"):format(math.floor(secs / 60), secs % 60)
@@ -496,7 +538,11 @@ local function update(_, elapsed)
         pin:SetScale(sc)
         local fx = nx + (opt("pinOffsetX", 0) or 0)
         local fy = ny + FOOT_LIFT + (opt("pinOffsetY", 0) or 0)
-        pin:SetPoint("CENTER", UIParent, "BOTTOMLEFT", fx / sc, fy / sc + STEM + PIN / 2)
+        -- far away, the spot sits low on the ground near the horizon: raise the
+        -- marker and card, and stretch the stem so its dot still sits on the spot
+        local lift = M.PinLift(yards, h) / sc
+        pin.beam:SetSize(1, STEM + lift)
+        pin:SetPoint("CENTER", UIParent, "BOTTOMLEFT", fx / sc, fy / sc + STEM + lift + PIN / 2)
     end
 
     objTick = objTick + (elapsed or 0)
@@ -741,7 +787,7 @@ local function buildEditor()
     check("Marker", "pinShowMarker", "The emblem (or dot) over the spot.")
     check("Stem and ground dot", "pinShowStem", "The fine line down to the dot on the spot.")
     check("Distance", "pinShowDistance", "How far it is, in the small tag under the dot.")
-    check("Walking time", "pinWalk", "Roughly how long the walk is, beside the distance.", true)
+    check("Travel time", "pinWalk", "Roughly how long it takes to get there at the speed you're going (on foot, mounted, swimming or flying, with any speed boost), beside the distance: by road on the ground, straight across for the last stretch, along the flight path in the air.", true)
     check("Show at the screen edge when off screen", "pinEdge", "When the spot is behind you or off screen, the pin waits at the edge with an arrow pointing the way.")
     check("Card at the edge too", "pinEdgeCard", "The card (with the parts ticked above) beside the pin while it waits at the screen edge.", true)
     y = y - 4

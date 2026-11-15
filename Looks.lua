@@ -13,7 +13,7 @@ local L = {}
 ns.Looks = L
 
 L.KEYS = { "blizzard", "ruin", "core", "pathfinder", "finder", "muster", "codex", "exchange" }
-L.MODERN = { "ruin", "core", "pathfinder", "finder", "muster", "codex", "exchange" }      -- the waypoint's (it has no Blizzard look)
+L.MODERN = { "ruin", "core", "pathfinder", "finder", "muster", "codex", "exchange" }
 L.LABEL = { blizzard = "Blizzard", ruin = "RUIN", core = "Blue & Gold", pathfinder = "Pathfinder", finder = "Finder",
             muster = "Muster", codex = "Codex", exchange = "Exchange" }
 
@@ -30,6 +30,28 @@ local COLOR = {
     exchange = { 0.84, 0.60, 0.16 },
 }
 
+-- Edge a frame like the game's tooltips (the Blizzard look), or take the
+-- edge off again.
+local TIP_EDGE = { edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 14, insets = { left = 3, right = 3, top = 3, bottom = 3 } }
+function L.GameEdge(f, on)
+    if not f then return end
+    local e = f.ruinGameEdge
+    if on and not e then
+        local ok, made = pcall(CreateFrame, "Frame", nil, f, BackdropTemplateMixin and "BackdropTemplate" or nil)
+        if not ok or not made then return end
+        e = made
+        e:SetAllPoints(f)
+        if e.EnableMouse then e:EnableMouse(false) end
+        if e.SetFrameLevel and f.GetFrameLevel then e:SetFrameLevel(f:GetFrameLevel() or 1) end
+        if e.SetBackdrop then
+            pcall(e.SetBackdrop, e, TIP_EDGE)
+            if e.SetBackdropBorderColor then pcall(e.SetBackdropBorderColor, e, 0.62, 0.62, 0.66, 1) end
+        end
+        f.ruinGameEdge = e
+    end
+    if e then e:SetShown(on and true or false) end
+end
+
 local function mix(a, b, t) return { a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t } end
 L.Mix = mix
 
@@ -39,13 +61,26 @@ function L.Modern(key) return COLOR[key] ~= nil end
 -- A look's theme (what a frame's ruinTheme is set to, so the suite's skins
 -- color it) and its scheme (accent, edge, bg...).
 local themes, schemes = {}, {}
+-- The game's own look, for Pathfinder's own frames (the tracker, the
+-- waypoint): tooltip black edged like the game's tooltips, in its gold.
+local BLIZZ = { 1, 0.82, 0 }
 function L.Theme(key)
+    if key == "blizzard" then
+        themes.blizzard = themes.blizzard or { color = BLIZZ, core = true }
+        return themes.blizzard
+    end
     key = COLOR[key] and key or "pathfinder"
     themes[key] = themes[key] or { color = COLOR[key], core = (key == "ruin" or key == "core") or nil }
     return themes[key]
 end
 
 function L.Scheme(key)
+    if key == "blizzard" then
+        schemes.blizzard = schemes.blizzard or { accent = BLIZZ, color = { 0.1, 0.1, 0.12 }, bg = { 0, 0, 0 },
+            edge = { 0.6, 0.6, 0.6 }, ink = { 0.03, 0.03, 0.05 }, panel = { 0.03, 0.03, 0.05 }, panelHi = { 0.08, 0.08, 0.1 },
+            mark = BLIZZ, core = true, blizzard = true }
+        return schemes.blizzard
+    end
     key = COLOR[key] and key or "pathfinder"
     if schemes[key] then return schemes[key] end
     local base = W.SchemeFor and W.SchemeFor(L.Theme(key)) or { accent = COLOR[key], edge = { 0.2, 0.25, 0.3 }, bg = INK }

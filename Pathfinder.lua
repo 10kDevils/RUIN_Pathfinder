@@ -519,11 +519,11 @@ function M.PinSetting(key) return db and db[key] end
 -- The tracker's look (its colors) and background opacity.
 function M.TrackerStyle()
     local v = db and db.trackerStyle
-    return (v and ns.Looks.Modern(v)) and v or "pathfinder"
+    return (v and ns.Looks.Valid(v)) and v or "pathfinder"
 end
 function M.TrackerAlpha() return (db and type(db.trackerAlpha) == "number") and db.trackerAlpha or 0.94 end
 function M.SetTrackerStyle(v)
-    if not ns.Looks.Modern(v) then return false end
+    if not ns.Looks.Valid(v) then return false end
     db.trackerStyle = v
     if M.ApplyTrackerLook then M.ApplyTrackerLook() end
     return true
@@ -543,7 +543,7 @@ function M.AllStyles()
     if ns.WorldMap then list[#list + 1] = ns.WorldMap.Style() end
     local first = list[1]
     for _, v in ipairs(list) do if v ~= first then return "mixed" end end
-    if first and first ~= "blizzard" and (M.TrackerStyle() ~= first or M.PinStyle() ~= first) then return "mixed" end
+    if first and (M.TrackerStyle() ~= first or M.PinStyle() ~= first) then return "mixed" end
     return first or "mixed"
 end
 -- One background opacity for everything; "mixed" when they differ.
@@ -584,7 +584,7 @@ function M.SetAllStyles(v)
     if ns.Minimap then try("minimap", ns.Minimap.SetStyle, v) end
     if ns.Objectives then try("objective tracker", ns.Objectives.SetStyle, v) end
     if ns.WorldMap then try("world map", ns.WorldMap.SetStyle, v) end
-    if ns.Looks.Modern(v) then try("tracker", M.SetTrackerStyle, v); try("waypoint", M.SetPinStyle, v) end
+    try("tracker", M.SetTrackerStyle, v); try("waypoint", M.SetPinStyle, v)
     for _, d in ipairs({ ui.mmStyle, ui.otStyle, ui.wmStyle, ui.pinStyle, ui.trackerStyle, ui.allStyles }) do if d and d.Refresh then d:Refresh() end end
     return true
 end
@@ -592,10 +592,10 @@ end
 -- The waypoint's look (its colors): one of the suite's modern looks.
 function M.PinStyle()
     local v = db and db.pinStyle
-    return (v and ns.Looks.Modern(v)) and v or "ruin"
+    return (v and ns.Looks.Valid(v)) and v or "ruin"
 end
 function M.SetPinStyle(v)
-    if not ns.Looks.Modern(v) then return false end
+    if not ns.Looks.Valid(v) then return false end
     db.pinStyle = v
     if M.PinRestyle then M.PinRestyle() end
     return true
@@ -1376,6 +1376,12 @@ function M.ApplyTrackerLook()
     local a = M.TrackerAlpha()
     W.Skin(tracker, "bg", a, "border")
     if ns.Minimap and ns.Minimap.Paint then ns.Minimap.Paint(tracker, a, 0.14, -0.6, sc) end
+    -- the game's own look: edged like its tooltips, no band or sheen
+    local game = style == "blizzard"
+    for _, e in pairs(tracker.skinEdges or {}) do e:SetAlpha(game and 0 or 1) end
+    if tracker.band then tracker.band:SetShown(not game) end
+    if tracker.sheen then tracker.sheen:SetShown(not game) end
+    L.GameEdge(tracker, game)
     local ac = sc.accent
     tracker.themeColor = ac
     if tracker.band then tracker.band:SetColorTexture(ac[1], ac[2], ac[3], 0.9) end
@@ -3182,10 +3188,10 @@ local function buildOptions(page)
     check(t, "Remind me of pick-ups I walk past", "remindPickups", "When you come near the giver of a quest your route picks up next and leave without taking it.", nil, PAD, -38 - ROW * 2)
     check(t, "Remind me at a quest I don't have", "remindArea", "When you walk into the area where a quest's targets are and you could take that quest but don't have it (your route's, or this zone's for your level).", nil, COL2, -38 - ROW * 2)
     divider(t, -38 - ROW * 3 + 2)
-    ui.trackerStyle, ui.trackerAlpha = lookRow(t, -38 - ROW * 3 - 12, "Look", looks.MODERN,
+    ui.trackerStyle, ui.trackerAlpha = lookRow(t, -38 - ROW * 3 - 12, "Look", looks.KEYS,
         function() return M.TrackerStyle() end, function(v) M.SetTrackerStyle(v) end,
         function() return M.TrackerAlpha() end, function(v) M.SetTrackerAlpha(v) end,
-        "The tracker's colors: RUIN's gold, the core app's blue and gold, or a module's color",
+        "The tracker's look: the game's own (tooltip black and gold), RUIN's gold, the core app's blue and gold, or a module's color",
         "How see-through the tracker's background is")
 
     -- Waypoint
@@ -3209,10 +3215,10 @@ local function buildOptions(page)
     share.tip = "Pathfinder's atlas: where you pick up, do and hand in quests, shared with RUIN so routes follow where things really are on WoW Forever. Only quest numbers and map spots. /path atlas"
     checks[#checks + 1] = share
     divider(w, -76 - ROW * 2 + 2)
-    ui.pinStyle, ui.pinAlpha = lookRow(w, -76 - ROW * 2 - 12, "Look", looks.MODERN,
+    ui.pinStyle, ui.pinAlpha = lookRow(w, -76 - ROW * 2 - 12, "Look", looks.KEYS,
         function() return M.PinStyle() end, function(v) M.SetPinStyle(v) end,
         function() return db.pinAlpha or 1 end, function(v) db.pinAlpha = v; if M.RefreshPin then M.RefreshPin() end end,
-        "The RUIN Waypoint's colors: RUIN's gold, the core app's blue and gold, or a module's color",
+        "The RUIN Waypoint's look: the game's own (tooltip black and gold), RUIN's gold, the core app's blue and gold, or a module's color",
         "How see-through the whole RUIN Waypoint is: its marker, card, stem and distance")
 
     -- The game's frames: every look at once, then each frame
@@ -3222,7 +3228,7 @@ local function buildOptions(page)
     ui.allStyles, ui.allAlpha = lookRow(g, -40, C.white .. "All styles|r", looks.KEYS,
         function() return M.AllStyles() end, function(v) M.SetAllStyles(v) end,
         function() return M.AllAlpha() end, function(v) M.SetAllAlpha(v) end,
-        "One look for the minimap, the objective tracker, the world map, the tracker and the waypoint. Blizzard puts the game's frames back in their own look; the tracker and waypoint keep theirs.",
+        "One look for the minimap, the objective tracker, the world map, the tracker and the waypoint. Blizzard gives them all the game's own look.",
         "One opacity for the minimap's, the objective tracker's, the world map's and the tracker's backgrounds, and the whole waypoint")
     divider(g, -70)
     if mm then

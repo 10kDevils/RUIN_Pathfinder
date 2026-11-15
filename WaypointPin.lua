@@ -205,6 +205,7 @@ local function build(parent, name)
     p.dist = W.Label(tag, "", "GameFontHighlightSmall")
     p.dist:SetPoint("CENTER", 0, 1)
     p.dist:SetJustifyH("CENTER")
+    p.ruinNeedsLook = true
     return p
 end
 
@@ -223,6 +224,12 @@ local function recolor(p)
     p.tag.bg:SetColorTexture(INK[1], INK[2], INK[3], 0.80)
     p.tag.edge:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.30)
     if p.markerStyle == "dot" then p.icon:SetVertexColor(GOLD[1], GOLD[2], GOLD[3], 1) end
+    -- the game's own look: edged like its tooltips
+    local game = M.PinStyle and M.PinStyle() == "blizzard"
+    p.card.top:SetShown(not game)
+    for _, e in ipairs(p.card.edges or {}) do e:SetShown(not game) end
+    p.tag.edge:SetShown(not game)
+    if ns and ns.Looks then ns.Looks.GameEdge(p.card, game); ns.Looks.GameEdge(p.tag, game) end
 end
 function M.PinRestyle()
     takeLook()
@@ -250,6 +257,7 @@ end
 -- Stacks the card's parts that are on (label, title, objectives) and sizes
 -- the card to its text, within limits. Returns false when nothing is on.
 local function layoutCard(p, lk, hasObj)
+    if p.ruinNeedsLook then p.ruinNeedsLook = nil; recolor(p) end
     local card = p.card
     local showSub, showTitle = lk.label and (p.sub:GetText() or "") ~= "", lk.title and (p.title:GetText() or "") ~= ""
     hasObj = hasObj and lk.objectives

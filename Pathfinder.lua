@@ -516,6 +516,46 @@ end
 function M.PinOn() return db and db.pin ~= false end
 -- the pin's settings, read live by WaypointPin.lua
 function M.PinSetting(key) return db and db[key] end
+-- The tracker's look (its colors) and background opacity.
+function M.TrackerStyle()
+    local v = db and db.trackerStyle
+    return (v and ns.Looks.Modern(v)) and v or "pathfinder"
+end
+function M.TrackerAlpha() return (db and type(db.trackerAlpha) == "number") and db.trackerAlpha or 0.94 end
+function M.SetTrackerStyle(v)
+    if not ns.Looks.Modern(v) then return false end
+    db.trackerStyle = v
+    if M.ApplyTrackerLook then M.ApplyTrackerLook() end
+    return true
+end
+function M.SetTrackerAlpha(a)
+    if type(a) ~= "number" then return false end
+    db.trackerAlpha = math.max(0, math.min(1, a))
+    if M.ApplyTrackerLook then M.ApplyTrackerLook() end
+    return true
+end
+
+-- Every look at once. Reads "mixed" when they differ.
+function M.AllStyles()
+    local list = {}
+    if ns.Minimap then list[#list + 1] = ns.Minimap.Style() end
+    if ns.Objectives then list[#list + 1] = ns.Objectives.Style() end
+    if ns.WorldMap then list[#list + 1] = ns.WorldMap.Style() end
+    local first = list[1]
+    for _, v in ipairs(list) do if v ~= first then return "mixed" end end
+    if first and first ~= "blizzard" and (M.TrackerStyle() ~= first or M.PinStyle() ~= first) then return "mixed" end
+    return first or "mixed"
+end
+function M.SetAllStyles(v)
+    if not ns.Looks.Valid(v) then return false end
+    if ns.Minimap then ns.Minimap.SetStyle(v) end
+    if ns.Objectives then ns.Objectives.SetStyle(v) end
+    if ns.WorldMap then ns.WorldMap.SetStyle(v) end
+    if ns.Looks.Modern(v) then M.SetTrackerStyle(v); M.SetPinStyle(v) end
+    for _, d in ipairs({ ui.mmStyle, ui.otStyle, ui.wmStyle, ui.pinStyle, ui.trackerStyle, ui.allStyles }) do if d and d.Refresh then d:Refresh() end end
+    return true
+end
+
 -- The waypoint's look (its colors): one of the suite's modern looks.
 function M.PinStyle()
     local v = db and db.pinStyle
@@ -1237,7 +1277,7 @@ local function buildTrackerTabs()
         t.bg:SetAllPoints()
         t.top = t:CreateTexture(nil, "BORDER")       -- the open tab's line, in Pathfinder's color
         t.top:SetPoint("TOPLEFT"); t.top:SetPoint("TOPRIGHT"); t.top:SetHeight(2)
-        local ac = W.SchemeOf(tracker).accent
+        local ac = ns.Looks.Scheme(M.TrackerStyle()).accent
         t.top:SetColorTexture(ac[1], ac[2], ac[3], 1)
         t.text = W.Label(t, label, "GameFontNormalSmall")
         t.text:SetPoint("CENTER", 0, 0)
@@ -1284,9 +1324,37 @@ end
 -- navy disc in a thin steel ring, the arrow in Pathfinder's color; the ring
 -- takes the color under the mouse.
 local DISC = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
+local function trackerAccent() return ns.Looks.Scheme(M.TrackerStyle()).accent end
+
+-- The tracker in its look: the panel, edges and band in the look's colors,
+-- a slight gradient at the chosen opacity, its title, arrows and tabs.
+function M.ApplyTrackerLook()
+    if not tracker then return end
+    local L = ns.Looks
+    local style = M.TrackerStyle()
+    local sc = L.Scheme(style)
+    local function forget(f, depth)
+        if type(f) ~= "table" or depth > 4 then return end
+        f.ruinThemeFound = nil
+        if f.GetChildren then for _, c in ipairs({ f:GetChildren() }) do forget(c, depth + 1) end end
+    end
+    tracker.ruinTheme = L.Theme(style)
+    forget(tracker, 0)
+    local a = M.TrackerAlpha()
+    W.Skin(tracker, "bg", a, "border")
+    if ns.Minimap and ns.Minimap.Paint then ns.Minimap.Paint(tracker, a, 0.14, -0.6, sc) end
+    local ac = sc.accent
+    tracker.themeColor = ac
+    if tracker.band then tracker.band:SetColorTexture(ac[1], ac[2], ac[3], 0.9) end
+    tracker.title:SetTextColor(ac[1], ac[2], ac[3])
+    for _, b in ipairs({ tracker.prev, tracker.next }) do
+        if b and b.text then b.text:SetTextColor(ac[1], ac[2], ac[3]) end
+    end
+    for _, t in ipairs(tracker.tabs or {}) do if t.top then t.top:SetColorTexture(ac[1], ac[2], ac[3], 1) end end
+end
 local function sideButton(label, onClick)
     local b = CreateFrame("Button", nil, tracker)
-    local ac = W.SchemeOf(tracker).accent
+    local ac = trackerAccent()
     local edge = W.BTN_EDGE or W.PALETTE.border
     local P = W.PALETTE
     b:SetSize(18, 18)
@@ -1304,6 +1372,7 @@ local function sideButton(label, onClick)
     b.text:SetTextColor(ac[1], ac[2], ac[3])
     b:SetScript("OnClick", function() onClick() end)
     b:SetScript("OnEnter", function(self)
+        ac = trackerAccent()
         self.ring:SetVertexColor(ac[1], ac[2], ac[3], 1)
         self.disc:SetVertexColor(W.Mix(P.panelHi, ac, 0.20)[1], W.Mix(P.panelHi, ac, 0.20)[2], W.Mix(P.panelHi, ac, 0.20)[3], 1)
         self.text:SetTextColor(1, 1, 1)
@@ -1312,6 +1381,7 @@ local function sideButton(label, onClick)
         end
     end)
     b:SetScript("OnLeave", function(self)
+        ac = trackerAccent()
         self.ring:SetVertexColor(edge[1], edge[2], edge[3], 1)
         self.disc:SetVertexColor(P.panelHi[1], P.panelHi[2], P.panelHi[3], 1)
         self.text:SetTextColor(ac[1], ac[2], ac[3])
@@ -1333,7 +1403,7 @@ updateTracker = function()
         tracker:SetSize(TRACKER_W, TRACKER_H)
         tracker.title = W.Label(tracker, "", "GameFontNormalSmall")
         tracker.title:SetPoint("TOPLEFT", SIDE + 4, -9)
-        do local ac = W.SchemeOf(tracker).accent; tracker.title:SetTextColor(ac[1], ac[2], ac[3]) end
+        do local ac = ns.Looks.Scheme(M.TrackerStyle()).accent; tracker.title:SetTextColor(ac[1], ac[2], ac[3]) end
         tracker.title:SetWordWrap(false)
         tracker.step = W.Label(tracker, "")
         tracker.step:SetPoint("TOPLEFT", SIDE + 4, -26)
@@ -1400,6 +1470,7 @@ updateTracker = function()
         end)
         buildTrackerTabs()
         tracker.prev.tip, tracker.next.tip = "Previous", "Next"
+        M.ApplyTrackerLook()
     end
     paintTrackerTabs(cur, hasRoute, hasQuest)
     if cur == "tracked" then
@@ -3018,7 +3089,7 @@ local function buildOptions(page)
     end
     local COL2 = 300
 
-    local t = card("Tracker", 0, 110)
+    local t = card("Tracker", 0, 140)
     check(t, "Show the tracker", "tracker", "The small window with the Route and Tracked tabs: < and > on its sides, the x to clear, double-click to open Pathfinder.", nil, 12, -30)
     check(t, "Tracker arrow and map pin", "arrow", "The arrow on the tracker pointing to the step, and the step's pin on the world map.", nil, COL2, -30)
     check(t, "Skip done quests", "skipDone", "Steps for quests you've already done, or already have, tick themselves off.", nil, 12, -56)
@@ -3026,7 +3097,32 @@ local function buildOptions(page)
     check(t, "Remind me of pick-ups I walk past", "remindPickups", "When you come near the giver of a quest your route picks up next and leave without taking it.", nil, 12, -82)
     check(t, "Remind me at a quest I don't have", "remindArea", "When you walk into the area where a quest's targets are and you could take that quest but don't have it (your route's, or this zone's for your level).", nil, COL2, -82)
 
-    local w = card("Waypoint", -118, 118)
+    -- the tracker's look: its colors and how see-through it is
+    do
+        local looks, mmod = ns.Looks, ns.Minimap
+        local tl = W.Label(t, C.dim .. "Style|r", "GameFontHighlightSmall")
+        tl:SetPoint("TOPLEFT", 12, -112)
+        local ts = W.Dropdown(t, 150, looks.MODERN, function() return M.TrackerStyle() end, function(v) M.SetTrackerStyle(v) end)
+        ts.format = function(v) return looks.LABEL[v] or v end
+        ts:SetPoint("LEFT", tl, "RIGHT", 8, 0)
+        ts.tipTitle = "The tracker's colors: RUIN's gold, or the color of one of the suite's modules"
+        ts:Refresh()
+        local bl = W.Label(t, C.dim .. "Background|r", "GameFontHighlightSmall")
+        bl:SetPoint("LEFT", ts, "RIGHT", 24, 0)
+        local opts = mmod and mmod.OPACITY or { 1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0 }
+        local tb = W.Dropdown(t, 80, opts, function()
+            local v, best, gap = M.TrackerAlpha(), 1, 2
+            for _, o in ipairs(opts) do if math.abs(o - v) < gap then best, gap = o, math.abs(o - v) end end
+            return best
+        end, function(v) M.SetTrackerAlpha(v) end)
+        tb.format = function(v) return ("%d%%"):format(math.floor(v * 100 + 0.5)) end
+        tb:SetPoint("LEFT", bl, "RIGHT", 8, 0)
+        tb.tipTitle = "How see-through the tracker's background is"
+        tb:Refresh()
+        ui.trackerStyle, ui.trackerAlpha = ts, tb
+    end
+
+    local w = card("Waypoint", -148, 118)
     -- first and biggest: the RUIN Waypoint itself, with its editor beside it
     local pinCheck = check(w, "Show the RUIN Waypoint", "pin", "RUIN's marker over whatever the game is navigating to. Off: the game's own marker shows instead. /path pin", nil, 12, -30)
     if pinCheck.label.SetFontObject then pinCheck.label:SetFontObject("GameFontNormalLarge") end
@@ -3038,12 +3134,27 @@ local function buildOptions(page)
     local pl = W.Label(w, C.dim .. "Style|r", "GameFontHighlightSmall")
     pl:SetPoint("LEFT", edit, "RIGHT", 24, 0)
     local looks = ns.Looks
-    local ps = W.Dropdown(w, 150, looks.MODERN, function() return M.PinStyle() end, function(v) M.SetPinStyle(v) end)
+    local ps = W.Dropdown(w, 120, looks.MODERN, function() return M.PinStyle() end, function(v) M.SetPinStyle(v) end)
     ps.format = function(v) return looks.LABEL[v] or v end
     ps:SetPoint("LEFT", pl, "RIGHT", 8, 0)
     ps.tipTitle = "The RUIN Waypoint's colors: RUIN's gold, or the color of one of the suite's modules"
     ps:Refresh()
     ui.pinStyle = ps
+    -- how see-through the waypoint's card is (the Waypoint Editor's Card setting)
+    local pbl = W.Label(w, C.dim .. "Background|r", "GameFontHighlightSmall")
+    pbl:SetPoint("LEFT", ps, "RIGHT", 16, 0)
+    local popts = ns.Minimap and ns.Minimap.OPACITY or { 1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0 }
+    local pb = W.Dropdown(w, 74, popts, function()
+        local v = db.pinCardAlpha or 0.86
+        local best, gap = 1, 2
+        for _, o in ipairs(popts) do if math.abs(o - v) < gap then best, gap = o, math.abs(o - v) end end
+        return best
+    end, function(v) db.pinCardAlpha = v end)
+    pb.format = function(v) return ("%d%%"):format(math.floor(v * 100 + 0.5)) end
+    pb:SetPoint("LEFT", pbl, "RIGHT", 6, 0)
+    pb.tipTitle = "How see-through the RUIN Waypoint's card is"
+    pb:Refresh()
+    ui.pinAlpha = pb
     check(w, "Put a waypoint on each step", "waypoint", "The game's waypoint on the step's spot, so the pin (and the game's navigation) leads you there. /path waypoint", nil, 12, -62)
     check(w, "Track quest steps the game's way", "trackQuests", "For a quest in your log, track the quest itself (like clicking it in the objective tracker) so the pin follows its objective or turn-in.", nil, COL2, -62)
     local navCheck = W.Check(w, "In-Game Navigation", function()
@@ -3057,36 +3168,13 @@ local function buildOptions(page)
     share.tip = "Pathfinder's atlas: where you pick up, do and hand in quests, shared with RUIN so routes follow where things really are on WoW Forever. Only quest numbers and map spots. /path atlas"
     checks[#checks + 1] = share
 
-    -- the minimap: its look
     local mm = ns.Minimap
-    local mc = card("Minimap", -244, 122, "left")
-    local stl = W.Label(mc, C.dim .. "Style|r", "GameFontHighlightSmall")
-    stl:SetPoint("TOPLEFT", 12, -36)
-    local style = W.Dropdown(mc, 190, mm.STYLES, function() return mm.Style() end, function(v) mm.SetStyle(v) end)
-    style.format = function(v) return mm.STYLE_LABEL[v] or v end
-    style:SetPoint("LEFT", stl, "RIGHT", 8, 0)
-    style.tipTitle = "The game's own look, or the suite's modern one in RUIN's gold or a module's color: a square frame in the suite's look around the map, a slim ring, an N where north is, mouse-wheel zoom, and the tracking button, zone, calendar, addon list, mail, coordinates and clock in its corners"
-    style:Refresh()
-    ui.mmStyle = style
 
-    -- background opacity, for the modern look
-    local function opacity(parent, y, getter, setter, tip)
-        local l = W.Label(parent, C.dim .. "Background|r", "GameFontHighlightSmall")
-        l:SetPoint("TOPLEFT", 12, y)
-        local d = W.Dropdown(parent, 90, mm.OPACITY, getter, setter)
-        d.format = function(v) return mm.OpacityLabel(v) end
-        d:SetPoint("LEFT", l, "RIGHT", 8, 0)
-        d.tipTitle = tip
-        d:Refresh()
-        return d
-    end
     local function near(v)          -- the closest choice to a saved value
         local best, gap = 1, 2
         for _, o in ipairs(mm.OPACITY) do if math.abs(o - v) < gap then best, gap = o, math.abs(o - v) end end
         return best
     end
-    ui.mmAlpha = opacity(mc, -66, function() return near(mm.Alpha()) end, function(v) mm.SetAlpha(v) end,
-        "How see-through the frame around the minimap is, in Pathfinder's style")
 
     -- the game's objective tracker: its look
     local ot = ns.Objectives
@@ -3109,21 +3197,41 @@ local function buildOptions(page)
         bd:Refresh()
         return st, bd
     end
-    local oc = card("Objective Tracker", -244, 60, "right")
+    -- the left column: the minimap, and every look at once
+    local mc = card("Minimap", -274, 60, "left")
+    local style
+    style, ui.mmAlpha = lookRow(mc, mm,
+        "The game's own look, or the suite's modern one in RUIN's gold or a module's color: a square frame around the map, a slim ring, an N where north is, mouse-wheel zoom, and the tracking button, zone, calendar, addon list, mail, coordinates and clock in its corners",
+        "How see-through the frame around the minimap is")
+    ui.mmStyle = style
+    do
+        local looks = ns.Looks
+        local a = card("All Styles", -336, 60, "left")
+        local al = W.Label(a, C.dim .. "Set every style to|r", "GameFontHighlightSmall")
+        al:SetPoint("TOPLEFT", 12, -34)
+        local ad = W.Dropdown(a, 160, looks.KEYS, function() return M.AllStyles() end, function(v) M.SetAllStyles(v) end)
+        ad.format = function(v) return v == "mixed" and "Mixed" or (looks.LABEL[v] or v) end
+        ad:SetPoint("LEFT", al, "RIGHT", 8, 0)
+        ad.tipTitle = "One look for the minimap, the objective tracker, the world map, the tracker and the waypoint. Blizzard puts the game's frames back in their own look; the tracker and waypoint keep theirs."
+        ad:Refresh()
+        ui.allStyles = ad
+    end
+
+    local oc = card("Objective Tracker", -274, 60, "right")
     if ot then
         ui.otStyle, ui.otAlpha = lookRow(oc, ot,
             "The game's own look, or the suite's modern one in RUIN's gold or a module's color: a panel behind the tracker, headers in that color, quest titles and objectives in the suite's text colors",
             "How see-through the panel behind the objective tracker is, in Pathfinder's style")
     end
     local wm = ns.WorldMap
-    local wc = card("World Map & Quest Log", -306, 60, "right")
+    local wc = card("World Map & Quest Log", -336, 60, "right")
     if wm then
         ui.wmStyle, ui.wmAlpha = lookRow(wc, wm,
             "The game's own look, or the suite's modern one in RUIN's gold or a module's color: the map window and quest log in the suite's look, with flat quest markers and buttons",
             "How see-through the map window's background is, in Pathfinder's style")
     end
 
-    local k = card("Controls", -374, 56)
+    local k = card("Controls", -404, 56)
     local kl = W.Label(k, "", "GameFontHighlightSmall")
     kl:SetPoint("TOPLEFT", 12, -28)
     kl:SetPoint("RIGHT", k, "RIGHT", -12, 0)
@@ -3134,7 +3242,7 @@ local function buildOptions(page)
     page:SetScript("OnShow", function()
         for _, c in ipairs(checks) do c:Refresh() end
         style:Refresh()
-        for _, d in ipairs({ ui.otStyle, ui.wmStyle, ui.pinStyle }) do if d then d:Refresh() end end
+        for _, d in ipairs({ ui.otStyle, ui.wmStyle, ui.pinStyle, ui.pinAlpha, ui.trackerStyle, ui.trackerAlpha, ui.allStyles, ui.mmStyle }) do if d then d:Refresh() end end
     end)
     ui.optionChecks = checks
 end

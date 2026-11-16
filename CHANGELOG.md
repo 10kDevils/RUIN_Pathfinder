@@ -6,7 +6,7 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
-## 0.8.2
+## 0.8.2 — 2026-11-16
 
 - **Fewer frame stutters**: the quest reminders read your quest log once (it was read again for every quest in the zone), rebuild the zone's quest list every two minutes or when your log or level changes (it was every 30 seconds), and don't look again for five minutes for a place the database doesn't have.
 

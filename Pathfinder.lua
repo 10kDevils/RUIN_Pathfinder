@@ -32,7 +32,7 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Pathfinder", { version = "0.8.1" })
+local M = R:RegisterModule("Pathfinder", { version = "0.8.2" })
 local QB = ns.QB
 
 -- What the player lets RUIN share about them (RUIN Core: Settings > Display)
@@ -1009,7 +1009,8 @@ end
 
 -- this zone's quests you could take now (level, earlier quests done)
 local function zoneCandidates(pm)
-    if remind.zoneMap == pm and GetTime() - remind.zoneAt < 30 and remind.zoneList then return remind.zoneList end
+    -- the zone's quests you could pick up change with the zone, your level or your log (which clears this)
+    if remind.zoneMap == pm and GetTime() - remind.zoneAt < 120 and remind.zoneList then return remind.zoneList end
     local list = {}
     local area = QB.AreaOf and QB.AreaOf(pm)
     local level = UnitLevel and UnitLevel("player") or 1
@@ -3390,7 +3391,8 @@ function M:OnEnable()
     self:AddTab("Pathfinder", buildPage)
     self:RegisterEvent("QUEST_ACCEPTED", onAccepted)
     self:RegisterEvent("QUEST_TURNED_IN", onTurnedIn)
-    self:RegisterEvent("QUEST_LOG_UPDATE", function() checkComplete(); atlasObjectives() end)
+    self:RegisterEvent("PLAYER_LEVEL_UP", function() remind.zoneList = nil end)
+    self:RegisterEvent("QUEST_LOG_UPDATE", function() if QB.ForgetLog then QB.ForgetLog() end; checkComplete(); atlasObjectives() end)
     self:RegisterEvent("ZONE_CHANGED_NEW_AREA", function() updateStepPin() end)
     self:RegisterEvent("PLAYER_LEVEL_UP", onLevelUp)
     self:RegisterEvent("CHAT_MSG_LOOT", onLootRecord)

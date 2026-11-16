@@ -184,7 +184,8 @@ function QB.Spots(qid, which)
     local key = which .. ":" .. qid
     if cache.spot[key] then return cache.spot[key] end
     local now = GetTime and GetTime() or 0
-    if cache.miss[key] and now - cache.miss[key] < 30 then return {} end   -- the arrow asks often
+    -- not found: don't look again for five minutes (the reminders and the arrow ask often)
+    if cache.miss[key] and now - cache.miss[key] < 300 then return {} end
     -- where RUIN members actually picked it up, did it and handed it in on
     -- WoW Forever (Pathfinder's atlas) comes first; the database fills the gaps
     local seen = ns.AtlasSpots and ns.AtlasSpots(qid, which)
@@ -299,10 +300,20 @@ function QB.Log()
     return out
 end
 
+-- Is a quest in your log (and ready to hand in)? Asked for dozens of quests
+-- at a time, so the log is read once and kept for a second (or until it
+-- changes), not read again for every quest.
+local logSet, logAt = nil, -1
+function QB.ForgetLog() logSet = nil end
 function QB.InLog(qid)
     qid = tonumber(qid)
-    for _, q in ipairs(QB.Log()) do if q.id == qid then return true, q.ready end end
-    return false, false
+    local now = GetTime and GetTime() or 0
+    if not logSet or now - logAt > 1 then
+        logSet, logAt = {}, now
+        for _, q in ipairs(QB.Log()) do logSet[q.id] = q.ready and 2 or 1 end
+    end
+    local v = qid and logSet[qid]
+    return v ~= nil, v == 2
 end
 
 ---------------------------------------------------------------------------

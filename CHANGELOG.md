@@ -6,6 +6,10 @@ Versioning: the third number counts the meaningful changes made since the second
 
 (nothing yet)
 
+## 0.8.2
+
+- **Fewer frame stutters**: the quest reminders read your quest log once (it was read again for every quest in the zone), rebuild the zone's quest list every two minutes or when your log or level changes (it was every 30 seconds), and don't look again for five minutes for a place the database doesn't have.
+
 ## 0.8.1 — 2026-11-15
 
 - Fixed: **a quest's details were unreadable in the modern looks** (its text, objectives and rewards stayed in the game's dark parchment ink on the dark panel). Dark text is lightened now, headings in the look's color; item names and other colored text keep their colors.

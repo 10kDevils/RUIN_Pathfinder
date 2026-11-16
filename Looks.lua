@@ -82,11 +82,11 @@ local themes, schemes = {}, {}
 local BLIZZ = { 1, 0.82, 0 }
 function L.Theme(key)
     if key == "blizzard" then
-        themes.blizzard = themes.blizzard or { color = BLIZZ, core = true }
+        themes.blizzard = themes.blizzard or { color = BLIZZ, core = true, look = true }
         return themes.blizzard
     end
     key = COLOR[key] and key or "pathfinder"
-    themes[key] = themes[key] or { color = COLOR[key], core = (key == "ruin" or key == "core") or nil }
+    themes[key] = themes[key] or { color = COLOR[key], core = (key == "ruin" or key == "core") or nil, look = true }
     return themes[key]
 end
 

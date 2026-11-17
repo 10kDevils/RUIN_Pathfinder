@@ -4,7 +4,12 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## Unreleased
 
-(nothing yet)
+## 0.8.3
+
+- **Choose how long notifications stay** (Customization > Tracker > Notifications): Chat only, Short (8 seconds), Longer (15), Standard (25) or Until I close it. Every notification still goes to chat.
+- **The alerts window wears the tracker's look** (Customization > Tracker > Look) and its background opacity, and follows it when you change it.
+- **Background opacity steps evenly**, from 100% down to 20% (lower settings are gone; they only looked broken). Each step is a clear change from the next: a little closer together near solid and a little wider lower down, where the eye sees less difference. This affects the minimap, the objective tracker, the world map and the tracker.
+- **The RUIN look keeps RUIN's softer gold** with the app in the Blizzard window style (it turned the game's bright yellow), like Ink and Exchange. The tracker's tabs and buttons keep the look's colors too.
 
 ## 0.8.2 — 2026-11-16
 

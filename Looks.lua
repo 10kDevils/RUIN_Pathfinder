@@ -113,7 +113,7 @@ function L.Scheme(key)
     end
     if key == "core" then
         -- the core app's own: gold on its navy panels, a blue cast to the gradient
-        local P = W.PALETTE or {}
+        local P = W.RUIN_PALETTE or W.PALETTE or {}
         s.accent = P.gold or GOLD
         s.bg = P.bg or { 0.04, 0.06, 0.11 }
         s.edge = P.border or { 0.2, 0.26, 0.38 }

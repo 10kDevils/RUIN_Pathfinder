@@ -32,7 +32,7 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Pathfinder", { version = "0.8.2" })
+local M = R:RegisterModule("Pathfinder", { version = "0.8.3" })
 local QB = ns.QB
 
 -- What the player lets RUIN share about them (RUIN Core: Settings > Display)
@@ -79,7 +79,7 @@ local warnedMissing = {}
 local function sortedOfficial()
     local list = {}
     for _, r in pairs(adb and adb.official or {}) do list[#list + 1] = r end
-    table.sort(list, function(a, b) return a.title < b.title end)
+    table.sort(list, function(a, b) return tostring(a.title or "") < tostring(b.title or "") end)
     return list
 end
 
@@ -88,7 +88,7 @@ local function allRoutes()
     for _, r in ipairs(ns.Routes) do list[#list + 1] = r end
     local custom = {}
     for _, r in pairs(adb.custom) do custom[#custom + 1] = r end
-    table.sort(custom, function(a, b) return a.title < b.title end)
+    table.sort(custom, function(a, b) return tostring(a.title or "") < tostring(b.title or "") end)
     for _, r in ipairs(custom) do list[#list + 1] = r end
     return list
 end
@@ -1033,9 +1033,23 @@ end
 -- giver on the map. It closes itself after a while unless the mouse is on
 -- it. One copy goes to chat too, for the record.
 do
-local ALERT_KEEP, ALERT_SECONDS, ALERT_W = 3, 25, 360
+local ALERT_KEEP, ALERT_W = 3, 360
 local ALERT_PAD = 14            -- the window's inner margin
 local alertWin, alerts = nil, {}
+-- How long a notification stays: only in chat, a few seconds, longer, the
+-- standard 25 seconds, or until you close the window.
+M.ALERT_TIMES = { "chat", 8, 15, 25, 0 }
+M.ALERT_TIME_LABEL = { chat = "Chat only", [8] = "Short (8 sec)", [15] = "Longer (15 sec)", [25] = "Standard (25 sec)", [0] = "Until I close it" }
+function M.AlertTime()
+    local v = db and db.alertTime
+    return M.ALERT_TIME_LABEL[v] and v or 25
+end
+function M.SetAlertTime(v)
+    if not M.ALERT_TIME_LABEL[v] then return false end
+    db.alertTime = v
+    if v == "chat" and alertWin then wipe(alerts); alertWin:Hide() end
+    return true
+end
 -- Mark on map: close the alerts and open the world map on the quest's giver
 -- (a pin there), as the Quests page's Mark on Map does.
 local function markGiver(q)
@@ -1096,12 +1110,16 @@ local function buildAlertWin()
         row.mark.tip = "Open the map where the quest is picked up (with a pin on it)."
         f.rows[i] = row
     end
+    alertWin = f
+    M.ApplyAlertLook()
     -- closes itself after a while, but not under the mouse
     f:SetScript("OnUpdate", function(self)
         if self.IsMouseOver and self:IsMouseOver() then return end
+        local secs = M.AlertTime()
+        if type(secs) ~= "number" or secs <= 0 then return end   -- stays until closed
         local now, changed = GetTime(), false
         for i = #alerts, 1, -1 do
-            if now - alerts[i].t > ALERT_SECONDS then table.remove(alerts, i); changed = true end
+            if now - alerts[i].t > secs then table.remove(alerts, i); changed = true end
         end
         if changed then layoutAlerts() end
     end)
@@ -1110,6 +1128,7 @@ end
 function M.Alert(msg, qid)
     msg = tostring(msg)
     M:Print(msg)
+    if M.AlertTime() == "chat" then return end       -- chat only
     -- the same alert again while it's still up is only refreshed
     for i, a in ipairs(alerts) do
         if a.msg == msg then table.remove(alerts, i); break end
@@ -1120,6 +1139,19 @@ function M.Alert(msg, qid)
     layoutAlerts()
 end
 M.Alerts = function() return alerts, alertWin end
+-- The alerts window wears the tracker's look, and follows it when it changes.
+function M.ApplyAlertLook()
+    local f = alertWin
+    if not (f and M.PaintInTrackerLook) then return end
+    local sc = M.PaintInTrackerLook(f)
+    local ac, line = sc.accent, sc.edge or W.PALETTE.line
+    if f.headGlyph then f.headGlyph:SetVertexColor(ac[1], ac[2], ac[3], 1) end
+    if f.headTitle then f.headTitle:SetTextColor(ac[1], ac[2], ac[3], 1) end
+    if f.headLine then f.headLine:SetColorTexture(line[1], line[2], line[3], 1) end
+    for _, row in ipairs(f.rows or {}) do
+        if row.rule then row.rule:SetColorTexture(line[1], line[2], line[3], 1) end
+    end
+end
 end
 
 local function sayReminder(msg, qid)
@@ -1344,7 +1376,7 @@ local function paintTrackerTabs(cur, hasRoute, hasQuest)
     for _, t in ipairs(tracker.tabs) do
         local on = t.key == cur
         t.ok = (t.key == "route" and hasRoute) or (t.key == "tracked" and hasQuest)
-        local P = W.PALETTE
+        local P = W.RUIN_PALETTE or W.PALETTE
         local bg = on and P.bg or P.panel
         t.bg:SetColorTexture(bg[1], bg[2], bg[3], on and 0.94 or 0.82)
         t.top:SetShown(on)
@@ -1362,34 +1394,43 @@ end
 local DISC = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local function trackerAccent() return ns.Looks.Scheme(M.TrackerStyle()).accent end
 
--- The tracker in its look: the panel, edges and band in the look's colors,
--- a slight gradient at the chosen opacity, its title, arrows and tabs.
-function M.ApplyTrackerLook()
-    if not tracker then return end
+-- A panel in the tracker's look: the panel, edges and band in the look's
+-- colors, a slight gradient at the chosen opacity. The tracker and the
+-- alerts window both wear it. Returns the look's colors.
+function M.PaintInTrackerLook(f)
     local L = ns.Looks
     local style = M.TrackerStyle()
     local sc = L.Scheme(style)
-    local function forget(f, depth)
-        if type(f) ~= "table" or depth > 4 then return end
-        f.ruinThemeFound = nil
-        if f.GetChildren then for _, c in ipairs({ f:GetChildren() }) do forget(c, depth + 1) end end
+    local function forget(fr, depth)
+        if type(fr) ~= "table" or depth > 4 then return end
+        fr.ruinThemeFound = nil
+        if fr.GetChildren then for _, c in ipairs({ fr:GetChildren() }) do forget(c, depth + 1) end end
     end
-    tracker.ruinTheme = L.Theme(style)
-    forget(tracker, 0)
+    f.ruinTheme = L.Theme(style)
+    forget(f, 0)
     local a = M.TrackerAlpha()
-    W.Skin(tracker, "bg", a, "border")
-    if ns.Minimap and ns.Minimap.Paint then ns.Minimap.Paint(tracker, a, 0.14, -0.6, sc) end
+    W.Skin(f, "bg", (ns.Minimap and ns.Minimap.Curve) and ns.Minimap.Curve(a) or a, "border")
+    if ns.Minimap and ns.Minimap.Paint then ns.Minimap.Paint(f, a, 0.14, -0.6, sc) end
     -- the game's own look: edged like its tooltips, no band or sheen
     local game = style == "blizzard"
-    for _, e in pairs(tracker.skinEdges or {}) do e:SetAlpha(game and 0 or 1) end
-    if tracker.band then tracker.band:SetShown(not game) end
-    if tracker.sheen then tracker.sheen:SetShown(not game) end
-    L.GameEdge(tracker, game)
-    L.FitInside(tracker.skinBg, tracker, game)
-    if tracker.sheen and game then tracker.sheen:Hide() end
+    for _, e in pairs(f.skinEdges or {}) do e:SetAlpha(game and 0 or 1) end
+    if f.band then f.band:SetShown(not game) end
+    if f.sheen then f.sheen:SetShown(not game) end
+    L.GameEdge(f, game)
+    L.FitInside(f.skinBg, f, game)
+    if f.sheen and game then f.sheen:Hide() end
     local ac = sc.accent
-    tracker.themeColor = ac
-    if tracker.band then tracker.band:SetColorTexture(ac[1], ac[2], ac[3], 0.9) end
+    f.themeColor = ac
+    if f.band then f.band:SetColorTexture(ac[1], ac[2], ac[3], 0.9) end
+    return sc, game
+end
+
+-- The tracker in its look, with its title, arrows and tabs.
+function M.ApplyTrackerLook()
+    if M.ApplyAlertLook then M.ApplyAlertLook() end
+    if not tracker then return end
+    local sc = M.PaintInTrackerLook(tracker)
+    local ac = sc.accent
     tracker.title:SetTextColor(ac[1], ac[2], ac[3])
     for _, b in ipairs({ tracker.prev, tracker.next }) do
         if b and b.text then b.text:SetTextColor(ac[1], ac[2], ac[3]) end
@@ -1399,8 +1440,8 @@ end
 local function sideButton(label, onClick)
     local b = CreateFrame("Button", nil, tracker)
     local ac = trackerAccent()
-    local edge = W.BTN_EDGE or W.PALETTE.border
-    local P = W.PALETTE
+    local edge = (W.RUIN_PALETTE and W.Mix(W.RUIN_PALETTE.border, W.RUIN_PALETTE.text, 0.14)) or W.BTN_EDGE or W.PALETTE.border
+    local P = W.RUIN_PALETTE or W.PALETTE
     b:SetSize(18, 18)
     b.ring = b:CreateTexture(nil, "BACKGROUND")
     b.ring:SetTexture(DISC)
@@ -3170,7 +3211,7 @@ local function buildOptions(page)
     local COL2 = 340
 
     local looks, mm = ns.Looks, ns.Minimap
-    local OPACITY = mm and mm.OPACITY or { 1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0 }
+    local OPACITY = mm and mm.OPACITY or { 1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2 }
     local function near(v)          -- the closest choice to a saved value
         local best, gap = 1, 2
         for _, o in ipairs(OPACITY) do if math.abs(o - (v or 1)) < gap then best, gap = o, math.abs(o - (v or 1)) end end
@@ -3239,7 +3280,7 @@ local function buildOptions(page)
     end
 
     -- Tracker
-    local t = card("Tracker", 168)
+    local t = card("Tracker", 214)
     check(t, "Show the tracker", "tracker", "The small window with the Route and Tracked tabs: < and > on its sides, the x to clear, double-click to open Pathfinder.", nil, PAD, -38)
     check(t, "Tracker arrow and map pin", "arrow", "The arrow on the tracker pointing to the step, and the step's pin on the world map.", nil, COL2, -38)
     check(t, "Skip done quests", "skipDone", "Steps for quests you've already done, or already have, tick themselves off.", nil, PAD, -38 - ROW)
@@ -3252,6 +3293,16 @@ local function buildOptions(page)
         function() return M.TrackerAlpha() end, function(v) M.SetTrackerAlpha(v) end,
         "The tracker's look: the game's own (WoW Forever's bronze and gold), RUIN's blue and gold, Ink's gold on ink, or a module's color",
         "How see-through the tracker's background is")
+    local nl = W.Label(t, "Notifications", "GameFontHighlight")
+    nl:SetPoint("TOPLEFT", PAD, -38 - ROW * 4 - 16)
+    nl:SetWidth(170)
+    local sl = W.Label(t, C.dim .. "Stay|r", "GameFontHighlightSmall")
+    sl:SetPoint("TOPLEFT", PAD + 180, -38 - ROW * 4 - 17)
+    ui.alertTime = W.Dropdown(t, 170, M.ALERT_TIMES, function() return M.AlertTime() end, function(v) M.SetAlertTime(v) end)
+    ui.alertTime.format = function(v) return M.ALERT_TIME_LABEL[v] or tostring(v) end
+    ui.alertTime:SetPoint("LEFT", sl, "RIGHT", 10, 0)
+    ui.alertTime.tipTitle = "How long Pathfinder's notifications stay on screen: only in chat, a short while, longer, the standard 25 seconds, or until you close them. Every one goes to chat too."
+    ui.alertTime:Refresh()
 
     -- Waypoint
     local w = card("Waypoint", 186)

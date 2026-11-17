@@ -164,8 +164,19 @@ local function mixed(a, b, t) return { a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - 
 MM.Scheme = scheme
 
 -- Background opacity choices, for the minimap and the objective tracker.
-MM.OPACITY = { 1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0 }
+MM.OPACITY = { 1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2 }     -- under 20% a panel only looks broken
 function MM.OpacityLabel(v) return ("%d%%"):format(math.floor((v or 0) * 100 + 0.5)) end
+-- What a setting looks like: a panel's tint reads as see-through mostly near
+-- the top of the alpha range, so each setting has its own alpha, spaced so
+-- every step looks as different as the next (a little closer near solid,
+-- a little wider lower down) and 20% is still plainly a panel.
+local EASED = { [10] = 1.00, [9] = 0.94, [8] = 0.87, [7] = 0.79, [6] = 0.71, [5] = 0.62, [4] = 0.53, [3] = 0.44, [2] = 0.36 }
+function MM.Curve(v)
+    v = math.max(0.2, math.min(1, tonumber(v) or 1)) * 10
+    local lo = math.floor(v)
+    local hi = math.min(10, lo + 1)
+    return EASED[lo] + (EASED[hi] - EASED[lo]) * (v - lo)
+end
 
 -- Paint a panel's background: a slight gradient from Pathfinder's green
 -- (t > 0: how much green) to black (t < 0: how much black), top to bottom,
@@ -176,7 +187,7 @@ function MM.Paint(h, alpha, topT, botT, sc)
     local green, black = sc.color or sc.accent, { 0.008, 0.01, 0.012 }
     local function at(t) if t >= 0 then return mixed(sc.bg, green, t) end return mixed(sc.bg, black, -t) end
     local top, bot = at(topT), at(botT)
-    alpha = alpha or 0.94
+    alpha = MM.Curve(alpha or 0.94)
     h.skinBg:SetColorTexture(1, 1, 1, 1)
     local ok = CreateColor and h.skinBg.SetGradient and pcall(h.skinBg.SetGradient, h.skinBg, "VERTICAL",
         CreateColor(bot[1], bot[2], bot[3], alpha), CreateColor(top[1], top[2], top[3], alpha))

@@ -13,6 +13,7 @@
 Routes.lua
 QuestData\Data.lua
 QuestData\Horde.lua
+QuestData\Fixes.lua
 QuestDB.lua
 Looks.lua
 Minimap.lua

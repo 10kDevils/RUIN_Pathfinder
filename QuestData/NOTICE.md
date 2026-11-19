@@ -2,7 +2,7 @@
 
 The quests, NPCs, objects and items in this folder of RUIN Pathfinder
 (QuestData/Data.lua and QuestData/Horde.lua)
-are extracted from **QuestieDB 1.0.13**, the Forever build
+are extracted from **QuestieDB 1.1.3** (November 19, 2026), the Forever build
 (https://github.com/Questie/QuestieDB), and are distributed under the
 **GNU General Public License v3** (see LICENSE.md), as QuestieDB permits for
 copies and forks.

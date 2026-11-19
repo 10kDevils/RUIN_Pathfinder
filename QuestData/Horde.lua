@@ -117,7 +117,7 @@ q[81953]={"Stonewrought Design",{{211022},{441251}},{{211022}},1,45,0,0,{"Collec
 q[81954]={"Venomous Journeys",{{211022},{441252}},{{211022}},1,45,0,0,{"Collect 'Venomous Journeys' and bring it to Owen Thadd in Undercity."},nil,{[3]={{220350,[3]=0}}},0,nil,nil,nil,nil,nil,1497,nil,nil,nil,nil,0,0,0,0,nil,0,nil,nil,0,0,0,0,0,nil,0}
 q[81955]={"A Mind of Metal",{{211022},{441253}},{{211022}},1,45,0,0,{"Collect 'A Mind of Metal' and bring it to Owen Thadd in Undercity."},nil,{[3]={{220352,[3]=0}}},0,nil,nil,nil,nil,nil,1497,nil,nil,nil,nil,0,0,0,0,nil,0,nil,nil,0,0,0,0,0,nil,0}
 q[81956]={"Conjurer's Codex",{{211022},{441254}},{{211022}},1,45,0,0,{"Collect 'Conjurer's Codex' and bring it to Owen Thadd in Undercity."},nil,{[3]={{220353,[3]=0}}},0,nil,nil,nil,nil,nil,1497,nil,nil,nil,nil,0,0,0,0,nil,0,nil,nil,0,0,0,0,0,nil,0}
-q[82208]={"Greater Friend of the Library",{{211022}},{{211022}},30,45,0,0,{"You will need to hand in 25 books to complete this quest, however you can hand 1 in at any time."},nil,{},0,nil,{79536},nil,nil,nil,1497,nil,nil,nil,nil,0,0,0,0,nil,0,nil,nil,0,0,0,0,0,nil,0}
+q[82208]={"Greater Friend of the Library",{{211022}},{{211022}},35,45,0,0,{"You will need to hand in 25 books to complete this quest, however you can hand 1 in at any time."},nil,{},0,nil,{79536},nil,nil,nil,1497,nil,nil,nil,nil,0,0,0,0,nil,0,nil,nil,0,0,0,0,0,nil,0}
 q[84395]={"Undead Potatoes",{{7825},{463213}},{{7825}},1,60,0,0,{"Collect 'Undead Potatoes' and bring it to Oran Snakewrithe in Undercity."},nil,{[3]={{228132,[3]=0}}},0,nil,nil,nil,nil,nil,1497,nil,nil,nil,nil,0,0,0,0,nil,0,nil,nil,0,0,0,0,0,nil,0}
 q[84396]={"Magma or Lava?",{{7825},{463206}},{{7825}},1,60,0,0,{"Collect 'Magma or Lava?' and bring it to Oran Snakewrithe in Undercity."},nil,{[3]={{228133,[3]=0}}},0,nil,nil,nil,nil,nil,1497,nil,nil,nil,nil,0,0,0,0,nil,0,nil,nil,0,0,0,0,0,nil,0}
 q[84397]={"Northern Kalimdor - A Comprehensive Guide",{{7825},{463209}},{{7825}},1,60,0,0,{"Collect 'Northern Kalimdor - A Comprehensive Guide' and bring it to Oran Snakewrithe in Undercity."},nil,{[3]={{228134,[3]=0}}},0,nil,nil,nil,nil,nil,1497,nil,nil,nil,nil,0,0,0,0,nil,0,nil,nil,0,0,0,0,0,nil,0}
@@ -126,6 +126,14 @@ q[84399]={"Ka-Boom!",{{7825},{463214}},{{7825}},1,60,0,0,{"Collect 'Ka-Boom!' an
 q[84400]={"The Knight and the Lady",{{7825},{463208}},{{7825}},1,60,0,0,{"Collect 'The Knight and the Lady' and bring it to Oran Snakewrithe in Undercity."},nil,{[3]={{228138,[3]=0}}},0,nil,nil,nil,nil,nil,1497,nil,nil,nil,nil,0,0,0,0,nil,0,nil,nil,0,0,0,0,0,nil,0}
 q[84401]={"Scourge: Undead Menace or Misunderstood?",{{7825},{463212}},{{7825}},1,60,0,0,{"Collect 'Scourge: Undead Menace or Misunderstood?' and bring it to Oran Snakewrithe in Undercity."},nil,{[3]={{228140,[3]=0}}},0,nil,nil,nil,nil,nil,1497,nil,nil,nil,nil,0,0,0,0,nil,0,nil,nil,0,0,0,0,0,nil,0}
 q[84402]={"Necromancy 101",{{7825},{463211}},{{7825}},1,60,0,0,{"Collect 'Necromancy 101' and bring it to Oran Snakewrithe in Undercity."},nil,{[3]={{228141,[3]=0}}},0,nil,nil,nil,nil,nil,1497,nil,nil,nil,nil,0,0,0,0,nil,0,nil,nil,0,0,0,0,0,nil,0}
+q[91899]={"A Sealed Crate",{{256386,256390}},{{256386,256390}},1,60,0,0,nil,nil,{[3]={{248765,[3]=0}}},0,nil,nil,nil,nil,nil,17,nil,nil,nil,nil,0,0,1,0,nil,0,nil,nil,0,0,0,0,0,nil,0}
+q[91900]={"A Sealed Crate",{{256386,256390}},{{256386,256390}},1,60,0,0,nil,nil,{[3]={{248766,[3]=0}}},0,nil,nil,nil,nil,nil,17,nil,nil,nil,nil,0,0,1,0,nil,0,nil,nil,0,0,0,0,0,nil,0}
+q[91901]={"A Sealed Crate",{{256386,256390}},{{256386,256390}},1,60,0,0,nil,nil,{},0,nil,nil,nil,nil,nil,17,nil,nil,nil,nil,0,0,1,0,nil,0,nil,nil,0,0,0,0,0,nil,0}
+q[91902]={"A Sealed Crate",{{256386,256390}},{{256386,256390}},1,60,0,0,nil,nil,{},0,nil,nil,nil,nil,nil,17,nil,nil,nil,nil,0,0,1,0,nil,0,nil,nil,0,0,0,0,0,nil,0}
+q[91904]={"A Sealed Crate",{{256386,256390}},{{256386,256390}},1,60,0,0,nil,nil,{[3]={{248770,[3]=0}}},0,nil,nil,nil,nil,nil,17,nil,nil,nil,nil,0,0,1,0,nil,0,nil,nil,0,0,0,0,0,nil,0}
+q[91905]={"A Sealed Crate",{{256386,256390}},{{256386,256390}},1,60,0,0,nil,nil,{[3]={{248771,[3]=0}}},0,nil,nil,nil,nil,nil,17,nil,nil,nil,nil,0,0,1,0,nil,0,nil,nil,0,0,0,0,0,nil,0}
+q[91906]={"A Sealed Crate",{{256386,256390}},{{256386,256390}},1,60,0,0,nil,nil,{},0,nil,nil,nil,nil,nil,17,nil,nil,nil,nil,0,0,1,0,nil,0,nil,nil,0,0,0,0,0,nil,0}
+q[91907]={"A Sealed Crate",{{256386,256390}},{{256386,256390}},1,60,0,0,nil,nil,{},0,nil,nil,nil,nil,nil,17,nil,nil,nil,nil,0,0,1,0,nil,0,nil,nil,0,0,0,0,0,nil,0}
 q[97286]={"Research Access",{{211022}},{{211022}},1,20,0,128,nil,nil,{},0,nil,{78124,78127,78142,78143,78145,78146,78147,78148,78149,79091,79092,79093,79094,79095,79096,79097,79535,79947,79948,79949,79950,79951,79952,79953,81947,81949,81951,81952,81953,81954,81955,81956,84395,84396,84397,84398,84399,84400,84401,84402},nil,nil,nil,-161,nil,nil,nil,nil,0,0,0,0,nil,0,nil,nil,0,0,0,0,0,nil,0}
 n[2397]={"Derak Nightfall",32,32,{[267]={{63.1,19.4}}},267,nil,nil,"H","Cook"}
 n[3045]={"Malakai Cross",50,50,{[1638]={{24.6,22.6}}},1638,{8254},nil,"H","Priest Trainer"}
@@ -149,7 +157,6 @@ n[13778]={"PvP Tower Credit Marker",1,1,{[2597]={{52.8,44},{50.8,30.8},{45.2,14.
 n[15898]={"Lunar Festival Vendor",55,55,{[1497]={{66.5,36}},[1637]={{41.3,32.4}},[1638]={{70.6,27.8}},[493]={{36.6,58.1},{36.3,58.5}}},493,nil,nil,"AH"}
 n[16788]={"Festival Flamekeeper",60,60,{[1497]={{65.6,36}},[1637]={{42.6,34.2}},[1638]={{21.6,26.2}}},1637,{9319,9322,9323,9386},{9319,9322,9323,9386,9388,9389},"AH"}
 n[185335]={"Summoned Incubus",20,20,{[1497]={{86.6,27.1}},[1637]={{49.4,50}}},1637}
-n[211022]={"Owen Thadd",40,40,{[1497]={{73.4,33}}},1497,{79095,78150,79536,82208,78124,78127,78142,78143,78145,78146,78147,78148,78149,79091,79092,79093,79094,79096,79097,79535,79947,79948,79949,79950,79951,79952,79953,81947,81949,81951,81952,81953,81954,81955,81956,97286},{78148,79092,79095,79536,82208,97286,78124,78127,78142,78143,78145,78146,78147,78149,78150,79091,79093,79094,79096,79097,79535,79947,79948,79949,79950,79951,79952,81947,81949,81952,81953,81955,81956,79953,81951,81954},"H","Librarian"}
 o[103574]={"Filled Containment Coffer",{[1497]={{53.3,74.6},{53.7,76.8},{52,76},{53.2,71.4}}},1497}
 o[105174]={"Chest of Containment Coffers",{[1497]={{85.7,9.9},{85.5,10},{85.5,9.9},{85.6,10}}},1519}
 o[105175]={"Cantation of Manifestation",{[1497]={{85.8,10.1},{85.7,10.1},{85.7,10.2}}},1497}
@@ -160,7 +167,7 @@ o[180746]={"Gently Shaken Gift",{[1637]={{52.3,69.4}}},1537,{8767,8788},{8767,87
 o[180747]={"Gaily Wrapped Present",{[1637]={{52.3,69.2}}},1537,{8768},{8768}}
 o[180748]={"Ticking Present",{[1637]={{52.3,69.3}}},1637,{8769},{8769}}
 o[180793]={"Festive Gift",{[1637]={{52.4,69.3}}},1537,{8803},{8803}}
-i[3713]={"Soothing Spices",{2397,8307},nil,nil,0,{960,989,1148,1286,1456,2225,2381,2393,2397,2664,2810,2821,3027,3085,3367,3400,3779,3954,3955,4223,4229,4265,4553,4561,4775,4877,4897,5100,5135,5160,5163,5483,5817,6301,7947,8145,8307,8363,8934,9636,11189,12022,12028,12033,12245,12941,12957,12958,14738,15179,242498,248198,251905,252020,252083,254695,256731,259962,260559,267000,270780,272646}}
+i[3713]={"Soothing Spices",{2397,8307},nil,nil,0,{960,989,1148,1286,1456,2225,2381,2393,2397,2664,2810,2821,3027,3085,3367,3400,3779,3954,3955,4223,4229,4265,4553,4561,4775,4877,4897,5100,5135,5160,5163,5483,5817,6301,7947,8145,8307,8363,8934,9636,11189,12022,12028,12033,12245,12941,12957,12958,14738,15179,242498,248198,251905,252020,252083,254695,255701,256629,256731,259962,260559,267000,270780,272646}}
 i[15882]={"Half Pendant of Aquatic Endurance",nil,{177844},nil,0}
 i[15883]={"Half Pendant of Aquatic Agility",nil,{177794},nil,0}
 i[17126]={"Elegant Letter",{3327,3328,3401,4582,4583,4584},nil,nil,6681}

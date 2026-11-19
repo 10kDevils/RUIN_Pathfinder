@@ -39,13 +39,16 @@ local BARRENS  = "The Barrens"
 local STONETALON = "Stonetalon Mountains"
 local HILLSBRAD = "Hillsbrad Foothills"
 
--- How many quests WoW Forever has in each Alliance zone, and their levels
--- (ForeverDB, 2026-11-05). Shown on the Routes page for routes with a zone.
+-- How many quests WoW Forever has in each zone, and their levels (ForeverDB,
+-- 2026-11-19). Shown on the Routes page for routes with a zone.
 ns.ZoneQuests = {
-    [ELWYNN] = { 74, "2-10" }, [DUNMOR] = { 83, "4-30" }, [TELDRAS] = { 71, "4-12" }, [ZEPHRAS] = { 92, "3-12" },
-    [LOCH] = { 43, "10-20" }, [WESTFALL] = { 37, "10-44" }, [DARKSH] = { 73, "12-21" }, [REDRIDGE] = { 39, "14-26" },
-    [ASHENVALE] = { 75, "20-32" }, [WETLANDS] = { 63, "22-31" }, [DUSKWOOD] = { 78, "24-35" }, [STORMWIND] = { 79, "22-60" },
-    [IRONFORGE] = { 90, "30-60" }, [DARNASSUS] = { 21, "11-60" },
+    [ELWYNN] = { 85, "2-10" }, [DUNMOR] = { 71, "3-12" }, [TELDRAS] = { 72, "3-12" }, [ZEPHRAS] = { 128, "3-12" },
+    [LOCH] = { 44, "10-20" }, [WESTFALL] = { 43, "10-18" }, [DARKSH] = { 75, "12-21" }, [REDRIDGE] = { 41, "15-26" },
+    [ASHENVALE] = { 81, "20-31" }, [WETLANDS] = { 67, "22-32" }, [DUSKWOOD] = { 79, "24-32" }, [STORMWIND] = { 96, "15-60" },
+    [IRONFORGE] = { 100, "29-60" }, [DARNASSUS] = { 21, "11-60" },
+    ["Riverglades"] = { 100, "38-44" }, ["Stranglethorn Vale"] = { 122, "34-50" },
+    -- Horde starting zones and the Barrens
+    ["Durotar"] = { 73, "3-12" }, ["Mulgore"] = { 64, "3-12" }, ["Tirisfal Glades"] = { 92, "4-12" }, [BARRENS] = { 124, "11-25" },
 }
 
 ns.Routes = {
@@ -311,7 +314,7 @@ ns.Routes = {
             { act = "accept",   quest = "Old Ironforge Incursion", qid = 96393, text = "Earthseer Farsen.", at = at(DUNMOR, 64.8, 58.4) },
             { act = "go",       text = "Travel to Ironforge – Hall of Thanes entrance in Old Ironforge.", at = at(IRONFORGE, 33.0, 48.0) },
             { act = "accept",   quest = "Important Heirlooms", qid = 96403, text = "Thom Filch near the dungeon bridge/entrance.", at = at(IRONFORGE, 32.6, 44.6) },
-            { act = "accept",   quest = "The Restless Dead", qid = 96394, text = "Afadra Dunwall up the stairs from the entrance area.", at = at(IRONFORGE, 34.0, 48.8) },
+            { act = "accept",   quest = "The Restless Dead", qid = 96394, text = "Afadra Dunwall up the stairs from the entrance area." },
             { act = "note",     text = "Enter the Hall of Thanes. Pick up An Ancient Grudge from the Ghostly Attendant inside. Clear the dungeon: collect 8 Dwarven Heirlooms, kill the required apparitions/souls, kill Faldrim Anvilmar, kill Durgen Dirgehammer for the head, and loot the Treaty tablet in the final vault." },
             { act = "complete", quest = "Important Heirlooms", qid = 96403, text = "8 Dwarven Heirlooms from urns/chests inside.", at = at(IRONFORGE, 33.0, 48.0) },
             { act = "complete", quest = "The Restless Dead", qid = 96394, text = "Enraged Apparitions and Tormented Souls.", at = at(IRONFORGE, 33.0, 48.0) },
@@ -320,7 +323,7 @@ ns.Routes = {
             { act = "complete", quest = "Old Ironforge Incursion", qid = 96393, text = "Kill Durgen Dirgehammer and loot his head.", at = at(IRONFORGE, 33.0, 48.0) },
             { act = "accept",   quest = "The Treaty of Understanding", qid = 98423, text = "From the tablet/vault item in the final room.", at = at(IRONFORGE, 33.0, 48.0) },
             { act = "turnin",   quest = "Important Heirlooms", qid = 96403, text = "Thom Filch outside.", at = at(IRONFORGE, 32.6, 44.6) },
-            { act = "turnin",   quest = "The Restless Dead", qid = 96394, text = "Afadra Dunwall.", at = at(IRONFORGE, 34.0, 48.8) },
+            { act = "turnin",   quest = "The Restless Dead", qid = 96394, text = "Afadra Dunwall." },
             { act = "turnin",   quest = "An Ancient Grudge", qid = 96395, text = "Ghostly Attendant or as directed.", at = at(IRONFORGE, 33.0, 48.0) },
             { act = "turnin",   quest = "Old Ironforge Incursion", qid = 96393, text = "King Magni Bronzebeard in the High Seat.", at = at(IRONFORGE, 39.1, 56.2) },
             { act = "turnin",   quest = "The Treaty of Understanding", qid = 98423, text = "King Magni Bronzebeard.", at = at(IRONFORGE, 39.1, 56.2) },
@@ -517,6 +520,7 @@ ns.Routes = {
             { act = "complete", quest = "Look To The Stars", qid = 174, text = "Work Viktori's instrument parts (Mary, ogre, etc.) as the chain steps require.", at = at(DUSKWOOD, 79.8, 48.0) },
             { act = "note",     text = "Finish Night Watch parts, Stalvan chain (multi-zone), and remaining Raven Hill / Worgen content. Duskwood pairs well with Wetlands runs and Deadmines/Stockade at the low end of the bracket." },
             { act = "note",     text = "At 28 and up: City of Dalaran (levels 28-33, the violet dome in Alterac Mountains). Alliance attunement: An Alarming Request from Emissary Jacques in Southshore (guides differ on the exact chain); one attuned player is often enough for the group. Its 4 quests are worth about 37,600 XP, about a level at 28. Codex's Journal has the bosses and loot." },
+            { act = "note",     text = "Past 30: Stranglethorn Vale (levels 34-50, about 120 quests), and from 35 The Drowned City off its coast (its quests start in Booty Bay, Rebel Camp and Southshore; Pathfinder has a route for its quests). At 38-44 the new zone Riverglades (about 100 quests; Pathfinder has routes for it), whose quests lead into Krol'dok Stronghold at 40-45." },
         },
     },
 
@@ -545,6 +549,7 @@ ns.Routes = {
             { act = "turnin",   quest = "Digging Through the Ooze", qid = 470, text = "Sida in Menethil.", at = at(WETLANDS, 11.8, 58.0) },
             { act = "note",     text = "Whelgar's Excavation, raptor nest, and Excavation Site dungeon quests open in the mid/high 20s. Do the new Forever Excavation Site dungeon (levels 24-31, above Whelgar's Excavation) with all its quests: about 7 Alliance quests worth about 39,300 XP. The last boss, the Relic Guardian, drops the Titan Relic that starts a quest chain. Remaining Menethil fleet/curse chain is worth finishing." },
             { act = "note",     text = "At 28 and up: City of Dalaran (levels 28-33, the violet dome in Alterac Mountains). Alliance attunement: An Alarming Request from Emissary Jacques in Southshore (guides differ on the exact chain); one attuned player is often enough for the group. Its 4 quests are worth about 37,600 XP, about a level at 28. Codex's Journal has the bosses and loot." },
+            { act = "note",     text = "Past 30: Stranglethorn Vale (levels 34-50, about 120 quests), and from 35 The Drowned City off its coast (its quests start in Booty Bay, Rebel Camp and Southshore; Pathfinder has a route for its quests). At 38-44 the new zone Riverglades (about 100 quests; Pathfinder has routes for it), whose quests lead into Krol'dok Stronghold at 40-45." },
         },
     },
 
@@ -564,6 +569,7 @@ ns.Routes = {
             { act = "complete", quest = "Raene's Cleansing", qid = 991, text = "Work Raene's multi-part chain (dartol's rod, elemental, furbolg) as steps open — high XP.", at = at(ASHENVALE, 50.0, 55.0) },
             { act = "note",     text = "Maestra's Post, Falathim, and eastern outposts add more density. Blackfathom Deeps quests become relevant mid-bracket. Rotate with Stonetalon or return to EK dungeons as needed." },
             { act = "note",     text = "At 28 and up: City of Dalaran (levels 28-33, the violet dome in Alterac Mountains). Alliance attunement: An Alarming Request from Emissary Jacques in Southshore (guides differ on the exact chain); one attuned player is often enough for the group. Its 4 quests are worth about 37,600 XP, about a level at 28. Codex's Journal has the bosses and loot." },
+            { act = "note",     text = "Past 30: Stranglethorn Vale (levels 34-50, about 120 quests), and from 35 The Drowned City off its coast (its quests start in Booty Bay, Rebel Camp and Southshore; Pathfinder has a route for its quests). At 38-44 the new zone Riverglades (about 100 quests; Pathfinder has routes for it), whose quests lead into Krol'dok Stronghold at 40-45." },
         },
     },
 
@@ -645,20 +651,20 @@ ns.DungeonQuestIndex = {
     { name = "Gnomeregan", levels = "29-38", areas = { 721, 133, 10030, 10031, 10032 }, extra = {  } },
     { name = "Razorfen Kraul", levels = "29-38", areas = { 491, 1717 }, extra = {  } },
     { name = "Scarlet Monastery", levels = "30-46", areas = { 796, 6109, 6386, 10008, 10009, 10010 }, extra = {  } },
-    { name = "The Drowned City", levels = "35-40", areas = {  }, extra = { 96774 } },
+    { name = "The Drowned City", levels = "35-40", areas = {  }, extra = { 95775, 95776, 95787, 95788, 95789, 95791, 96774, 97130 } },
     { name = "Razorfen Downs", levels = "37-46", areas = { 722 }, extra = {  } },
-    { name = "Krol'dok Stronghold", levels = "40-45", areas = {  }, extra = {  } },
+    { name = "Krol'dok Stronghold", levels = "40-45", areas = { 17780 }, extra = { 94968, 94969, 94972, 94973, 94975, 94980, 94982, 94983, 94984, 96771 } },
     { name = "Uldaman", levels = "41-51", areas = { 1337, 1517, 10033 }, extra = {  } },
     { name = "Zul'Farrak", levels = "44-54", areas = { 1176, 978 }, extra = {  } },
     { name = "Maraudon", levels = "46-55", areas = { 2100, 10000 }, extra = {  } },
-    { name = "Alcaz Prison", levels = "48-53", areas = {  }, extra = {  } },
+    { name = "Alcaz Prison", levels = "48-53", areas = {  }, extra = { 95285, 95262, 95309, 95454, 96332, 96334, 96335, 96369, 96381, 96772 } },
     { name = "Sunken Temple", levels = "50-60", areas = { 1477, 1417 }, extra = { 4146 } },
     { name = "Blackrock Depths", levels = "52-60", areas = { 1584, 1585 }, extra = {  } },
     { name = "Dire Maul", levels = "54-60", areas = { 2557, 10022, 10023, 10024, 10025, 10026, 10027 }, extra = { 7463 } },
-    { name = "Blackmaw Hold", levels = "55-60", areas = {  }, extra = {  } },
+    { name = "Blackmaw Hold", levels = "55-60", areas = {  }, extra = { 92065, 92066, 92343, 92344, 97173, 97198, 97327, 99187 } },
     { name = "Blackrock Spire", levels = "55-60", areas = { 1583, 10003, 10004, 10005, 10006, 10007 }, extra = {  } },
     { name = "Scholomance", levels = "58-60", areas = { 2057, 10011, 10012, 10013, 6066, 10077, 10078, 10079 }, extra = {  } },
-    { name = "Shaper's Terrace", levels = "58-60", areas = {  }, extra = {  } },
+    { name = "Shaper's Terrace", levels = "58-60", areas = { 16985 }, extra = {  } },
     { name = "Stratholme", levels = "58-60", areas = { 2017, 10001 }, extra = {  } },
     { name = "Blackwing Lair", levels = "60-60", areas = { 2677 }, extra = {  }, raid = true },
     { name = "Molten Core", levels = "60-60", areas = { 2717 }, extra = {  }, raid = true },

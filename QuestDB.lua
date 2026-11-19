@@ -440,7 +440,10 @@ end
 
 -- Is this quest one your character can ever take (race and class)?
 function QB.ForMe(qid)
-    if type(qid) ~= "number" or not QB.Field(qid, "name") then return false end
+    if type(qid) ~= "number" then return false end
+    local name = QB.Field(qid, "name")
+    if type(name) ~= "string" then return false end
+    if name:find("^<NYI>") then return false end      -- in the files, not in the game yet
     return maskAllows(QB.Field(qid, "requiredClasses"), UnitClass) and maskAllows(QB.Field(qid, "requiredRaces"), UnitRace)
 end
 
@@ -700,7 +703,7 @@ function QB.DungeonRoute(entry, quests)
             after[#after + 1] = q
         else
             if q.item and #q.starts == 0 then fromItem[#fromItem + 1] = q.id          -- an item found in the run starts it
-            elseif q.inside then inside[#inside + 1] = q.id                         -- someone inside gives it
+            elseif q.inside or #q.starts == 0 then inside[#inside + 1] = q.id       -- someone inside gives it (or nobody known outside)
             else outside[#outside + 1] = q.id end
             if q.endsInside then handIn[#handIn + 1] = q.id else handOut[#handOut + 1] = q.id end
         end

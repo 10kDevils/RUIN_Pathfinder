@@ -883,6 +883,7 @@ local NO_ZONE_ROUTE = {
     [3703] = true, [4395] = true, [2257] = true,                   -- Shattrath, Dalaran (Northrend), Deeprun Tram
     [2597] = true, [3277] = true, [3358] = true, [3820] = true,    -- Alterac Valley, Warsong Gulch, Arathi Basin, Eye of the Storm
     [4384] = true, [4710] = true,                                  -- Strand of the Ancients, Isle of Conquest
+    [16941] = true,                                                -- Crafting: WoW Forever's Craftsman's Writs, profession turn-ins
 }
 QB.NO_ZONE_ROUTE = NO_ZONE_ROUTE
 
@@ -921,7 +922,10 @@ function QB.ZoneQuests(area)
     local list = {}
     for _, qid in ipairs(byArea[area] or {}) do
         if QB.ForMe(qid) and not repeatable(qid) then
-            list[#list + 1] = { id = qid, level = tonumber(QB.Field(qid, "questLevel")) or tonumber(QB.Field(qid, "requiredLevel")) or 0 }
+            -- level -1 scales to you: go by the level it can be picked up at
+            local lvl = tonumber(QB.Field(qid, "questLevel"))
+            if not lvl or lvl < 1 then lvl = tonumber(QB.Field(qid, "requiredLevel")) or 0 end
+            list[#list + 1] = { id = qid, level = lvl }
         end
     end
     table.sort(list, function(a, b) if a.level ~= b.level then return a.level < b.level end return a.id < b.id end)
@@ -930,7 +934,7 @@ end
 
 -- Quests a zone route leaves out: ones a hand-written route for your faction
 -- already takes you through, dungeon quests (the dungeon's route has them),
--- profession quests, quests with no known giver, and all but one of a set
+-- profession quests and Craftsman's Writs, quests that need level 60, quests with no known giver, and all but one of a set
 -- of quests that rule each other out (one version per race or class).
 -- QB.Zones also leaves out quests that need a long chain from other zones.
 local ZONE_SPAN = 6          -- levels one part may cover before a new part starts
@@ -950,6 +954,11 @@ local function routeFilter()
     return function(qid)
         if covered[qid] or dungeon[qid] then return false end
         if QB.Field(qid, "requiredSkill") then return false end
+        -- quests you can only pick up at 60 are endgame (raid attunements and
+        -- set turn-ins, the Ahn'Qiraj war), not levelling
+        if (tonumber(QB.Field(qid, "requiredLevel")) or 0) >= 60 then return false end
+        local name = QB.Field(qid, "name")
+        if type(name) == "string" and name:find("^Craftsman's Writ") then return false end
         local st = QB.Field(qid, "startedBy")
         local given = false
         for k = 1, 3 do
@@ -1025,7 +1034,8 @@ function QB.Zones()
             end
             local name, k = QB.AreaName(area), 0
             for _, p in ipairs(merged) do
-                if #p.quests >= MIN_ZONE_QUESTS then
+                -- a part that's all level 60 is endgame, not a levelling route
+                if #p.quests >= MIN_ZONE_QUESTS and p.lo < 60 then
                     k = k + 1
                     out[#out + 1] = { area = area, part = k, name = name, quests = p.quests, lo = p.lo, hi = p.hi }
                 end

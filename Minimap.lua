@@ -883,6 +883,48 @@ local function wheelZoom(m, on)
 end
 
 ---------------------------------------------------------------------------
+-- Addon buttons on the square frame
+---------------------------------------------------------------------------
+-- Addons' minimap buttons (LibDBIcon, which most use) ring the round map.
+-- With a modern style they can sit on the square frame around it instead:
+-- the game's own GetMinimapShape says "SQUARE" (how LibDBIcon and others
+-- learn a map is square), and LibDBIcon's button radius reaches the frame's
+-- edge. Off, or with the game's own look, both go back to what they were.
+MM.ICON_SPOTS = { "ring", "panel" }
+MM.ICON_LABEL = { ring = "Around the map", panel = "On the square frame" }
+function MM.IconSpot() return (db and db.mmIcons == "panel") and "panel" or "ring" end
+function MM.SetIconSpot(v)
+    if not db then return end
+    db.mmIcons = (v == "panel") and "panel" or "ring"
+    MM.Apply()
+end
+
+local shapeHome          -- the GetMinimapShape that was there (false: none)
+local function dbIcon()
+    local LS = rawget(_G, "LibStub")
+    if type(LS) ~= "table" or type(LS.GetLibrary) ~= "function" then return nil end
+    local ok, lib = pcall(LS.GetLibrary, LS, "LibDBIcon-1.0", true)
+    return ok and lib or nil
+end
+local function iconsOnFrame(m, on)
+    local lib = dbIcon()
+    if on then
+        if shapeHome == nil then shapeHome = rawget(_G, "GetMinimapShape") or false end
+        _G.GetMinimapShape = function() return "SQUARE" end
+        if lib and lib.SetButtonRadius then
+            -- the frame reaches past the map by its margins (in the map's own units)
+            local k = (m.GetScale and m:GetScale()) or 1
+            local reach = ((TOPM + BOTM) / 2) / (k > 0 and k or 1)
+            pcall(lib.SetButtonRadius, lib, reach)
+        end
+    elseif shapeHome ~= nil then
+        _G.GetMinimapShape = shapeHome or nil
+        shapeHome = nil
+        if lib and lib.SetButtonRadius then pcall(lib.SetButtonRadius, lib, 5) end   -- LibDBIcon's own
+    end
+end
+
+---------------------------------------------------------------------------
 -- Apply the style
 ---------------------------------------------------------------------------
 function MM.Apply()
@@ -903,7 +945,9 @@ function MM.Apply()
         layoutBar(m)
         hideStrayCoords(true)
         MM.HideStrayDayNight(true)
+        iconsOnFrame(m, MM.IconSpot() == "panel")
     else
+        iconsOnFrame(m, false)
         if deco then deco:Hide() end
         fitMap(m, false)
         for f in pairs(moved) do restorePiece(f) end

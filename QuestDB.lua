@@ -43,9 +43,17 @@ local function adapt(Q, N, O, I, toMap, toArea, source)
                  Starts = { NPC = starts[1], GameObject = starts[2], Item = starts[3] }, Finisher = { NPC = ends[1], GameObject = ends[2] },
                  ObjectiveData = data, objectivesText = Q.Get(id, "objectivesText"), zoneOrSort = Q.Get(id, "zoneOrSort") }
     end
-    function DB:GetNPC(id) if exists(N, id) then return { name = N.Get(id, "name"), spawns = N.Get(id, "spawns") } end end
+    function DB:GetNPC(id)
+        if exists(N, id) then
+            return { name = N.Get(id, "name"), spawns = N.Get(id, "spawns"), friendly = N.Get(id, "friendlyToFaction"), sub = N.Get(id, "subName") }
+        end
+    end
     function DB:GetObject(id) if exists(O, id) then return { name = O.Get(id, "name"), spawns = O.Get(id, "spawns") } end end
-    function DB:GetItem(id) if exists(I, id) then return { name = I.Get(id, "name"), npcDrops = I.Get(id, "npcDrops"), objectDrops = I.Get(id, "objectDrops") } end end
+    function DB:GetItem(id)
+        if exists(I, id) then
+            return { name = I.Get(id, "name"), npcDrops = I.Get(id, "npcDrops"), objectDrops = I.Get(id, "objectDrops"), vendors = I.Get(id, "vendors") }
+        end
+    end
     DB.QuestPointers = type(Q.GetAllIds) == "function" and Q.GetAllIds(true) or nil
     function DB.QueryQuestSingle(id, field) if exists(Q, id) then return Q.Get(id, field) end end
     -- Class and race masks (bit n-1 for class or race ID n); other requirements are the game's to judge.
@@ -684,23 +692,29 @@ function QB.DungeonRoute(entry, quests)
     -- 2. pick up the dungeon's quests outside. A quest that follows another
     -- of the dungeon's quests (Friend of the Kirin Tor after Heart of
     -- Disruption) waits until that one is handed in.
-    local outside, inside, handOut, handIn, after = {}, {}, {}, {}, {}
+    local outside, inside, fromItem, handOut, handIn, after = {}, {}, {}, {}, {}, {}
     for _, q in ipairs(quests) do
         local follows = false
         for _, p in ipairs(q.pre) do if isDungeonQuest[p] then follows = true end end
         if follows then
             after[#after + 1] = q
         else
-            if q.inside or (q.item and #q.starts == 0) then inside[#inside + 1] = q.id else outside[#outside + 1] = q.id end
+            if q.item and #q.starts == 0 then fromItem[#fromItem + 1] = q.id          -- an item found in the run starts it
+            elseif q.inside then inside[#inside + 1] = q.id                         -- someone inside gives it
+            else outside[#outside + 1] = q.id end
             if q.endsInside then handIn[#handIn + 1] = q.id else handOut[#handOut + 1] = q.id end
         end
     end
     local isAfter = {}
     for _, q in ipairs(after) do isAfter[q.id] = true end
+    -- every quest given outside is picked up before you travel
     for _, qid in ipairs(nearest(outside, "start")) do step("accept", qid, acceptText(qid)) end
-    -- 3. the run
+    steps[#steps + 1] = { act = "note", text = ("Travel to %s.%s"):format(entry.name,
+        #inside > 0 and " Pick up the quests given inside before you start." or "") }
+    -- 3. the quests given inside are the last thing before the run
+    for _, qid in ipairs(inside) do step("accept", qid, "Inside the dungeon. " .. acceptText(qid)) end
     steps[#steps + 1] = { act = "note", text = ("Run %s (levels %s): the quests below are done inside."):format(entry.name, entry.levels or "?") }
-    for _, qid in ipairs(inside) do step("accept", qid, acceptText(qid)) end
+    for _, qid in ipairs(fromItem) do step("accept", qid, acceptText(qid)) end
     for _, q in ipairs(quests) do
         local t = not isAfter[q.id] and doText(q.id) or ""
         if t ~= "" then step("complete", q.id, t) end
@@ -714,6 +728,137 @@ function QB.DungeonRoute(entry, quests)
         local t = doText(q.id)
         if t ~= "" then step("complete", q.id, t) end
         step("turnin", q.id, turninText(q.id))
+    end
+    return steps
+end
+
+---------------------------------------------------------------------------
+-- Shopping before a route: what its quests need that a vendor sells (a
+-- trade or general goods vendor, in a city where one does), and what the
+-- auction house has (items RUIN Exchange has seen listed there, or items
+-- anyone can trade). Two steps at the start of a route say so.
+---------------------------------------------------------------------------
+local CITY_AREAS = { [1519] = true, [1537] = true, [1657] = true, [3557] = true,
+                     [1637] = true, [1638] = true, [1497] = true, [3487] = true }
+local MAX_LISTED = 4
+
+local function factionLetter()
+    local f = UnitFactionGroup and UnitFactionGroup("player")
+    return f == "Horde" and "H" or "A"
+end
+local function friendlyNPC(rec)
+    local f = rec and rec.friendly
+    if type(f) ~= "string" or f == "" then return true end
+    return f:find(factionLetter(), 1, true) ~= nil
+end
+
+-- the items a quest needs you to bring: { { id, name, n, rec }, ... }
+local function questItems(m, qid)
+    local out, seen = {}, {}
+    local ok, q = pcall(m.DB.GetQuest, qid)
+    if not ok or type(q) ~= "table" then return out end
+    local given = tonumber(QB.Field(qid, "sourceItemId"))
+    local function add(id)
+        id = tonumber(id)
+        if id and id ~= given and not seen[id] then seen[id] = true; out[#out + 1] = { id = id } end
+    end
+    for _, o in ipairs(type(q.ObjectiveData) == "table" and q.ObjectiveData or {}) do
+        if o.Type == "item" then add(o.Id) end
+    end
+    local req = QB.Field(qid, "requiredSourceItems")
+    for _, id in ipairs(type(req) == "table" and req or {}) do add(id) end
+    local text = type(q.objectivesText) == "table" and table.concat(q.objectivesText, " ") or ""
+    local keep = {}
+    for _, e in ipairs(out) do
+        local okI, rec = pcall(m.DB.GetItem, m.DB, e.id)
+        if okI and type(rec) == "table" and type(rec.name) == "string" then
+            e.rec, e.name = rec, rec.name
+            local esc = rec.name:gsub("(%W)", "%%%1")
+            e.n = tonumber(text:match("(%d+) " .. esc))
+            keep[#keep + 1] = e
+        end
+    end
+    return keep
+end
+
+-- a vendor who sells it and is friendly to you: one in a city first
+local function vendorFor(m, rec)
+    local city, any
+    for _, nid in ipairs(type(rec.vendors) == "table" and rec.vendors or {}) do
+        local okn, n = pcall(m.DB.GetNPC, m.DB, nid)
+        if okn and type(n) == "table" and friendlyNPC(n) and type(n.spawns) == "table" then
+            for area, spots in pairs(n.spawns) do
+                local p = type(spots) == "table" and spots[1]
+                if type(p) == "table" and tonumber(p[1]) and tonumber(p[2]) and p[1] >= 0 then
+                    local v = { name = n.name, sub = n.sub, area = area, x = p[1], y = p[2] }
+                    if CITY_AREAS[area] and not city then city = v end
+                    any = any or v
+                end
+            end
+        end
+        if city then break end
+    end
+    return city or any, city ~= nil
+end
+
+-- on the auction house: RUIN Exchange has seen it listed, or anyone can trade it
+local function onAuctionHouse(id)
+    local x = rawget(_G, "RUIN_ExchangeDB")
+    local p = type(x) == "table" and type(x.prices) == "table" and x.prices[id]
+    if type(p) == "table" and tonumber(p.p) then return true end
+    local GII = GetItemInfo or (C_Item and C_Item.GetItemInfo)
+    local info = GII and { GII(id) }
+    if not (info and info[1]) then
+        if C_Item and C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, id) end
+        return false
+    end
+    local classID, bind = info[12], info[14]
+    if classID == 12 then return false end          -- a quest item
+    if bind == 1 or bind == 4 then return false end  -- binds when picked up, or a quest item
+    return true
+end
+
+-- Up to two steps for the start of a route through these quests: buy from
+-- vendors before you leave the city (with the first vendor's place), and the
+-- auction house items that would speed it up.
+function QB.ShoppingSteps(qids)
+    local m = db()
+    if not m then return {} end
+    local buy, ah, seen = {}, {}, {}
+    for _, qid in ipairs(qids or {}) do
+        if not QB.Done(qid) and QB.ForMe(qid) then
+            for _, e in ipairs(questItems(m, qid)) do
+                if not seen[e.id] then
+                    seen[e.id] = true
+                    local v, inCity = vendorFor(m, e.rec)
+                    if v then buy[#buy + 1] = { e = e, v = v, city = inCity }
+                    elseif onAuctionHouse(e.id) then ah[#ah + 1] = { e = e } end
+                end
+            end
+        end
+    end
+    local steps = {}
+    local function label(e) return (e.n and (e.n .. " ") or "") .. e.name end
+    local function list(items, fmt)
+        local parts = {}
+        for i, it in ipairs(items) do
+            if i > MAX_LISTED then parts[#parts + 1] = ("and %d more"):format(#items - MAX_LISTED); break end
+            parts[#parts + 1] = fmt(it)
+        end
+        return table.concat(parts, ", ")
+    end
+    if #buy > 0 then
+        local first = buy[1]
+        for _, b in ipairs(buy) do if b.city then first = b; break end end
+        local text = "Before you leave the city, buy what your quests need from vendors: "
+            .. list(buy, function(b) return ("%s (%s%s)"):format(label(b.e), b.v.name, b.city and "" or (", " .. QB.AreaName(b.v.area))) end) .. "."
+        steps[#steps + 1] = { act = "go", shop = true, text = text,
+                              at = { zone = QB.AreaName(first.v.area), x = first.v.x, y = first.v.y } }
+    end
+    if #ah > 0 then
+        local text = "Speed it up: your quests take these, and the Auction House has them. Buy them before you leave the city: "
+            .. list(ah, function(a) return label(a.e) end) .. "."
+        steps[#steps + 1] = { act = "note", shop = true, text = text }
     end
     return steps
 end

@@ -32,7 +32,7 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Pathfinder", { version = "0.8.3" })
+local M = R:RegisterModule("Pathfinder", { version = "0.8.4" })
 local QB = ns.QB
 
 -- What the player lets RUIN share about them (RUIN Core: Settings > Display)
@@ -219,7 +219,54 @@ local function routeById(id)
     return adb and (adb.custom[id] or adb.official[id])
 end
 
-local function currentRoute() return db.route and routeById(db.route) end
+-- Shopping before a route (QB.ShoppingSteps): up to two steps at its start,
+-- buy from vendors and from the auction house before you leave the city.
+-- They're worked out when the route starts and kept with it (db.shop), so
+-- step numbers don't move while you follow it; they're never saved into a
+-- route, exported or shared. Steps sent to your group count from the
+-- route's own first step, so friends with different shopping stay in step.
+local Shop = { memo = setmetatable({}, { __mode = "k" }) }
+function Shop.For(r)
+    if not (r and type(r.steps) == "table" and QB.Has() and QB.ShoppingSteps) then return {} end
+    local qids, seen = {}, {}
+    for _, s in ipairs(r.steps) do
+        for _, q in ipairs(type(s.qids) == "table" and s.qids or { s.qid }) do
+            q = tonumber(q)
+            if q and not seen[q] then seen[q] = true; qids[#qids + 1] = q end
+        end
+    end
+    local ok, steps = pcall(QB.ShoppingSteps, qids)
+    return ok and type(steps) == "table" and steps or {}
+end
+function Shop.Freeze(id)
+    db.shop = { id = id, steps = Shop.For(routeById(id)) }
+end
+function Shop.Steps()
+    if not db.route then return {} end
+    if not (type(db.shop) == "table" and db.shop.id == db.route and type(db.shop.steps) == "table") then
+        -- a route started before Pathfinder did this: only at its start, so steps don't move
+        db.shop = { id = db.route, steps = (db.step or 1) <= 1 and Shop.For(routeById(db.route)) or {} }
+    end
+    return db.shop.steps
+end
+function Shop.Offset() return db.route and #Shop.Steps() or 0 end
+function Shop.With(r, extra)
+    if not r or #extra == 0 then return r end
+    local memo = Shop.memo[r]
+    if memo and memo.extra == extra then return memo.route end
+    local steps = {}
+    for _, s in ipairs(extra) do steps[#steps + 1] = s end
+    for _, s in ipairs(r.steps) do steps[#steps + 1] = s end
+    local copy = setmetatable({ steps = steps }, { __index = r })
+    Shop.memo[r] = { extra = extra, route = copy }
+    return copy
+end
+local function currentRoute()
+    if not db.route then return nil end
+    local r = routeById(db.route)
+    if not r then return nil end
+    return Shop.With(r, Shop.Steps())
+end
 local function currentStep()
     local r = currentRoute()
     return r and r.steps[db.step], r
@@ -670,14 +717,14 @@ end
 local function share()
     if not R:IsConnected() then return end
     lastShare = GetTime()
-    M:Send("STEP", { g = R:GetPlayerGUID(), gu = R:GetPlayer().guild, r = db.route or "", s = db.step },
+    M:Send("STEP", { g = R:GetPlayerGUID(), gu = R:GetPlayer().guild, r = db.route or "", s = db.step - Shop.Offset() },
         "ORG", nil, R.PRIORITY.BULK)
 end
 
 local function sameStepPeers()
     local list, now = {}, GetTime()
     for _, p in pairs(peers) do
-        if now - p.t <= PEER_TTL and p.route == db.route and p.step == db.step then list[#list + 1] = p end
+        if now - p.t <= PEER_TTL and p.route == db.route and p.step == db.step - Shop.Offset() then list[#list + 1] = p end
     end
     return list
 end
@@ -853,8 +900,10 @@ function M:OnStep(d, sender)
     peers[d.g] = p
     if db.follow == d.g and type(d.r) == "string" and d.r ~= "" then
         if routeById(d.r) then
-            local moved = db.route ~= d.r or db.step ~= tonumber(d.s)
-            db.route, db.step = d.r, tonumber(d.s) or 1
+            if db.route ~= d.r then db.route = d.r; Shop.Freeze(d.r) end
+            local want = math.max(1, (tonumber(d.s) or 1) + Shop.Offset())
+            local moved = db.step ~= want
+            db.step = want
             if moved then updateTracker(); updateStepPin(); flashTracker(); refreshPage() end
         elseif not warnedMissing[d.r] then
             warnedMissing[d.r] = true
@@ -1332,7 +1381,6 @@ end
 -- Tabs above the tracker, like the chat window's: they fade in while the
 -- mouse is over the tracker and out again when it leaves. A tab with
 -- nothing to show is greyed out and can't be picked.
-local TAB_FADE = 0.15
 local function over(f) return f and f.IsMouseOver and f:IsMouseOver() end
 local function buildTrackerTabs()
     tracker.tabs = {}
@@ -1365,7 +1413,7 @@ local function buildTrackerTabs()
         local want = (over(tracker) or over(tracker.tabs[1]) or over(tracker.tabs[2])) and 1 or 0
         local a0 = tracker.tabAlpha or 0
         if a0 == want then return end
-        local step = (elapsed or 0) / TAB_FADE
+        local step = (elapsed or 0) / 0.15        -- the tabs fade in 0.15 seconds
         a0 = want > a0 and math.min(1, a0 + step) or math.max(0, a0 - step)
         tracker.tabAlpha = a0
         for _, t in ipairs(tracker.tabs) do t:SetAlpha(a0) end
@@ -1756,9 +1804,10 @@ function M:StartRoute(id)
     end
     if not routeById(id) then return end
     db.route, db.step = id, 1
+    Shop.Freeze(id)
     holdUntil = nil
     if db.skipDone then
-        local r = routeById(id)
+        local r = currentRoute()
         while db.step <= #r.steps and stepDone(r.steps[db.step]) do db.step = db.step + 1 end
     end
     share()
@@ -1773,6 +1822,7 @@ end
 function M:ClearRoute()
     if not db.route then return end
     db.route, db.step, db.follow = nil, 1, nil
+    db.shop = nil
     holdUntil = nil
     share()
     updateTracker()
@@ -3248,7 +3298,7 @@ local function buildOptions(page)
 
     -- The game's frames: every look at once, then each frame
     local ot, wm = ns.Objectives, ns.WorldMap
-    local g = card("Game Frames", 214)
+    local g = card("Game Frames", 254)
     local style
     ui.allStyles, ui.allAlpha = lookRow(g, -40, C.white .. "All styles|r", looks.KEYS,
         function() return M.AllStyles() end, function(v) M.SetAllStyles(v) end,
@@ -3277,6 +3327,19 @@ local function buildOptions(page)
             function() return wm.Alpha() end, function(v) wm.SetAlpha(v) end,
             "The game's own look, or the suite's modern one: the map window and quest log in the suite's look, with flat quest markers and buttons",
             "How see-through the map window's background is")
+    end
+    -- where addons' minimap buttons sit with a modern minimap
+    if mm and mm.ICON_SPOTS then
+        local il = W.Label(g, "Minimap addon buttons", "GameFontHighlight")
+        il:SetPoint("TOPLEFT", PAD, -84 - 120)
+        il:SetWidth(170)
+        local sl = W.Label(g, C.dim .. "Place|r", "GameFontHighlightSmall")
+        sl:SetPoint("TOPLEFT", PAD + 180, -84 - 121)
+        ui.mmIcons = W.Dropdown(g, 170, mm.ICON_SPOTS, function() return mm.IconSpot() end, function(v) mm.SetIconSpot(v) end)
+        ui.mmIcons.format = function(v) return mm.ICON_LABEL[v] or v end
+        ui.mmIcons:SetPoint("LEFT", sl, "RIGHT", 10, 0)
+        ui.mmIcons.tipTitle = "With a modern minimap: addons' minimap buttons around the round map, or on the square frame around it. The game's own minimap keeps them around the map."
+        ui.mmIcons:Refresh()
     end
 
     -- Tracker

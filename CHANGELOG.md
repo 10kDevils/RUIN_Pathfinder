@@ -8,6 +8,7 @@ Versioning: the third number counts the meaningful changes made since the second
 
 - **Shopping before a route.** When a route's quests need items a vendor sells, its first step says what to buy before you leave the city, from whom (a vendor in a city when there is one, with the arrow pointing there). When they take items the Auction House has (ones RUIN Exchange has seen listed there, or that anyone can trade), the next step says buying them first will speed things up. Worked out when you start the route and kept with it, so steps don't move as you go; your group still stays in step with you.
 - **Dungeon quest routes pick everything up first.** Every quest given outside the dungeon is picked up before a new Travel step, and the quests given inside are the last thing before the run. Quests started by an item you find in the dungeon come during the run.
+- **Notifications stay 15 seconds by default.** Standard is now 15 seconds and Longer is 25 (Customization > Tracker > Notifications).
 - **Minimap addon buttons on the square frame.** With a modern minimap, Customization > Minimap addon buttons can put addons' minimap buttons on the square frame around the map instead of around the round map.
 
 ## 0.8.3

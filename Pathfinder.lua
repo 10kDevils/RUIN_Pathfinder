@@ -1085,13 +1085,13 @@ do
 local ALERT_KEEP, ALERT_W = 3, 360
 local ALERT_PAD = 14            -- the window's inner margin
 local alertWin, alerts = nil, {}
--- How long a notification stays: only in chat, a few seconds, longer, the
--- standard 25 seconds, or until you close the window.
+-- How long a notification stays: only in chat, a few seconds, the standard
+-- 15 seconds, longer (25), or until you close the window.
 M.ALERT_TIMES = { "chat", 8, 15, 25, 0 }
-M.ALERT_TIME_LABEL = { chat = "Chat only", [8] = "Short (8 sec)", [15] = "Longer (15 sec)", [25] = "Standard (25 sec)", [0] = "Until I close it" }
+M.ALERT_TIME_LABEL = { chat = "Chat only", [8] = "Short (8 sec)", [15] = "Standard (15 sec)", [25] = "Longer (25 sec)", [0] = "Until I close it" }
 function M.AlertTime()
     local v = db and db.alertTime
-    return M.ALERT_TIME_LABEL[v] and v or 25
+    return M.ALERT_TIME_LABEL[v] and v or 15
 end
 function M.SetAlertTime(v)
     if not M.ALERT_TIME_LABEL[v] then return false end
@@ -3364,7 +3364,7 @@ local function buildOptions(page)
     ui.alertTime = W.Dropdown(t, 170, M.ALERT_TIMES, function() return M.AlertTime() end, function(v) M.SetAlertTime(v) end)
     ui.alertTime.format = function(v) return M.ALERT_TIME_LABEL[v] or tostring(v) end
     ui.alertTime:SetPoint("LEFT", sl, "RIGHT", 10, 0)
-    ui.alertTime.tipTitle = "How long Pathfinder's notifications stay on screen: only in chat, a short while, longer, the standard 25 seconds, or until you close them. Every one goes to chat too."
+    ui.alertTime.tipTitle = "How long Pathfinder's notifications stay on screen: only in chat, a short while, the standard 15 seconds, longer, or until you close them. Every one goes to chat too."
     ui.alertTime:Refresh()
 
     -- Waypoint

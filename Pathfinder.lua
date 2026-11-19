@@ -900,7 +900,7 @@ function M:OnStep(d, sender)
     peers[d.g] = p
     if db.follow == d.g and type(d.r) == "string" and d.r ~= "" then
         if routeById(d.r) then
-            if db.route ~= d.r then db.route = d.r; Shop.Freeze(d.r) end
+            if db.route ~= d.r then db.route = d.r; ui.pickId = d.r; Shop.Freeze(d.r) end
             local want = math.max(1, (tonumber(d.s) or 1) + Shop.Offset())
             local moved = db.step ~= want
             db.step = want
@@ -1804,6 +1804,7 @@ function M:StartRoute(id)
     end
     if not routeById(id) then return end
     db.route, db.step = id, 1
+    ui.pickId = id          -- the Guide tab shows the route you just started
     Shop.Freeze(id)
     holdUntil = nil
     if db.skipDone then

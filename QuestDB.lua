@@ -928,36 +928,106 @@ function QB.ZoneQuests(area)
     return list
 end
 
+-- Quests a zone route leaves out: ones a hand-written route for your faction
+-- already takes you through, dungeon quests (the dungeon's route has them),
+-- profession quests, quests with no known giver, and all but one of a set
+-- of quests that rule each other out (one version per race or class).
+-- QB.Zones also leaves out quests that need a long chain from other zones.
+local ZONE_SPAN = 6          -- levels one part may cover before a new part starts
+local FAR_CHAIN = 5          -- earlier quests from other zones that keep a quest out of zone routes
+local function routeFilter()
+    local covered, dungeon = {}, {}
+    local faction = UnitFactionGroup and UnitFactionGroup("player")
+    for _, r in ipairs(ns.Routes or {}) do
+        if not r.faction or r.faction == faction then
+            for _, s in ipairs(r.steps or {}) do if s.qid then covered[s.qid] = true end end
+        end
+    end
+    for _, e in ipairs(ns.DungeonQuestIndex or {}) do
+        for _, q in ipairs(e.extra or {}) do dungeon[q] = true end
+    end
+    local kept = {}
+    return function(qid)
+        if covered[qid] or dungeon[qid] then return false end
+        if QB.Field(qid, "requiredSkill") then return false end
+        local st = QB.Field(qid, "startedBy")
+        local given = false
+        for k = 1, 3 do
+            local g = type(st) == "table" and st[k]
+            if type(g) == "table" and #g > 0 then given = true end
+        end
+        if not given then return false end
+        if kept[qid] == false then return false end
+        local excl = QB.Field(qid, "exclusiveTo")
+        excl = type(excl) == "table" and excl or {}
+        for _, x in ipairs(excl) do
+            if kept[x] then return false end
+        end
+        kept[qid] = true
+        for _, x in ipairs(excl) do kept[x] = kept[x] or false end      -- the others can't be taken now
+        return true
+    end
+end
+
 -- Every zone with quests for you, split into parts:
--- { { area, part, name, quests = { ids }, lo, hi }, ... } by level
+-- { { area, part, name, quests = { ids }, lo, hi }, ... } by level. A part
+-- holds up to ZONE_CHUNK quests within ZONE_SPAN levels; a stray handful
+-- far above the rest of the zone (another zone's chain filed here) is left
+-- out rather than stretching a route from 30 to 60.
 function QB.Zones()
     if zoneList then return zoneList end
     local byArea = areaQuests()
     if not byArea then return {} end
     local skip = dungeonAreas()
+    local keep = routeFilter()
     local out = {}
     for area in pairs(byArea) do
         if not skip[area] then
-            local list = QB.ZoneQuests(area)
-            if #list >= MIN_ZONE_QUESTS then
-                local name = QB.AreaName(area)
-                local parts = math.ceil(#list / ZONE_CHUNK)
-                for k = 1, parts do
-                    local ids, lo, hi = {}, nil, nil
-                    for i = (k - 1) * ZONE_CHUNK + 1, math.min(k * ZONE_CHUNK, #list) do
-                        local e = list[i]
-                        ids[#ids + 1] = e.id
-                        lo = lo and math.min(lo, e.level) or e.level
-                        hi = hi and math.max(hi, e.level) or e.level
-                    end
-                    -- a short last part joins the one before it
-                    if k == parts and k > 1 and #ids < MIN_ZONE_QUESTS then
-                        local prev = out[#out]
-                        for _, id in ipairs(ids) do prev.quests[#prev.quests + 1] = id end
-                        prev.hi = math.max(prev.hi, hi)
-                    else
-                        out[#out + 1] = { area = area, part = k, name = name, quests = ids, lo = lo, hi = hi }
-                    end
+            local all, inZone = {}, {}
+            for _, e in ipairs(QB.ZoneQuests(area)) do
+                if keep(e.id) then all[#all + 1] = e; inZone[e.id] = true end
+            end
+            -- a quest needing a long chain from other zones first (a raid's
+            -- war effort, a story across the continent) isn't a zone's quest
+            local list = {}
+            for _, e in ipairs(all) do
+                local away = 0
+                for _, p in ipairs(QB.Prereqs(e.id)) do if not inZone[p] then away = away + 1 end end
+                if away < FAR_CHAIN then list[#list + 1] = e end
+            end
+            -- by level: a new part when one is full or the levels move on
+            local parts, cur = {}, nil
+            for _, e in ipairs(list) do
+                if not cur or #cur.quests >= ZONE_CHUNK or e.level - cur.lo > ZONE_SPAN then
+                    cur = { quests = {}, lo = e.level, hi = e.level }
+                    parts[#parts + 1] = cur
+                end
+                cur.quests[#cur.quests + 1] = e.id
+                cur.hi = math.max(cur.hi, e.level)
+            end
+            -- a part of a few quests joins a neighbour close in level; fewer than
+            -- MIN_ZONE_QUESTS far from any other part are dropped
+            local merged = {}
+            for _, p in ipairs(parts) do
+                local prev = merged[#merged]
+                if #p.quests <= 4 and prev and p.hi - prev.lo <= ZONE_SPAN + 2 then
+                    for _, id in ipairs(p.quests) do prev.quests[#prev.quests + 1] = id end
+                    prev.hi = math.max(prev.hi, p.hi)
+                elseif #p.quests < MIN_ZONE_QUESTS then
+                    p.short = true
+                    merged[#merged + 1] = p
+                elseif prev and prev.short and p.lo - prev.lo <= ZONE_SPAN + 2 then
+                    for _, id in ipairs(p.quests) do prev.quests[#prev.quests + 1] = id end
+                    prev.hi, prev.short = math.max(prev.hi, p.hi), nil
+                else
+                    merged[#merged + 1] = p
+                end
+            end
+            local name, k = QB.AreaName(area), 0
+            for _, p in ipairs(merged) do
+                if #p.quests >= MIN_ZONE_QUESTS then
+                    k = k + 1
+                    out[#out + 1] = { area = area, part = k, name = name, quests = p.quests, lo = p.lo, hi = p.hi }
                 end
             end
         end

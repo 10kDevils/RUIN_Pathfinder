@@ -219,13 +219,47 @@ local function routeById(id)
     return adb and (adb.custom[id] or adb.official[id])
 end
 
--- Shopping before a route (QB.ShoppingSteps): up to two steps at its start,
--- buy from vendors and from the auction house before you leave the city.
--- They're worked out when the route starts and kept with it (db.shop), so
--- step numbers don't move while you follow it; they're never saved into a
--- route, exported or shared. Steps sent to your group count from the
--- route's own first step, so friends with different shopping stay in step.
+-- The shopping list (QB.ShoppingSteps): up to two steps, buy from vendors
+-- and from the auction house. Where the route visits the city they're for
+-- (the vendor's, or any city with an auction house), they come just before
+-- the route leaves it; otherwise they're its first two steps. They're
+-- worked out when the route starts and kept with it (db.shop), so step
+-- numbers don't move while you follow it, and they're never saved into a
+-- route, exported or shared. Steps sent to your group count the route's own
+-- steps only, so friends with different shopping lists stay in step.
 local Shop = { memo = setmetatable({}, { __mode = "k" }) }
+Shop.AH_CITIES = { ["Stormwind City"] = true, ["Ironforge"] = true, ["Darnassus"] = true, ["The Exodar"] = true,
+                   ["Orgrimmar"] = true, ["Thunder Bluff"] = true, ["Undercity"] = true, ["Silvermoon City"] = true }
+
+-- the zone a step happens in, when the route or the quest database knows it
+function Shop.ZoneOf(s)
+    if type(s) ~= "table" then return nil end
+    if type(s.at) == "table" and type(s.at.zone) == "string" then return s.at.zone end
+    local q = tonumber(s.qid)
+    if not q or s.act == "complete" or not QB.Spot then return nil end
+    local ok, spot = pcall(QB.Spot, q, s.act == "turnin" and "finish" or "start")
+    local info = ok and type(spot) == "table" and spot.map and C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(spot.map)
+    return info and info.name or nil
+end
+
+-- where a step for this zone goes: before the first step that leaves it, the
+-- first time the route is there (steps with no place don't count as leaving,
+-- but a "fly to..." note after the last step there is already the way out)
+function Shop.Leaving(zones, n, want)
+    for i = 1, n do
+        if zones[i] and want(zones[i]) then
+            local last = i
+            for j = i + 1, n do
+                local z = zones[j]
+                if z and want(z) then last = j
+                elseif z then break end
+            end
+            return last + 1
+        end
+    end
+    return nil
+end
+
 function Shop.For(r)
     if not (r and type(r.steps) == "table" and QB.Has() and QB.ShoppingSteps) then return {} end
     local qids, seen = {}, {}
@@ -236,7 +270,22 @@ function Shop.For(r)
         end
     end
     local ok, steps = pcall(QB.ShoppingSteps, qids)
-    return ok and type(steps) == "table" and steps or {}
+    steps = ok and type(steps) == "table" and steps or {}
+    if #steps == 0 then return steps end
+    -- place each where the route is in its city, else at the start
+    local zones, n = {}, #r.steps
+    for i, s in ipairs(r.steps) do zones[i] = Shop.ZoneOf(s) end
+    for _, st in ipairs(steps) do
+        local at
+        if st.act == "go" and st.at and st.at.zone then
+            local city = st.at.zone
+            at = Shop.Leaving(zones, n, function(z) return z == city end)
+        else
+            at = Shop.Leaving(zones, n, function(z) return Shop.AH_CITIES[z] end)
+        end
+        st.before = at or 1
+    end
+    return steps
 end
 function Shop.Freeze(id)
     db.shop = { id = id, steps = Shop.For(routeById(id)) }
@@ -249,15 +298,28 @@ function Shop.Steps()
     end
     return db.shop.steps
 end
-function Shop.Offset() return db.route and #Shop.Steps() or 0 end
+-- the route with the shopping list in place; .toBase[i] is the route's own
+-- step a step stands for (the next one, for a shopping step), .toLocal the reverse
 function Shop.With(r, extra)
-    if not r or #extra == 0 then return r end
+    if not r then return r end
     local memo = Shop.memo[r]
     if memo and memo.extra == extra then return memo.route end
-    local steps = {}
-    for _, s in ipairs(extra) do steps[#steps + 1] = s end
-    for _, s in ipairs(r.steps) do steps[#steps + 1] = s end
-    local copy = setmetatable({ steps = steps }, { __index = r })
+    local steps, toBase, toLocal = {}, {}, {}
+    local n = #r.steps
+    for i = 1, n + 1 do
+        for _, st in ipairs(extra) do
+            if (tonumber(st.before) or 1) == i or (i == n + 1 and (tonumber(st.before) or 1) > n + 1) then
+                steps[#steps + 1] = st
+                toBase[#steps] = math.min(i, n)
+            end
+        end
+        if i <= n then
+            steps[#steps + 1] = r.steps[i]
+            toBase[#steps] = i
+            toLocal[i] = #steps
+        end
+    end
+    local copy = setmetatable({ steps = steps, toBase = toBase, toLocal = toLocal, baseN = n }, { __index = r })
     Shop.memo[r] = { extra = extra, route = copy }
     return copy
 end
@@ -266,6 +328,19 @@ local function currentRoute()
     local r = routeById(db.route)
     if not r then return nil end
     return Shop.With(r, Shop.Steps())
+end
+-- your step as the route's own step number (for your group), and back
+function Shop.ToBase(i)
+    local r = currentRoute()
+    if not (r and r.toBase) then return i end
+    if i > #r.steps then return r.baseN + 1 end          -- past the end: the route is done
+    return r.toBase[i] or i
+end
+function Shop.ToLocal(i)
+    local r = currentRoute()
+    if not (r and r.toLocal) then return i end
+    if i > r.baseN then return #r.steps + 1 end
+    return r.toLocal[i] or i
 end
 local function currentStep()
     local r = currentRoute()
@@ -717,14 +792,14 @@ end
 local function share()
     if not R:IsConnected() then return end
     lastShare = GetTime()
-    M:Send("STEP", { g = R:GetPlayerGUID(), gu = R:GetPlayer().guild, r = db.route or "", s = db.step - Shop.Offset() },
+    M:Send("STEP", { g = R:GetPlayerGUID(), gu = R:GetPlayer().guild, r = db.route or "", s = Shop.ToBase(db.step) },
         "ORG", nil, R.PRIORITY.BULK)
 end
 
 local function sameStepPeers()
     local list, now = {}, GetTime()
     for _, p in pairs(peers) do
-        if now - p.t <= PEER_TTL and p.route == db.route and p.step == db.step - Shop.Offset() then list[#list + 1] = p end
+        if now - p.t <= PEER_TTL and p.route == db.route and p.step == Shop.ToBase(db.step) then list[#list + 1] = p end
     end
     return list
 end
@@ -901,7 +976,7 @@ function M:OnStep(d, sender)
     if db.follow == d.g and type(d.r) == "string" and d.r ~= "" then
         if routeById(d.r) then
             if db.route ~= d.r then db.route = d.r; ui.pickId = d.r; Shop.Freeze(d.r) end
-            local want = math.max(1, (tonumber(d.s) or 1) + Shop.Offset())
+            local want = math.max(1, Shop.ToLocal(math.max(1, tonumber(d.s) or 1)))
             local moved = db.step ~= want
             db.step = want
             if moved then updateTracker(); updateStepPin(); flashTracker(); refreshPage() end

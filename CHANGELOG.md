@@ -6,7 +6,7 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.8.4
 
-- **Shopping before a route.** When a route's quests need items a vendor sells, its first step says what to buy before you leave the city, from whom (a vendor in a city when there is one, with the arrow pointing there). When they take items the Auction House has (ones RUIN Exchange has seen listed there, or that anyone can trade), the next step says buying them first will speed things up. Worked out when you start the route and kept with it, so steps don't move as you go; your group still stays in step with you.
+- **A shopping list on your route.** When a route's quests need items a vendor sells, a step says what to buy and from whom (the arrow points to the vendor); when they take items the Auction House has (ones RUIN Exchange has seen listed there, or that anyone can trade), another says buying them will speed things up. Where the route visits the vendor's city, or a city with an Auction House, the step comes just before the route leaves it; otherwise the two are its first steps. Worked out when you start the route and kept with it, so steps don't move as you go; your group still stays in step with you.
 - **Dungeon quest routes pick everything up first.** Every quest given outside the dungeon is picked up before a new Travel step, and the quests given inside are the last thing before the run. Quests started by an item you find in the dungeon come during the run.
 - **Notifications stay 15 seconds by default.** Standard is now 15 seconds and Longer is 25 (Customization > Tracker > Notifications).
 - **Starting a route picks it in the Guide tab**, from the Routes page or anywhere else you start one.

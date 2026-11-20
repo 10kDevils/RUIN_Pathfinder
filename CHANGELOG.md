@@ -4,6 +4,10 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## Unreleased
 
+## 0.8.5
+
+- **Quieter quest reminders.** A reminder's sound now plays at most once every 30 seconds, so several reminders at once (or a run of them along a road) chime once; the reminders themselves still all show. The sound is now the short minimap ping instead of the longer Artifact Forge chime.
+
 ## 0.8.4
 
 - **Quest data from November 19.** Rebuilt from QuestieDB 1.1.3's WoW Forever database: 749 new quests (149 in Riverglades, 36 on Mount Hyjal, 34 in Azshara, and more across the world) and 535 updated ones, with their givers, hand-ins, targets and items. Zone routes now cover Riverglades (five routes, levels 22-58), Mount Hyjal and the new Azshara quests. Quests still marked "not yet in game" in the files are left out.

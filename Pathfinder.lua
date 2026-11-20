@@ -32,7 +32,7 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Pathfinder", { version = "0.8.4" })
+local M = R:RegisterModule("Pathfinder", { version = "0.8.5" })
 local QB = ns.QB
 
 -- What the player lets RUIN share about them (RUIN Core: Settings > Display)
@@ -1278,9 +1278,19 @@ function M.ApplyAlertLook()
 end
 end
 
+-- A reminder always shows; its sound plays at most once every
+-- REMIND_SOUND_GAP seconds, so several at once (or a run of them) chime once.
+-- The sound is the short minimap ping (a quest-log page turn if it's missing).
+M.REMIND_SOUND_GAP = 30
 local function sayReminder(msg, qid)
     M.Alert(msg, qid)
-    if PlaySound and SOUNDKIT and SOUNDKIT.UI_70_ARTIFACT_FORGE_TRAIT_FIRST_TRAIT then pcall(PlaySound, SOUNDKIT.UI_70_ARTIFACT_FORGE_TRAIT_FIRST_TRAIT) end
+    local now = GetTime and GetTime() or 0
+    if M.lastRemindSound and now - M.lastRemindSound < M.REMIND_SOUND_GAP then return end
+    local kit = PlaySound and SOUNDKIT and (SOUNDKIT.MAP_PING or SOUNDKIT.IG_QUEST_LIST_OPEN)
+    if kit then
+        M.lastRemindSound = now
+        pcall(PlaySound, kit, "SFX")
+    end
 end
 
 function M.CheckReminders()

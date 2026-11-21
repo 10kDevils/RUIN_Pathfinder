@@ -112,6 +112,16 @@ local function dungeonRoute(entry)
     local id = "dq:" .. dqKey(entry.name)
     if dqRoutes[id] then return dqRoutes[id] end
     local quests = QB.DungeonQuests(entry)
+    if quests and QB.TrimHigh then
+        local ids = {}
+        for i, q in ipairs(quests) do ids[i] = q.id end
+        local _, out = QB.TrimHigh(ids)
+        if next(out) then
+            local kept = {}
+            for _, q in ipairs(quests) do if not out[q.id] then kept[#kept + 1] = q end end
+            quests = kept
+        end
+    end
     if not quests or #quests == 0 then return nil end
     local steps = QB.DungeonRoute(entry, quests)
     if not steps or #steps == 0 then return nil end
@@ -204,6 +214,24 @@ local function isBuiltInRoute(id)
     return false
 end
 
+-- A hand-written route keeps to its levels too (QB.TrimHigh): steps for a
+-- quest needing you well above them are dropped, once, when the quest data is in.
+function M.TrimHandRoute(r)
+    if r.trimmed or not (QB.Has and QB.Has() and QB.TrimHigh) then return r end
+    r.trimmed = true
+    local qids, seen = {}, {}
+    for _, s in ipairs(r.steps or {}) do
+        if s.qid and s.act == "accept" and not seen[s.qid] then seen[s.qid] = true; qids[#qids + 1] = s.qid end
+    end
+    local _, out = QB.TrimHigh(qids)
+    if next(out) then
+        local steps = {}
+        for _, s in ipairs(r.steps) do if not (s.qid and out[s.qid]) then steps[#steps + 1] = s end end
+        r.steps = steps
+    end
+    return r
+end
+
 local function routeById(id)
     if not id then return nil end
     if id == LOG_ID then return logRoute() end
@@ -215,7 +243,7 @@ local function routeById(id)
         end
         return nil
     end
-    for _, r in ipairs(ns.Routes) do if r.id == id then return r end end
+    for _, r in ipairs(ns.Routes) do if r.id == id then return M.TrimHandRoute(r) end end
     return adb and (adb.custom[id] or adb.official[id])
 end
 

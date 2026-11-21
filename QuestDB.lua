@@ -991,6 +991,53 @@ local function routeFilter()
     end
 end
 
+-- A route keeps to the levels it's mostly for: a quest that needs you more
+-- than TRIM_OVER levels above them (and anything on the route that waits on
+-- it) is left out. "Mostly for" is the level that 80% of its quests are at
+-- or below, so a few strays can't stretch it.
+QB.TRIM_OVER = 3
+function QB.RouteTop(qids)
+    local lv = {}
+    for _, q in ipairs(qids or {}) do
+        local info = QB.Quest(q)
+        local l = info and tonumber(info.level)
+        if l and l > 0 then lv[#lv + 1] = l end
+    end
+    if #lv == 0 then return nil end
+    table.sort(lv)
+    return lv[math.max(1, math.ceil(#lv * 0.8))]
+end
+
+-- qids -> the quests kept (in order), and the set left out
+function QB.TrimHigh(qids)
+    local top = QB.RouteTop(qids)
+    local out, kept = {}, {}
+    if not top then
+        for i, q in ipairs(qids or {}) do kept[i] = q end
+        return kept, out
+    end
+    local onRoute = {}
+    for _, q in ipairs(qids) do onRoute[q] = true end
+    for _, q in ipairs(qids) do
+        local info = QB.Quest(q)
+        if info and (tonumber(info.req) or 1) > top + QB.TRIM_OVER then out[q] = true end
+    end
+    -- what waits on a quest left out goes too
+    local changed = next(out) ~= nil
+    while changed do
+        changed = false
+        for _, q in ipairs(qids) do
+            if not out[q] then
+                for _, p in ipairs(QB.Prereqs(q)) do
+                    if out[p] and onRoute[p] then out[q] = true; changed = true; break end
+                end
+            end
+        end
+    end
+    for _, q in ipairs(qids) do if not out[q] then kept[#kept + 1] = q end end
+    return kept, out
+end
+
 -- Every zone with quests for you, split into parts:
 -- { { area, part, name, quests = { ids }, lo, hi }, ... } by level. A part
 -- holds up to ZONE_CHUNK quests within ZONE_SPAN levels; a stray handful
@@ -1048,6 +1095,13 @@ function QB.Zones()
             local name, k = QB.AreaName(area), 0
             for _, p in ipairs(merged) do
                 -- a part that's all level 60 is endgame, not a levelling route
+                p.quests = QB.TrimHigh(p.quests)
+                local lo, hi
+                for _, q in ipairs(p.quests) do
+                    local l = tonumber(QB.Quest(q) and QB.Quest(q).level)
+                    if l and l > 0 then lo = lo and math.min(lo, l) or l; hi = hi and math.max(hi, l) or l end
+                end
+                p.lo, p.hi = lo or p.lo, hi or p.hi
                 if #p.quests >= MIN_ZONE_QUESTS and p.lo < 60 then
                     k = k + 1
                     out[#out + 1] = { area = area, part = k, name = name, quests = p.quests, lo = p.lo, hi = p.hi }

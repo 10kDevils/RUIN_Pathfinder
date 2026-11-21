@@ -805,8 +805,10 @@ end
 local function updateStepPin()
     local s, map, x, y = navStep()
     updateWaypoint(s and map, x, y, s)
-    if map and db.arrow then
+    -- the next step's mark, unless you cleared it for this step (it's back for the next one)
+    if map and db.arrow and not (M.stepMarkCleared and M.stepMarkCleared == s) then
         R.Map:SetPin("Pathfinder", "step", { map = map, x = x, y = y, icon = "Interface\\AddOns\\RUIN_Core\\Media\\EmblemIcon", plain = true, shadow = true,
+            clearable = true, onClear = function() M.stepMarkCleared = s end,
             color = W.MARKERS[ACT_MARKER[s.act] or "waypoint"], title = "Pathfinder: " .. (ACT_LABEL[s.act] or s.act) .. (s.quest and (" " .. s.quest) or ""),
             text = s.text or "" })
     else
@@ -2263,8 +2265,17 @@ function M.AtlasCounts()
     return n
 end
 
+-- A quest mark has done its job once you've picked the quest up (a pick-up
+-- mark) or handed it in (any mark for it): it clears itself.
+function M.DoneWithQuestMark(qid, handedIn)
+    qid = tonumber(qid)
+    local p = qid and R.Map:GetPins("Pathfinder")["quest"]
+    if p and p.qid == qid and (handedIn or p.which == "start") then R.Map:RemovePin("Pathfinder", "quest") end
+end
+
 local function onAccepted(_, a1, a2)
     dqCache = {}
+    M.DoneWithQuestMark(a2 or a1, false)
     -- Retail-style clients pass questID; Classic-style pass (logIndex, questID).
     local title = questTitle(a2 or a1, a2 and a1 or nil)
     local s = currentStep()
@@ -2281,6 +2292,7 @@ end
 
 local function onTurnedIn(_, questID)
     dqCache = {}
+    M.DoneWithQuestMark(questID, true)
     if tonumber(questID) then atlasHere("f", tonumber(questID)); objSeen[tonumber(questID)] = nil end
     C_Timer.After(1, function() shareQuests() end)
     local title = questTitle(questID)
@@ -2551,6 +2563,7 @@ function M:ShowQuestOnMap(qid, which)
     local info = QB.Quest(qid)
     local label = which == "start" and "Pick up" or which == "finish" and "Hand in" or "Do"
     R.Map:SetPin("Pathfinder", "quest", { map = spot.map, x = spot.x, y = spot.y, icon = "Interface\\AddOns\\RUIN_Core\\Media\\EmblemIcon", plain = true, shadow = true,
+        clearable = true, qid = qid, which = which,
         color = W.MARKERS[which == "finish" and "turnin" or "quest"], title = "Pathfinder: " .. ((info and info.name) or "quest"),
         text = label .. ": " .. (spot.name or "") })
     local open = rawget(_G, "OpenWorldMap")
@@ -2970,6 +2983,7 @@ local function buildQuests(page)
         local spot = QB.Spot(q, ready and "finish" or "objective", map, x, y) or QB.Spot(q, "finish", map, x, y)
         if not spot then M:Print("The quest database doesn't have a place for this quest."); return nil end
         R.Map:SetPin("Pathfinder", "quest", { map = spot.map, x = spot.x, y = spot.y, icon = "Interface\\AddOns\\RUIN_Core\\Media\\EmblemIcon", plain = true, shadow = true,
+            clearable = true, qid = q, which = ready and "finish" or "objective",
             color = W.MARKERS[ready and "turnin" or "quest"], title = "Pathfinder: " .. (C_QuestLog and C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(q) or "quest"),
             text = ready and ("Hand in: " .. (spot.name or "")) or (spot.name or "") })
         if not quiet then M:Print("Marked on your map: " .. (spot.name or "the quest") .. ".") end

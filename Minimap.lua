@@ -243,12 +243,77 @@ end
 
 -- The N sits where north is: on top, or, on a rotating map, wherever north
 -- has turned to, on the ring.
+--
+-- Inside dungeons and raids the game keeps your facing from addons
+-- (GetPlayerFacing gives nothing), but the minimap still turns, and so does
+-- the game's own compass ring (hidden under RUIN's look, still turning). So
+-- the N follows that ring there. How its angle maps to your facing (which
+-- way round, from where) is learned outside, where both are known, and kept.
+local TWO_PI = math.pi * 2
+local function wrap(x) x = x % TWO_PI; if x < 0 then x = x + TWO_PI end; return x end
+local function near(x, y) local d = math.abs(wrap(x - y)); return math.min(d, TWO_PI - d) < 0.06 end
+local function plain(v) return type(v) == "number" and not (issecretvalue and issecretvalue(v)) end
+
+function MM.CompassAngle()
+    local t = rawget(_G, "MinimapCompassTexture")
+    if type(t) ~= "table" then return nil end
+    if t.GetRotation then
+        local ok, r = pcall(t.GetRotation, t)
+        if ok and plain(r) and r ~= 0 then return wrap(r) end
+    end
+    if t.GetTexCoord then
+        local ok, ulx, uly, _, _, urx, ury = pcall(t.GetTexCoord, t)
+        if ok and plain(ulx) and plain(uly) and plain(urx) and plain(ury) and (urx ~= ulx or ury ~= uly) then
+            return wrap(math.atan2(ury - uly, urx - ulx))
+        end
+    end
+    return nil
+end
+
+-- learning: for each way round (k = 1 or -1), the offset that turns the
+-- ring's angle into your facing; one that holds while you turn is kept
+local learn = { [1] = {}, [-1] = {} }
+function MM.LearnNorth(facing, ring)
+    if not (plain(facing) and plain(ring)) then return end
+    for _, k in ipairs({ 1, -1 }) do
+        local L, off = learn[k], wrap(facing - k * ring)
+        if L.off and near(L.off, off) then
+            L.hits = L.hits + 1
+            if not L.lo then L.lo, L.hi = ring, ring end
+            if not near(ring, L.lo) then L.turned = true end
+        else
+            L.off, L.hits, L.lo, L.turned = off, 0, ring, false
+        end
+    end
+    -- settled: one way round has held through a real turn, the other hasn't
+    for _, k in ipairs({ 1, -1 }) do
+        local L, other = learn[k], learn[-k]
+        if L.turned and L.hits >= 10 and not (other.turned and other.hits >= 10) then
+            if db then db.northCal = { k = k, off = L.off } end
+        end
+    end
+end
+
+function MM.Facing()
+    local a = GetPlayerFacing and GetPlayerFacing()
+    local ring = MM.CompassAngle()
+    if plain(a) then
+        if ring then MM.LearnNorth(a, ring) end
+        return a
+    end
+    local cal = db and db.northCal
+    if ring and type(cal) == "table" and (cal.k == 1 or cal.k == -1) and plain(cal.off) then
+        return wrap(cal.k * ring + cal.off)
+    end
+    return nil
+end
+
 function MM.PlaceNorth()
     if not (deco and deco:IsShown() and deco.north) then return end
     local m = minimap()
     local half = ((m and m:GetWidth()) or 140) / 2
-    local a = rotating() and GetPlayerFacing and GetPlayerFacing() or 0
-    if type(a) ~= "number" or (issecretvalue and issecretvalue(a)) then a = 0 end
+    local a = rotating() and MM.Facing() or 0
+    if not plain(a) then a = 0 end
     deco.north:ClearAllPoints()
     deco.north:SetPoint("CENTER", m, "CENTER", math.sin(a) * (half + 1), math.cos(a) * (half + 1))
 end

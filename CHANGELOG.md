@@ -6,6 +6,7 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## 0.8.6
 
+- **The N keeps turning in dungeons.** Inside dungeons and raids the game keeps your facing from addons, so on a rotating minimap the N stopped at the top. It now follows the game's own compass ring there (hidden under Pathfinder's look, but still turning), using how that ring lines up with your facing, which Pathfinder learns the first time you turn around outside and keeps.
 - **Quest marks clear themselves.** A Mark on Map or View Location mark goes once you've done with it: a pick-up mark when you take the quest, any mark for a quest when you hand it in. Right-click a mark (Mark on Map's, or the route's next step) to clear it yourself; a cleared step mark comes back for the next step. `/ruin clearmap` clears them all.
 - **Routes keep to their levels.** Every route (zone, dungeon and hand-written) now leaves out any quest that needs you more than 3 levels above the level most of its quests are at (the level 80% of them are at or below), along with anything on the route that waits on it. Today that takes The Mad King (level 40) out of the Gnomeregan route, whose quests are mostly 27-34; every other route already kept to its levels.
 - **No endgame set quests in zone routes.** The dungeon set upgrade chain (Mux Manascrambler in Gadgetzan, Deliana, Mokvar, Anthion Harmon and Bodley) needs level 58 and the full dungeon set, but its few level-60 quests had joined Tanaris's top route. They're left out of zone routes now.

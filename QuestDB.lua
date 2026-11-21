@@ -939,6 +939,18 @@ end
 -- QB.Zones also leaves out quests that need a long chain from other zones.
 local ZONE_SPAN = 6          -- levels one part may cover before a new part starts
 local FAR_CHAIN = 5          -- earlier quests from other zones that keep a quest out of zone routes
+-- the dungeon set upgrade (Tier 0.5) chain's givers: Mokvar, Deliana, Mux
+-- Manascrambler, Anthion Harmon and Bodley. Their quests need level 58 and
+-- the full dungeon set, so they're endgame, not a zone's levelling.
+QB.SET_UPGRADE_GIVERS = { [16012] = true, [16013] = true, [16014] = true, [16016] = true, [16033] = true }
+local function setUpgradeQuest(qid)
+    local st = QB.Field(qid, "startedBy")
+    local npcs = type(st) == "table" and st[1]
+    if type(npcs) ~= "table" then return false end
+    for _, n in ipairs(npcs) do if QB.SET_UPGRADE_GIVERS[n] then return true end end
+    return false
+end
+QB.IsSetUpgradeQuest = setUpgradeQuest
 local function routeFilter()
     local covered, dungeon = {}, {}
     local faction = UnitFactionGroup and UnitFactionGroup("player")
@@ -957,6 +969,7 @@ local function routeFilter()
         -- quests you can only pick up at 60 are endgame (raid attunements and
         -- set turn-ins, the Ahn'Qiraj war), not levelling
         if (tonumber(QB.Field(qid, "requiredLevel")) or 0) >= 60 then return false end
+        if setUpgradeQuest(qid) then return false end
         local name = QB.Field(qid, "name")
         if type(name) == "string" and name:find("^Craftsman's Writ") then return false end
         local st = QB.Field(qid, "startedBy")

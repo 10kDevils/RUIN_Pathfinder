@@ -4,6 +4,11 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## Unreleased
 
+## 0.8.6
+
+- **No endgame set quests in zone routes.** The dungeon set upgrade chain (Mux Manascrambler in Gadgetzan, Deliana, Mokvar, Anthion Harmon and Bodley) needs level 58 and the full dungeon set, but its few level-60 quests had joined Tanaris's top route. They're left out of zone routes now.
+- **"You walked past" only for quests you can take.** A route's pick-up reminder now waits until you're the quest's level and have done its earlier quests, so it never sends you back for one the giver won't offer yet.
+
 ## 0.8.5
 
 - **Quieter quest reminders.** A reminder's sound now plays at most once every 30 seconds, so several reminders at once (or a run of them along a road) chime once; the reminders themselves still all show. The sound is now the short minimap ping instead of the longer Artifact Forge chime.

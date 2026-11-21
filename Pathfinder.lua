@@ -32,7 +32,7 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Pathfinder", { version = "0.8.5" })
+local M = R:RegisterModule("Pathfinder", { version = "0.8.6" })
 local QB = ns.QB
 
 -- What the player lets RUIN share about them (RUIN Core: Settings > Display)
@@ -1126,9 +1126,22 @@ local function routeAccepts()
     if not r then return out end
     for i = db.step or 1, math.min(#r.steps, (db.step or 1) + REMIND_AHEAD) do
         local st = r.steps[i]
-        if st and st.act == "accept" and st.qid and not haveOrDone(st.qid) then out[st.qid] = i end
+        if st and st.act == "accept" and st.qid and not haveOrDone(st.qid) and M.CanTakeNow(st.qid) then out[st.qid] = i end
     end
     return out
+end
+
+-- You could pick this quest up now: your level, and its earlier quests done.
+-- (A reminder for one you can't take yet would only send you back for nothing.)
+function M.CanTakeNow(qid)
+    local info = QB.Quest and QB.Quest(qid)
+    if not info then return true end
+    local level = UnitLevel and UnitLevel("player") or 1
+    if (info.req or 1) > level then return false end
+    for _, p in ipairs(QB.Prereqs and QB.Prereqs(qid) or {}) do
+        if not QB.Done(p) then return false end
+    end
+    return true
 end
 
 -- this zone's quests you could take now (level, earlier quests done)

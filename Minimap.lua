@@ -308,8 +308,82 @@ function MM.Facing()
     return nil
 end
 
+-- On a rotating map the N rides the game's own compass ring, which the game
+-- turns with you everywhere, dungeons included (where addons can't read
+-- which way you face, nor how far the ring has turned). Pathfinder gives the
+-- ring its N badge and puts it round the map; the game does the turning.
+local compass = { on = false }
+local function compassTex() local t = rawget(_G, "MinimapCompassTexture"); return type(t) == "table" and t.SetTexture and t or nil end
+
+function MM.CompassAdopted() return compass.on end
+
+local function showOwnNorth(on)
+    if not deco then return end
+    for _, t in ipairs({ deco.north, deco.northRing, deco.n }) do if t then if on then t:Show() else t:Hide() end end end
+end
+
+function MM.AdoptCompass()
+    local t, m = compassTex(), minimap()
+    if not (t and m and deco and deco:IsShown()) then return false end
+    if not compass.on then
+        compass.on = true
+        compass.parent = t.GetParent and t:GetParent()
+        compass.layer, compass.sub = t.GetDrawLayer and t:GetDrawLayer()
+        compass.tex = t.GetTexture and t:GetTexture()
+        compass.atlas = t.GetAtlas and t:GetAtlas()
+        compass.w, compass.h = t:GetWidth(), t:GetHeight()
+        compass.points = {}
+        for i = 1, (t.GetNumPoints and t:GetNumPoints() or 0) do compass.points[i] = { t:GetPoint(i) } end
+        dim(t, false)
+    end
+    -- above Pathfinder's ring, round the map, with the badge at the top; set
+    -- up once, and again only if the game (or a resize) moved it
+    local half = ((m:GetWidth()) or 140) / 2
+    local size = (half + 12) * 2
+    local okTex, tex = pcall(t.GetTexture, t)
+    local okPar, par = pcall(t.GetParent, t)
+    if not compass.placed or (okPar and par ~= deco) or (okTex and tex ~= MEDIA .. "NorthCompass" and tex ~= nil)
+        or math.abs((t:GetWidth() or 0) - size) > 0.5 then
+        if t.SetParent then pcall(t.SetParent, t, deco) end
+        if t.SetDrawLayer then pcall(t.SetDrawLayer, t, "OVERLAY", 1) end
+        t:SetTexture(MEDIA .. "NorthCompass")
+        t:ClearAllPoints()
+        t:SetPoint("CENTER", m, "CENTER", 0, 0)
+        t:SetSize(size, size)
+        compass.placed = true
+        compass.color = nil
+    end
+    local c = accent()
+    local key = c[1] .. ":" .. c[2] .. ":" .. c[3]
+    if compass.color ~= key then
+        compass.color = key
+        t:SetVertexColor(c[1] + (1 - c[1]) * 0.35, c[2] + (1 - c[2]) * 0.35, c[3] + (1 - c[3]) * 0.35, 1)
+        t:SetAlpha(1)
+        showOwnNorth(false)
+    end
+    return true
+end
+
+function MM.ReleaseCompass()
+    showOwnNorth(true)
+    if not compass.on then return end
+    compass.on, compass.placed = false, nil
+    local t = compassTex()
+    if not t then return end
+    if compass.parent and t.SetParent then pcall(t.SetParent, t, compass.parent) end
+    if compass.layer and t.SetDrawLayer then pcall(t.SetDrawLayer, t, compass.layer, compass.sub or 0) end
+    if compass.atlas and t.SetAtlas then pcall(t.SetAtlas, t, compass.atlas) elseif compass.tex then t:SetTexture(compass.tex) end
+    t:SetVertexColor(1, 1, 1, 1)
+    t:ClearAllPoints()
+    for _, pt in ipairs(compass.points or {}) do pcall(t.SetPoint, t, unpack(pt)) end
+    if compass.w and compass.h then t:SetSize(compass.w, compass.h) end
+end
+
 function MM.PlaceNorth()
     if not (deco and deco:IsShown() and deco.north) then return end
+    -- rotating: the game's ring carries the N (in dungeons too)
+    if rotating() and MM.AdoptCompass() then return end
+    if compass.on then MM.ReleaseCompass() end
     local m = minimap()
     local half = ((m and m:GetWidth()) or 140) / 2
     local a = rotating() and MM.Facing() or 0
@@ -996,7 +1070,7 @@ function MM.Apply()
     local m = minimap()
     if not (db and m) then return end
     local modern = modern()
-    for _, r in ipairs(blizzardBits()) do dim(r, modern) end
+    for _, r in ipairs(blizzardBits()) do if not (compass.on and r == compassTex()) then dim(r, modern) end end
     for _, b in ipairs(zoomButtons()) do dim(b, modern) end
     dim(zoneText(), modern)
     wheelZoom(m, modern)
@@ -1013,6 +1087,7 @@ function MM.Apply()
         iconsOnFrame(m, MM.IconSpot() == "panel")
     else
         iconsOnFrame(m, false)
+        MM.ReleaseCompass()
         if deco then deco:Hide() end
         fitMap(m, false)
         for f in pairs(moved) do restorePiece(f) end

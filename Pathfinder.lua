@@ -3730,6 +3730,7 @@ SlashCmdList.RUINPATH = function(input)
         local arg = msg:match("^minimap%s+(%S+)")
         local mm = ns.Minimap
         if arg == "debug" then return mm.Debug(function(t) M:Print(t) end) end
+        if arg == "north" then return mm.DebugNorth(function(t) M:Print(t) end) end
         if arg == "find" then
             local ok, err = pcall(mm.Find, function(t) M:Print(t) end)
             if not ok then M:Print("Couldn't finish looking: " .. tostring(err)) end

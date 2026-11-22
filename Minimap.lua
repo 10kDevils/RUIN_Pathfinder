@@ -1095,6 +1095,52 @@ function MM.SetStyle(style)
     return true
 end
 
+-- /path minimap north: what the game gives for turning the N (your facing,
+-- and anything around the minimap that turns), to see why it doesn't.
+function MM.DebugNorth(print)
+    local inInst, kind = false, "none"
+    if IsInInstance then inInst, kind = IsInInstance() end
+    local f = GetPlayerFacing and GetPlayerFacing()
+    local secret = f ~= nil and issecretvalue and issecretvalue(f)
+    print(("Rotating minimap: %s.  In an instance: %s (%s)."):format(tostring(rotating()), tostring(inInst), tostring(kind)))
+    print(("Your facing for addons: %s"):format(f == nil and "nothing (nil)" or secret and "a secret value" or ("%.2f"):format(f)))
+    local cal = db and db.northCal
+    print(("Learned from the compass ring: %s"):format(type(cal) == "table" and ("way %s, offset %.2f"):format(tostring(cal.k), tonumber(cal.off) or 0) or "not yet"))
+    local seen = {}
+    local function show(label, r)
+        if type(r) ~= "table" or seen[r] or not (r.GetObjectType and r:GetObjectType() == "Texture") then return end
+        seen[r] = true
+        local rot = r.GetRotation and select(2, pcall(r.GetRotation, r))
+        local tc = r.GetTexCoord and { pcall(r.GetTexCoord, r) } or {}
+        local coords = {}
+        for i = 2, 9 do coords[#coords + 1] = type(tc[i]) == "number" and not (issecretvalue and issecretvalue(tc[i])) and ("%.2f"):format(tc[i]) or tostring(tc[i]) end
+        print(("%s: %s rotation=%s coords=%s alpha=%.1f %s"):format(label, tostring(r.GetName and r:GetName() or r.GetAtlas and r:GetAtlas() or r.GetTexture and r:GetTexture()),
+            type(rot) == "number" and not (issecretvalue and issecretvalue(rot)) and ("%.2f"):format(rot) or tostring(rot), table.concat(coords, ","),
+            r.GetAlpha and r:GetAlpha() or 0, r.IsShown and r:IsShown() and "shown" or "hidden"))
+    end
+    show("Compass", rawget(_G, "MinimapCompassTexture"))
+    local cl = rawget(_G, "MinimapCluster")
+    for _, frame in ipairs({ minimap(), rawget(_G, "MinimapBackdrop"), cl, type(cl) == "table" and cl.MinimapContainer or nil }) do
+        if type(frame) == "table" and frame.GetRegions then
+            for _, r in ipairs({ frame:GetRegions() }) do
+                local rot = r.GetRotation and select(2, pcall(r.GetRotation, r))
+                if type(rot) == "number" and not (issecretvalue and issecretvalue(rot)) and rot ~= 0 then show("Turning", r) end
+            end
+        end
+    end
+    local m = minimap()
+    local names = {}
+    local mt = m and getmetatable(m)
+    local idx = mt and type(mt.__index) == "table" and mt.__index or {}
+    for k in pairs(idx) do
+        local lk = tostring(k):lower()
+        if lk:find("rot") or lk:find("facing") or lk:find("compass") or lk:find("arrow") then names[#names + 1] = tostring(k) end
+    end
+    table.sort(names)
+    print("Minimap methods about turning: " .. (#names > 0 and table.concat(names, ", ") or "none"))
+    print("Run this once outside facing north, once outside facing east, and once inside a dungeon.")
+end
+
 -- /path minimap debug: what's around the minimap, to find a piece RUIN missed.
 function MM.Debug(print)
     local m = minimap()

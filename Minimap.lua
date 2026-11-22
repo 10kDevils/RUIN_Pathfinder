@@ -325,34 +325,40 @@ local function showOwnNorth(on)
 end
 
 function MM.AdoptCompass()
+    if compass.broken then return false end
     local t, m = compassTex(), minimap()
     if not (t and m and deco and deco:IsShown()) then return false end
     if not compass.on then
+        -- what to give back later; the game may refuse any of these reads
         compass.on = true
-        compass.parent = t.GetParent and t:GetParent()
-        compass.layer, compass.sub = t.GetDrawLayer and t:GetDrawLayer()
-        compass.tex = t.GetTexture and t:GetTexture()
-        compass.atlas = t.GetAtlas and t:GetAtlas()
-        compass.w, compass.h = t:GetWidth(), t:GetHeight()
+        local function get(f, ...) local r = { pcall(f, t, ...) }; if r[1] then return select(2, unpack(r)) end end
+        compass.parent = t.GetParent and get(t.GetParent)
+        compass.layer, compass.sub = nil, nil
+        if t.GetDrawLayer then compass.layer, compass.sub = get(t.GetDrawLayer) end
+        compass.tex = t.GetTexture and get(t.GetTexture)
+        compass.atlas = t.GetAtlas and get(t.GetAtlas)
+        compass.w, compass.h = get(t.GetWidth), get(t.GetHeight)
         compass.points = {}
-        for i = 1, (t.GetNumPoints and t:GetNumPoints() or 0) do compass.points[i] = { t:GetPoint(i) } end
+        local np = t.GetNumPoints and get(t.GetNumPoints) or 0
+        for k = 1, (type(np) == "number" and np or 0) do compass.points[k] = { get(t.GetPoint, k) } end
         dim(t, false)
+        compass.placed = nil
     end
-    -- above Pathfinder's ring, round the map, with the badge at the top; set
-    -- up once, and again only if the game (or a resize) moved it
+    -- above Pathfinder's ring, round the map, with the badge at the top. Only
+    -- the game's setters are used from here on (they're allowed in dungeons,
+    -- where reading the ring isn't), once, and again every few seconds or
+    -- when the map's size changes, in case the game put it back
     local half = ((m:GetWidth()) or 140) / 2
     local size = (half + 12) * 2
-    local okTex, tex = pcall(t.GetTexture, t)
-    local okPar, par = pcall(t.GetParent, t)
-    if not compass.placed or (okPar and par ~= deco) or (okTex and tex ~= MEDIA .. "NorthCompass" and tex ~= nil)
-        or math.abs((t:GetWidth() or 0) - size) > 0.5 then
-        if t.SetParent then pcall(t.SetParent, t, deco) end
-        if t.SetDrawLayer then pcall(t.SetDrawLayer, t, "OVERLAY", 1) end
+    local now = GetTime and GetTime() or 0
+    if not compass.placed or compass.size ~= size or now - (compass.placedAt or 0) > 3 then
+        if t.SetParent then t:SetParent(deco) end
+        if t.SetDrawLayer then t:SetDrawLayer("OVERLAY", 1) end
         t:SetTexture(MEDIA .. "NorthCompass")
         t:ClearAllPoints()
         t:SetPoint("CENTER", m, "CENTER", 0, 0)
         t:SetSize(size, size)
-        compass.placed = true
+        compass.placed, compass.size, compass.placedAt = true, size, now
         compass.color = nil
     end
     local c = accent()
@@ -374,11 +380,11 @@ function MM.ReleaseCompass()
     if not t then return end
     if compass.parent and t.SetParent then pcall(t.SetParent, t, compass.parent) end
     if compass.layer and t.SetDrawLayer then pcall(t.SetDrawLayer, t, compass.layer, compass.sub or 0) end
-    if compass.atlas and t.SetAtlas then pcall(t.SetAtlas, t, compass.atlas) elseif compass.tex then t:SetTexture(compass.tex) end
-    t:SetVertexColor(1, 1, 1, 1)
-    t:ClearAllPoints()
+    if compass.atlas and t.SetAtlas then pcall(t.SetAtlas, t, compass.atlas) elseif compass.tex then pcall(t.SetTexture, t, compass.tex) end
+    pcall(t.SetVertexColor, t, 1, 1, 1, 1)
+    pcall(t.ClearAllPoints, t)
     for _, pt in ipairs(compass.points or {}) do pcall(t.SetPoint, t, unpack(pt)) end
-    if compass.w and compass.h then t:SetSize(compass.w, compass.h) end
+    if type(compass.w) == "number" and type(compass.h) == "number" then pcall(t.SetSize, t, compass.w, compass.h) end
 end
 
 function MM.PlaceNorth()
@@ -388,8 +394,17 @@ function MM.PlaceNorth()
     -- any angle. Anywhere else Pathfinder places its own N, kept upright.
     local f = GetPlayerFacing and GetPlayerFacing()
     local known = plain(f)
-    if rotating() and not known and MM.AdoptCompass() then return end
-    if compass.on then MM.ReleaseCompass() end
+    if rotating() and not known and not compass.broken then
+        local ok, adopted = pcall(MM.AdoptCompass)
+        if ok and adopted then return end
+        if not ok then
+            -- the game refused something: leave its ring alone for the rest of
+            -- the session (the N sits on top in dungeons), and never repeat it
+            compass.broken = true
+            pcall(MM.ReleaseCompass)
+        end
+    end
+    if compass.on then pcall(MM.ReleaseCompass) end
     local m = minimap()
     local half = ((m and m:GetWidth()) or 140) / 2
     local a = rotating() and MM.Facing() or 0

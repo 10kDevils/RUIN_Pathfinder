@@ -1066,7 +1066,12 @@ local function arrowTick(nav, elapsed)
     end
     if not facing then arrow:Hide(); dist:SetText(("%d yards"):format(yards)); return end
     arrow:SetRotation(math.atan2(-east, north) - facing)
-    if yards < 15 then arrow:SetVertexColor(0.3, 1, 0.3) else arrow:SetVertexColor(1, 0.82, 0.2) end
+    -- the tracker style's accent (green once you're there)
+    if yards < 15 then arrow:SetVertexColor(0.3, 1, 0.3)
+    else
+        local ac = ns.Looks and M.TrackerStyle and ns.Looks.Scheme(M.TrackerStyle()).accent or { 1, 0.82, 0.2 }
+        arrow:SetVertexColor(ac[1], ac[2], ac[3])
+    end
     arrow:Show()
     dist:SetText(yards < 15 and (C.good .. "here|r") or ("%d yards"):format(yards))
 end
@@ -1704,6 +1709,8 @@ updateTracker = function()
                 and tracker.arrow:SetAtlas("Navigation-Tracked-Arrow") ~= false) then
             tracker.arrow:SetTexture("Interface\\Minimap\\MinimapArrow")
         end
+        -- the game's arrow is drawn gold: grey first, so the style's accent shows true
+        if tracker.arrow.SetDesaturated then tracker.arrow:SetDesaturated(true) end
         tracker.arrow:SetSize(22, 22)
         tracker.arrow:SetPoint("RIGHT", tracker.next, "LEFT", -4, -6)
         tracker.arrow:Hide()

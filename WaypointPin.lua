@@ -224,6 +224,8 @@ local function build(parent, name)
             and p.arrow:SetAtlas("Navigation-Tracked-Arrow") ~= false) then
         p.arrow:SetTexture("Interface\\Minimap\\MinimapArrow")
     end
+    -- the game's arrow is drawn gold: grey first, so the style's accent shows true
+    if p.arrow.SetDesaturated then p.arrow:SetDesaturated(true) end
     p.arrow:SetSize(EDGE_ARROW, EDGE_ARROW)
     p.arrow:SetVertexColor(GOLD[1], GOLD[2], GOLD[3])
     p.arrow:Hide()
@@ -383,13 +385,20 @@ local function paint(p, d, lk, relayout)
     else
         p.arrow:Hide()
         vis(p.beam, lk.stem); vis(p.foot, lk.stem)
-        p.tag:SetPoint("TOP", p.foot, "BOTTOM", 0, -4)
-        -- the card sits on the marker; without it, on top of the stem; without
-        -- both, right where the ground dot would be
+        -- top to bottom: the card, the distance right under it, then the
+        -- marker, the stem and the dot. The stack sits on the marker; without
+        -- it, on top of the stem; without both, where the ground dot would be
+        local base, rel, y
+        if lk.marker then base, rel, y = p, "TOP", 7
+        elseif lk.stem then base, rel, y = p.beam, "TOP", 4
+        else base, rel, y = p.beam, "BOTTOM", 2 end
         p.card:ClearAllPoints()
-        if lk.marker then p.card:SetPoint("BOTTOM", p, "TOP", 0, 7)
-        elseif lk.stem then p.card:SetPoint("BOTTOM", p.beam, "TOP", 0, 4)
-        else p.card:SetPoint("BOTTOM", p.beam, "BOTTOM", 0, 2) end
+        if lk.distance then
+            p.tag:SetPoint("BOTTOM", base, rel, 0, y)
+            p.card:SetPoint("BOTTOM", p.tag, "TOP", 0, 2)
+        else
+            p.card:SetPoint("BOTTOM", base, rel, 0, y)
+        end
         if relayout then
             p.sub:SetText(d.sub or "")
             p.title:SetText(d.title or "")

@@ -308,10 +308,12 @@ function MM.Facing()
     return nil
 end
 
--- On a rotating map the N rides the game's own compass ring, which the game
--- turns with you everywhere, dungeons included (where addons can't read
--- which way you face, nor how far the ring has turned). Pathfinder gives the
--- ring its N badge and puts it round the map; the game does the turning.
+-- In dungeons addons can't read which way you face, nor how far the game's
+-- own compass ring has turned, but the game still turns that ring. There, on
+-- a rotating map, Pathfinder gives the ring its badge (an arrowhead pointing
+-- north, which reads right however it's turned) and puts it round the map;
+-- the game does the turning. Elsewhere Pathfinder's upright N is placed by
+-- your facing.
 local compass = { on = false }
 local function compassTex() local t = rawget(_G, "MinimapCompassTexture"); return type(t) == "table" and t.SetTexture and t or nil end
 
@@ -381,8 +383,12 @@ end
 
 function MM.PlaceNorth()
     if not (deco and deco:IsShown() and deco.north) then return end
-    -- rotating: the game's ring carries the N (in dungeons too)
-    if rotating() and MM.AdoptCompass() then return end
+    -- rotating where the game won't say which way you face (dungeons): the
+    -- game's ring carries the badge, with an arrowhead that reads right at
+    -- any angle. Anywhere else Pathfinder places its own N, kept upright.
+    local f = GetPlayerFacing and GetPlayerFacing()
+    local known = plain(f)
+    if rotating() and not known and MM.AdoptCompass() then return end
     if compass.on then MM.ReleaseCompass() end
     local m = minimap()
     local half = ((m and m:GetWidth()) or 140) / 2

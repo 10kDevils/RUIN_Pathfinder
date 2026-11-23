@@ -2776,18 +2776,19 @@ local function buildCurrent(page)
     ui.stepCount = W.Label(page, "", "GameFontHighlightSmall")
     ui.stepCount:SetPoint("LEFT", h2, "RIGHT", 10, 0)
     ui.samplePill = W.Pill(page, 104)
-    ui.samplePill:SetPoint("LEFT", ui.stepCount, "RIGHT", 10, 0)
+    ui.samplePill:SetPoint("LEFT", h2, "RIGHT", 10, 0)
+    ui.stepsHeader = h2
     ui.samplePill:SetTag("Sample", "Classic sample")
     ui.clearBtn = W.Button(page, "Clear route", 90, function() M:ClearRoute() end)
     ui.clearBtn.tip = "Leave the route you're on without starting another."
     if ns.Plan then
-        ui.budget = W.Button(page, ns.Plan.BudgetLabel(db.budget), 150)
+        ui.budget = W.Button(page, ns.Plan.BudgetLabel(db.budget), 100)
         W.MarkChoice(ui.budget)
-        W.AttachMenu(ui.budget, { width = 150, items = function() return ns.Plan.BUDGETS end,
-            label = function(m) return ns.Plan.BudgetLabel(m) end, current = function() return db.budget or 0 end,
+        W.AttachMenu(ui.budget, { width = 130, items = function() return ns.Plan.BUDGETS end,
+            label = function(m) return ns.Plan.BudgetChoice(m) end, current = function() return db.budget or 0 end,
             pick = function(m) ns.Plan.SetBudget(m); ui.budget:SetText(ns.Plan.BudgetLabel(m)); updateTracker(); refreshPage() end })
         ui.budget.tip = "How long you'll play: the Guide and tracker show where to stop on a planned route."
-        ui.groupBtn = W.Button(page, "Find group", 96, function()
+        ui.groupBtn = W.Button(page, "Group", 64, function()
             local ok, err = ns.Plan.FindGroup()
             M:Print(ok and "Listed on RUIN Finder's board for this quest." or err)
         end)
@@ -2881,6 +2882,19 @@ local function buildCurrent(page)
     ui.classQuestLine:SetPoint("TOPLEFT", 10, -66)
     ui.classQuestLine:SetWidth(176)
     ui.classQuestLine:SetWordWrap(false)
+    -- a label takes no mouse: a frame over it shows the whole name and the giver
+    ui.classQuestHover = CreateFrame("Frame", nil, ct)
+    ui.classQuestHover:SetPoint("TOPLEFT", ui.classQuestLine, "TOPLEFT", 0, 2)
+    ui.classQuestHover:SetPoint("BOTTOMRIGHT", ui.classQuestLine, "BOTTOMRIGHT", 0, -2)
+    ui.classQuestHover:EnableMouse(true)
+    ui.classQuestHover:SetScript("OnEnter", function(self)
+        if not self.text then return end
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Next class quest", 1, 0.82, 0)
+        GameTooltip:AddLine(self.text, 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    ui.classQuestHover:SetScript("OnLeave", function() GameTooltip:Hide() end)
     local verify = W.Pill(ct, 132)
     verify:SetPoint("TOPLEFT", 10, -86)
     verify:SetTag("Unverified", "Unverified on Forever")
@@ -2940,8 +2954,8 @@ local function refreshClassTrack()
     ui.trainerLine:SetText(C.dim .. "Next trainer visit: |r" .. C.white .. "level " .. nextTrainerLevel(level) .. "|r")
     if ui.classQuestLine then
         local cq = ns.Plan and ns.Plan.NextClassQuest(level)
-        ui.classQuestLine:SetText(cq and (C.dim .. "Class quest " .. cq.level .. ": |r" .. C.white .. cq.name .. "|r") or (C.dim .. "No class quest due|r"))
-        ui.classQuestLine.tip = cq and (cq.name .. (cq.giver and (" from " .. cq.giver) or "") .. " (level " .. cq.level .. ")") or nil
+        ui.classQuestLine:SetText(cq and (C.dim .. "Class " .. cq.level .. ": |r" .. C.white .. cq.name .. "|r") or (C.dim .. "No class quest due|r"))
+        ui.classQuestHover.text = cq and (cq.name .. (cq.giver and (" from " .. cq.giver) or "") .. " (level " .. cq.level .. ")") or nil
     end
 end
 
@@ -3650,11 +3664,22 @@ local function buildPage(panel)
             local extra = ""
             if r and ns.Plan then
                 local stop, left = ns.Plan.BudgetStop(), ns.Plan.MinutesLeft(r, db.step)
-                if stop then extra = ("  ·  stop at step %d (about level %s)"):format(stop.step, tostring(stop.level))
-                elseif left then extra = ("  ·  about %dh %02dm left"):format(math.floor(left / 60), left % 60) end
+                if stop then extra = (" · stop %d (lv %s)"):format(stop.step, tostring(stop.level))
+                elseif left then extra = (" · %dh %02dm left"):format(math.floor(left / 60), left % 60) end
             end
-            ui.stepCount:SetText(r and (C.dim .. ("%d/%d done"):format(math.min(db.step - 1, #r.steps), #r.steps) .. extra .. "|r") or "")
-            if ui.groupBtn then ui.groupBtn:SetShown(ns.Plan.GroupStep() ~= nil) end
+            ui.stepCount:SetText(r and (C.dim .. ("%d/%d"):format(math.min(db.step - 1, #r.steps), #r.steps) .. (extra ~= "" and extra or " done") .. "|r") or "")
+            if ui.groupBtn then
+                local grp = ns.Plan.GroupStep() ~= nil
+                ui.budget:SetText(ns.Plan.BudgetLabel(db.budget))
+                ui.groupBtn:SetShown(grp)
+                -- the step count runs up to the buttons over the list, never under them; a sample route's tag comes first
+                local pill = r ~= nil and isSample(r.id)
+                ui.stepCount:ClearAllPoints()
+                ui.stepCount:SetPoint("LEFT", pill and ui.samplePill or ui.stepsHeader, "RIGHT", 10, 0)
+                ui.stepCount:SetPoint("RIGHT", grp and ui.groupBtn or ui.budget, "LEFT", -8, 0)
+                ui.stepCount:SetJustifyH("LEFT")
+                ui.stepCount:SetWordWrap(false)
+            end
             ui.samplePill:SetShown(r ~= nil and isSample(r.id))
             if r then ui.clearBtn:Show() else ui.clearBtn:Hide() end
             refreshClassTrack()

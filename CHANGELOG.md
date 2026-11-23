@@ -8,7 +8,7 @@ Versioning: the third number counts the meaningful changes made since the second
 - **Suggested for you.** The Routes page opens with the best planned routes for your level (at level 1, your race's starting area), then all planned routes under Levelling.
 - **Session time.** Pick how long you'll play on the Guide page (30 minutes to 4 hours): it shows the step to stop at and the level you'll be about then, the tracker shows the stop step, and you're told once when you reach it. Without a session it shows the time left on the route.
 - **Class quests.** The Guide's Class track card names the next class quest for your class and level, and who gives it. Planned routes remind you to visit your trainer at even levels.
-- **Find group.** When your step's quest is Elite or Group, a Find group button lists you on RUIN Finder's board for it.
+- **Group.** When your step's quest is Elite or Group, a *Group* button lists you on RUIN Finder's board for it.
 - **Follow my party leader.** In a party on the same route as your leader, your step moves with theirs (on by default; the checkbox is by RUIN on the road). Leaving the party stops it.
 
 - **Route names show in full**: on Routes, a row's text now runs up to the buttons it actually shows, so dungeon routes keep their level range and section headers such as *Completed / out-leveled* aren't cut short.

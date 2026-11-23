@@ -78,9 +78,14 @@ end
 ---------------------------------------------------------------------------
 Plan.BUDGETS = { 0, 30, 60, 90, 120, 180, 240 }
 function Plan.BudgetLabel(m)
-    if not m or m == 0 then return "Session: whole route" end
-    if m < 60 then return ("Session: %d min"):format(m) end
-    return ("Session: %s h"):format((m % 60 == 0) and tostring(math.floor(m / 60)) or ("%.1f"):format(m / 60))
+    if not m or m == 0 then return "Session" end
+    if m < 60 then return ("%d min"):format(m) end
+    return ("%s h"):format((m % 60 == 0) and tostring(math.floor(m / 60)) or ("%.1f"):format(m / 60))
+end
+-- the menu's wording
+function Plan.BudgetChoice(m)
+    if not m or m == 0 then return "Whole route" end
+    return "Play " .. Plan.BudgetLabel(m)
 end
 
 -- Where to stop: { step = index, level = lv } for a budget in minutes from

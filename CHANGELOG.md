@@ -4,7 +4,7 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## Unreleased
 
-## 0.8.6
+## 0.8.9
 
 - **The waypoint's distance sits right under its card.** Top to bottom: the card, the distance and walking time, then the marker, the stem and the dot (the distance used to hang under the dot).
 - **The waypoint arrows follow your style's accent.** The arrow on the waypoint at the screen's edge and the one on the quest tracker were the game's gold, which a tint can't change; they're greyed first now, so they take the accent of the style you picked (the tracker's still turns green when you're there).

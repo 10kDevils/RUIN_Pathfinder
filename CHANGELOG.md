@@ -4,6 +4,10 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## Unreleased
 
+## 0.8.10
+
+- Version matched to the rest of the RUIN suite; no changes.
+
 ## 0.8.9
 
 - **The waypoint's distance sits right under its card.** Top to bottom: the card, the distance and walking time, then the marker, the stem and the dot (the distance used to hang under the dot).

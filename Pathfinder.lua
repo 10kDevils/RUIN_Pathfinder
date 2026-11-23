@@ -3095,6 +3095,20 @@ local function refreshQuests()
 end
 
 local function buildLibrary(page)
+    -- runs a Routes row's update, then lets its text run up to the leftmost button
+    -- it shows, or to the row's right edge when it has none (section headers)
+    local function fitAfter(fill)
+        return function(row, e)
+            fill(row, e)
+            local left
+            for _, b in ipairs({ row.pub, row.add, row.start, row.export, row.share, row.del }) do
+                if b:IsShown() then left = b; break end
+            end
+            row.text:ClearAllPoints()
+            row.text:SetPoint("LEFT", 28, 0)
+            if left then row.text:SetPoint("RIGHT", left, "LEFT", -6, 0) else row.text:SetPoint("RIGHT", row, "RIGHT", -6, 0) end
+        end
+    end
     local h = W.Header(page, "Your routes")
     h:SetPoint("TOPLEFT", 0, -2)
     local imp = W.Button(page, "Import string", 120, function()
@@ -3159,7 +3173,7 @@ local function buildLibrary(page)
         row.add:SetPoint("RIGHT", row.start, "LEFT", -2, 0)
         row.pub = W.Button(row, OFFICER_ICON .. " Publish", 84)
         row.pub:SetPoint("RIGHT", row.add, "LEFT", -2, 0)
-    end, function(row, e)
+    end, fitAfter(function(row, e)
         local officer = R:IsOfficer()
         row.tip = nil
         row.e = e
@@ -3287,7 +3301,7 @@ local function buildLibrary(page)
                 R:Confirm("Delete route", "Delete " .. r.title .. "? This can't be undone.", function() M:DeleteRoute(r.id) end)
             end
         end)
-    end)
+    end))
     ui.library.frame:SetPoint("TOPLEFT", 0, -24)
     ui.library.frame:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -24, 0)
 end

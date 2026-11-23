@@ -4,6 +4,8 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## Unreleased
 
+- **Route names show in full**: on Routes, a row's text now runs up to the buttons it actually shows, so dungeon routes keep their level range and section headers such as *Completed / out-leveled* aren't cut short.
+
 ## 0.8.10
 
 - Version matched to the rest of the RUIN suite; no changes.

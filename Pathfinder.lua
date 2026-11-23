@@ -1015,6 +1015,7 @@ function M:OnStep(d, sender)
             self:Print(R.Util.ShortName(sender) .. " is on a route you don't have. Ask them to share it (Routes page, Share with RUIN).")
         end
     end
+    if ns.Plan then ns.Plan.OnPeerStep(d, sender) end
 end
 
 ---------------------------------------------------------------------------
@@ -1757,6 +1758,8 @@ updateTracker = function()
         local follow = db.follow and peers[db.follow]
         local extra = (follow and ("  " .. C.gold .. "· following " .. R.Util.ShortName(follow.name) .. "|r") or "")
             .. (n > 0 and ("  " .. C.good .. "· " .. n .. " RUIN here|r") or "")
+        local stop = ns.Plan and ns.Plan.BudgetStop()
+        if stop then extra = extra .. "  " .. C.dim .. "· stop at " .. stop.step .. "|r"; ns.Plan.CheckBudget() end
         tracker.title:SetText(("Pathfinder  ·  %s  %d/%d"):format(r.title, math.min(db.step, #r.steps), #r.steps) .. extra)
         tracker.step:SetText(s and stepText(s) or (C.good .. "Route complete!|r"))
         tracker.wantLines = nil
@@ -2636,7 +2639,7 @@ end
 -- { { header, sub, routes = { ... } }, ... }
 local function routeLibrary()
     local level = UnitLevel and UnitLevel("player") or 1
-    local dungeons, zones, past = {}, {}, {}
+    local dungeons, zones, past, levelling = {}, {}, {}, {}
     local function place(r, list)
         local lo, hi = routeLevels(r)
         r.lo, r.hi = lo, hi
@@ -2651,7 +2654,7 @@ local function routeLibrary()
     local mine = UnitFactionGroup and UnitFactionGroup("player")
     for _, r in ipairs(allRoutes()) do
         local f = r.faction
-        if not (mine and f and f ~= "Any" and f ~= "" and f ~= mine and r.id ~= db.route) then place(r, zones) end
+        if not (mine and f and f ~= "Any" and f ~= "" and f ~= mine and r.id ~= db.route) then place(r, r.plan and levelling or zones) end
     end
     for _, r in ipairs(zoneRoutes()) do place(r, zones) end
     local function byLevel(a, b)
@@ -2661,8 +2664,11 @@ local function routeLibrary()
         if ah ~= bh then return ah < bh end
         return (a.title or "") < (b.title or "")
     end
-    table.sort(dungeons, byLevel); table.sort(zones, byLevel); table.sort(past, byLevel)
+    table.sort(dungeons, byLevel); table.sort(zones, byLevel); table.sort(past, byLevel); table.sort(levelling, byLevel)
     local out = {}
+    local sug = ns.Plan and ns.Plan.Suggested(level) or {}
+    if #sug > 0 then out[#out + 1] = { header = "Suggested for you", sub = ("the best planned routes at level %d"):format(level), routes = sug } end
+    if #levelling > 0 then out[#out + 1] = { header = "Levelling", sub = "planned routes: the most experience an hour, zone to zone", routes = levelling } end
     if #dungeons > 0 then out[#out + 1] = { header = "Dungeons", sub = "every quest, with the ones that unlock it", routes = dungeons } end
     out[#out + 1] = { header = "Zones", sub = "leveling routes and every zone's quests", routes = zones }
     if #past > 0 then out[#out + 1] = { header = "Completed / out-leveled", sub = ("done, or %d+ levels below you"):format(OUTLEVELED), routes = past } end
@@ -2774,6 +2780,20 @@ local function buildCurrent(page)
     ui.samplePill:SetTag("Sample", "Classic sample")
     ui.clearBtn = W.Button(page, "Clear route", 90, function() M:ClearRoute() end)
     ui.clearBtn.tip = "Leave the route you're on without starting another."
+    if ns.Plan then
+        ui.budget = W.Button(page, ns.Plan.BudgetLabel(db.budget), 150)
+        W.MarkChoice(ui.budget)
+        W.AttachMenu(ui.budget, { width = 150, items = function() return ns.Plan.BUDGETS end,
+            label = function(m) return ns.Plan.BudgetLabel(m) end, current = function() return db.budget or 0 end,
+            pick = function(m) ns.Plan.SetBudget(m); ui.budget:SetText(ns.Plan.BudgetLabel(m)); updateTracker(); refreshPage() end })
+        ui.budget.tip = "How long you'll play: the Guide and tracker show where to stop on a planned route."
+        ui.groupBtn = W.Button(page, "Find group", 96, function()
+            local ok, err = ns.Plan.FindGroup()
+            M:Print(ok and "Listed on RUIN Finder's board for this quest." or err)
+        end)
+        ui.groupBtn.tip = "This step's quest needs a group: list yourself on RUIN Finder's board for it."
+        ui.groupBtn:Hide()
+    end
     ui.list = W.List(page, 32, function(row)
         row.box = CreateFrame("Frame", nil, row)
         row.box:SetSize(16, 16)
@@ -2797,8 +2817,21 @@ local function buildCurrent(page)
         row.sub:SetWordWrap(false)
         row.num = W.Label(row, "", "GameFontHighlightSmall")
         row.num:SetPoint("RIGHT", -8, 0)
+        -- a planned route's last step: start one of the routes it names
+        row.go = W.Button(row, "Start next", 96)
+        row.go:SetPoint("RIGHT", -30, 0)
+        row.go:Hide()
+        W.AttachMenu(row.go, { width = 260,
+            items = function() local out = {}; for _, n in ipairs(ns.Plan.Next(row.route)) do out[#out + 1] = n.id end; return out end,
+            label = function(id) local n = M:GetRoute(id); return n and n.title or id end,
+            current = function() return nil end, pick = function(id) M:StartRoute(id) end })
     end, function(row, s, i)
         local done, cur = i < db.step, i == db.step
+        row.route = currentRoute()
+        local hasNext = ns.Plan and type(s.next) == "table" and #ns.Plan.Next(row.route) > 0
+        row.go:SetShown(hasNext and true or false)
+        row.text:SetPoint("RIGHT", row, "RIGHT", hasNext and -132 or -34, 0)
+        row.sub:SetPoint("RIGHT", row, "RIGHT", hasNext and -132 or -34, 0)
         row.tick:SetShown(done)
         W.SetBorder(row.box, cur and "glow" or "border")
         row.marker:SetText(markerHex(s.act) .. (ACT_GLYPH[s.act] or "-") .. "|r")
@@ -2828,11 +2861,15 @@ local function buildCurrent(page)
     ui.list.frame:SetPoint("TOPLEFT", 0, -74)
     ui.list.frame:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", -234, 120)   -- room for its scroll bar beside the right column
     ui.clearBtn:SetPoint("BOTTOMRIGHT", ui.list.frame, "TOPRIGHT", 0, 3)   -- over the steps, clear of the right column
+    if ui.budget then
+        ui.budget:SetPoint("RIGHT", ui.clearBtn, "LEFT", -6, 0)
+        ui.groupBtn:SetPoint("RIGHT", ui.budget, "LEFT", -6, 0)
+    end
 
     -- Right column: class track and the marker legend.
     local ct = W.Card(page)
     ct:SetPoint("TOPRIGHT", page, "TOPRIGHT", 0, -54)
-    ct:SetSize(194, 128)
+    ct:SetSize(194, 144)
     local cth = W.Header(ct, "Class track")
     cth:SetPoint("TOPLEFT", 10, -8)
     ui.classLine = W.Label(ct, "", "GameFontHighlight")
@@ -2840,11 +2877,15 @@ local function buildCurrent(page)
     ui.trainerLine = W.Label(ct, "", "GameFontHighlightSmall")
     ui.trainerLine:SetPoint("TOPLEFT", 10, -50)
     ui.trainerLine:SetWidth(176)
+    ui.classQuestLine = W.Label(ct, "", "GameFontHighlightSmall")
+    ui.classQuestLine:SetPoint("TOPLEFT", 10, -66)
+    ui.classQuestLine:SetWidth(176)
+    ui.classQuestLine:SetWordWrap(false)
     local verify = W.Pill(ct, 132)
-    verify:SetPoint("TOPLEFT", 10, -68)
+    verify:SetPoint("TOPLEFT", 10, -86)
     verify:SetTag("Unverified", "Unverified on Forever")
     local remind = W.Check(ct, "Remind me", function() return db.trainer end, function(v) db.trainer = v end)
-    remind:SetPoint("TOPLEFT", 6, -92)
+    remind:SetPoint("TOPLEFT", 6, -108)
 
     local lg = W.Card(page)
     lg:SetPoint("TOPRIGHT", ct, "BOTTOMRIGHT", 0, -8)
@@ -2862,6 +2903,9 @@ local function buildCurrent(page)
 
     local h3 = W.Header(page, "RUIN on the road")
     h3:SetPoint("BOTTOMLEFT", 0, 100)
+    local partyCheck = W.Check(page, "Follow my party leader", function() return db.partySync end, function(v) db.partySync = v end)
+    partyCheck:SetPoint("LEFT", h3, "RIGHT", 16, 0)
+    partyCheck.tip = "In a party on the same route as your leader, your step moves with theirs."
     ui.peers = W.List(page, 24, function(row)
         row.text = W.Label(row, "")
         row.text:SetPoint("LEFT", 4, 0)
@@ -2894,6 +2938,11 @@ local function refreshClassTrack()
     local level = UnitLevel("player") or 1
     ui.classLine:SetText(W.ClassIcon(class, 16) .. " " .. W.ClassName(cname, class) .. C.dim .. "  level " .. level .. "|r")
     ui.trainerLine:SetText(C.dim .. "Next trainer visit: |r" .. C.white .. "level " .. nextTrainerLevel(level) .. "|r")
+    if ui.classQuestLine then
+        local cq = ns.Plan and ns.Plan.NextClassQuest(level)
+        ui.classQuestLine:SetText(cq and (C.dim .. "Class quest " .. cq.level .. ": |r" .. C.white .. cq.name .. "|r") or (C.dim .. "No class quest due|r"))
+        ui.classQuestLine.tip = cq and (cq.name .. (cq.giver and (" from " .. cq.giver) or "") .. " (level " .. cq.level .. ")") or nil
+    end
 end
 
 ---------------------------------------------------------------------------
@@ -3598,7 +3647,14 @@ local function buildPage(panel)
             ui.pick:SetText(pr and pickerLabel(ui.pickId) or "No routes")    -- as it reads in the list
             local r = currentRoute()
             ui.list:SetItems(r and r.steps or {})
-            ui.stepCount:SetText(r and (C.dim .. ("%d/%d done"):format(math.min(db.step - 1, #r.steps), #r.steps) .. "|r") or "")
+            local extra = ""
+            if r and ns.Plan then
+                local stop, left = ns.Plan.BudgetStop(), ns.Plan.MinutesLeft(r, db.step)
+                if stop then extra = ("  ·  stop at step %d (about level %s)"):format(stop.step, tostring(stop.level))
+                elseif left then extra = ("  ·  about %dh %02dm left"):format(math.floor(left / 60), left % 60) end
+            end
+            ui.stepCount:SetText(r and (C.dim .. ("%d/%d done"):format(math.min(db.step - 1, #r.steps), #r.steps) .. extra .. "|r") or "")
+            if ui.groupBtn then ui.groupBtn:SetShown(ns.Plan.GroupStep() ~= nil) end
             ui.samplePill:SetShown(r ~= nil and isSample(r.id))
             if r then ui.clearBtn:Show() else ui.clearBtn:Hide() end
             refreshClassTrack()
@@ -3647,6 +3703,8 @@ function M:OnEnable()
         db.edgeDefaults10 = true
     end
     for k, v in pairs(DEFAULTS) do if db[k] == nil then db[k] = v end end
+    M.CharDB = function() return db end
+    if ns.Plan then ns.Plan.Init(self) end
     if ns.Objectives then ns.Objectives.Init(db) end
     if ns.WorldMap then ns.WorldMap.Init(db) end
     if ns.Minimap then

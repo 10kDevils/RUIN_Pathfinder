@@ -20,4 +20,5 @@ Minimap.lua
 ObjectiveTracker.lua
 WorldMap.lua
 Pathfinder.lua
+Plan.lua
 WaypointPin.lua

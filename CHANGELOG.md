@@ -4,6 +4,13 @@ Versioning: the third number counts the meaningful changes made since the second
 
 ## Unreleased
 
+- **New levelling routes, Alliance 1-60.** Every Alliance levelling route is now planned from the quest database for the most experience an hour solo: each starts in the best zone for its levels, does the quests worth doing there at your level, and moves zone to zone as the game expects (taking the boat only when it pays). There's a level-1 route for each starting area (Northshire Valley, Coldridge Valley, Shadowglen, Zephras Isle), then routes of about five or six levels up to 60, with up to two alternatives per bracket. The last step offers 1-3 routes to start next.
+- **Suggested for you.** The Routes page opens with the best planned routes for your level (at level 1, your race's starting area), then all planned routes under Levelling.
+- **Session time.** Pick how long you'll play on the Guide page (30 minutes to 4 hours): it shows the step to stop at and the level you'll be about then, the tracker shows the stop step, and you're told once when you reach it. Without a session it shows the time left on the route.
+- **Class quests.** The Guide's Class track card names the next class quest for your class and level, and who gives it. Planned routes remind you to visit your trainer at even levels.
+- **Find group.** When your step's quest is Elite or Group, a Find group button lists you on RUIN Finder's board for it.
+- **Follow my party leader.** In a party on the same route as your leader, your step moves with theirs (on by default; the checkbox is by RUIN on the road). Leaving the party stops it.
+
 - **Route names show in full**: on Routes, a row's text now runs up to the buttons it actually shows, so dungeon routes keep their level range and section headers such as *Completed / out-leveled* aren't cut short.
 
 ## 0.8.10

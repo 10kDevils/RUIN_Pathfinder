@@ -42,19 +42,24 @@ Plan.Planned = planned
 function Plan.Suggested(lvl)
     lvl = lvl or level()
     local list = {}
+    -- a route planned to follow one particular route only after that route
+    local d = db()
+    local function open(r) return not r.follows or r.follows == d.route or r.follows == d.prevRoute end
     for _, r in ipairs(planned()) do
-        if r.startLevel and lvl >= r.startLevel and lvl < (r.endLevel or 60) then list[#list + 1] = r end
+        if r.startLevel and lvl >= r.startLevel and lvl < (r.endLevel or 60) and open(r) then list[#list + 1] = r end
     end
     if #list == 0 then
         -- above every bracket's start: the last ones
-        for _, r in ipairs(planned()) do if r.endLevel == 60 and lvl >= (r.startLevel or 0) then list[#list + 1] = r end end
+        for _, r in ipairs(planned()) do if r.endLevel == 60 and lvl >= (r.startLevel or 0) and open(r) then list[#list + 1] = r end end
     end
     local race
     if UnitRace then race = select(2, UnitRace("player")) end      -- not "UnitRace and UnitRace(...)": that keeps only the first value
     local startId = race and START_FOR[race]
     table.sort(list, function(a, b)
         if (a.id == startId) ~= (b.id == startId) then return a.id == startId end
-        local aa, ba = a.id:find("_alt") ~= nil, b.id:find("_alt") ~= nil
+        -- alternatives, and routes planned to follow one particular route ("_from_"), after the best
+        local aa = a.id:find("_alt") ~= nil or a.id:find("_from_") ~= nil
+        local ba = b.id:find("_alt") ~= nil or b.id:find("_from_") ~= nil
         if aa ~= ba then return not aa end
         if (a.startLevel or 0) ~= (b.startLevel or 0) then return (a.startLevel or 0) > (b.startLevel or 0) end
         return (a.xph or 0) > (b.xph or 0)

@@ -232,7 +232,16 @@ function M.TrimHandRoute(r)
     return r
 end
 
-local function routeById(id)
+-- a planned route id that's gone: the route that took its place (or nil)
+-- (a field, not a local: this file is at Lua's 200-locals limit)
+function M.RouteAlias(id)
+    local seen = 0
+    local to = ns.RouteAliases and ns.RouteAliases[id]
+    while to and ns.RouteAliases[to] and seen < 10 do to = ns.RouteAliases[to]; seen = seen + 1 end
+    return to
+end
+
+local function routeById(id, hop)
     if not id then return nil end
     if id == LOG_ID then return logRoute() end
     if type(id) == "string" and id:sub(1, 3) == "zq:" then return zoneRoute(id) end
@@ -244,7 +253,12 @@ local function routeById(id)
         return nil
     end
     for _, r in ipairs(ns.Routes) do if r.id == id then return M.TrimHandRoute(r) end end
-    return adb and (adb.custom[id] or adb.official[id])
+    local own = adb and (adb.custom[id] or adb.official[id])
+    if own then return own end
+    -- renamed in an update: follow it to the new id
+    local to = not hop and type(id) == "string" and M.RouteAlias(id)
+    if to then return routeById(to, true) end
+    return nil
 end
 
 -- The shopping list (QB.ShoppingSteps): up to two steps, buy from vendors
@@ -1941,6 +1955,7 @@ function M:StartRoute(id)
         return self:Print(QB.Has() and "No quests in your log to route." or "The log route needs Pathfinder's quest data, which didn't load: reinstall Pathfinder.")
     end
     if not routeById(id) then return end
+    if db.route and db.route ~= id then db.prevRoute = db.route end    -- routes that follow it are suggested next
     db.route, db.step = id, 1
     ui.pickId = id          -- the Guide tab shows the route you just started
     Shop.Freeze(id)
@@ -3739,6 +3754,23 @@ function M:OnEnable()
     if type(RUIN_PathfinderDB) ~= "table" then RUIN_PathfinderDB = {} end
     adb = RUIN_PathfinderDB
     for k, v in pairs(ACCOUNT_DEFAULTS) do if adb[k] == nil then adb[k] = R.Util.DeepCopy(v) end end
+    -- a saved route that was renamed in an update: keep your place on the new one
+    -- (the new route's steps differ, so start it over; Skip done quests catches it up)
+    local renamed = type(db.route) == "string" and not isBuiltInRoute(db.route)
+        and not (adb.custom[db.route] or adb.official[db.route]) and M.RouteAlias(db.route)
+    if renamed and routeById(renamed) then
+        db.route, db.step = renamed, 1
+        local function catchUp()
+            local r = db.route == renamed and currentRoute()
+            if not (r and db.skipDone and db.step == 1) then return end
+            while db.step <= #r.steps and stepDone(r.steps[db.step]) do db.step = db.step + 1 end
+            updateTracker()
+            updateStepPin()
+            refreshPage()
+        end
+        -- completed quests can still be loading at this point
+        if C_Timer and C_Timer.After then C_Timer.After(3, catchUp) else catchUp() end
+    end
 
     self:Listen("STEP", "OnStep")
     self:Listen("ROUTE", "OnRoute")

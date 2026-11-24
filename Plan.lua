@@ -27,6 +27,12 @@ local function level() return UnitLevel and UnitLevel("player") or 1 end
 -- the starting area for your race (level 1 routes)
 local START_FOR = { Human = "a_01_northshire_valley", Dwarf = "a_01_coldridge_valley", Gnome = "a_01_coldridge_valley",
                     NightElf = "a_01_shadowglen" }
+-- and the route that carries on in your race's own zone (the low levels stay at home)
+local HOME_FOR = { Human = "a_06_elwynn_forest", Dwarf = "a_06_dun_morogh", Gnome = "a_06_dun_morogh",
+                   NightElf = "a_06_teldrassil" }
+-- routes for one race's home only (Zephras Isle is open to every race)
+local RACE_ONLY = {}
+for _, t in ipairs({ START_FOR, HOME_FOR }) do for _, id in pairs(t) do RACE_ONLY[id] = true end end
 
 local function planned()
     local mine = UnitFactionGroup and UnitFactionGroup("player")
@@ -42,9 +48,15 @@ Plan.Planned = planned
 function Plan.Suggested(lvl)
     lvl = lvl or level()
     local list = {}
-    -- a route planned to follow one particular route only after that route
+    local race
+    if UnitRace then race = select(2, UnitRace("player")) end      -- not "UnitRace and UnitRace(...)": that keeps only the first value
+    local startId, homeId = race and START_FOR[race], race and HOME_FOR[race]
+    -- a route planned to follow one particular route only after that route; another race's home routes not at all
     local d = db()
-    local function open(r) return not r.follows or r.follows == d.route or r.follows == d.prevRoute end
+    local function open(r)
+        if RACE_ONLY[r.id] and startId and r.id ~= startId and r.id ~= homeId then return false end
+        return not r.follows or r.follows == d.route or r.follows == d.prevRoute
+    end
     for _, r in ipairs(planned()) do
         if r.startLevel and lvl >= r.startLevel and lvl < (r.endLevel or 60) and open(r) then list[#list + 1] = r end
     end
@@ -52,11 +64,9 @@ function Plan.Suggested(lvl)
         -- above every bracket's start: the last ones
         for _, r in ipairs(planned()) do if r.endLevel == 60 and lvl >= (r.startLevel or 0) and open(r) then list[#list + 1] = r end end
     end
-    local race
-    if UnitRace then race = select(2, UnitRace("player")) end      -- not "UnitRace and UnitRace(...)": that keeps only the first value
-    local startId = race and START_FOR[race]
     table.sort(list, function(a, b)
         if (a.id == startId) ~= (b.id == startId) then return a.id == startId end
+        if (a.id == homeId) ~= (b.id == homeId) then return a.id == homeId end
         -- alternatives, and routes planned to follow one particular route ("_from_"), after the best
         local aa = a.id:find("_alt") ~= nil or a.id:find("_from_") ~= nil
         local ba = b.id:find("_alt") ~= nil or b.id:find("_from_") ~= nil

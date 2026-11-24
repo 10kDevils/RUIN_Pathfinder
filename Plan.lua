@@ -55,10 +55,20 @@ function Plan.Suggested(lvl)
     local d = db()
     local function open(r)
         if RACE_ONLY[r.id] and startId and r.id ~= startId and r.id ~= homeId then return false end
-        return not r.follows or r.follows == d.route or r.follows == d.prevRoute
+        -- your own home's next route (the move from home) is open whether or not you played that route
+        return not r.follows or r.follows == d.route or r.follows == d.prevRoute or (homeId ~= nil and r.follows == homeId)
     end
     for _, r in ipairs(planned()) do
         if r.startLevel and lvl >= r.startLevel and lvl < (r.endLevel or 60) and open(r) then list[#list + 1] = r end
+    end
+    if #list == 0 then
+        -- only follow-on routes at this level (the move from home): the one after your race's home first
+        for _, r in ipairs(planned()) do
+            if r.follows and r.startLevel and lvl >= r.startLevel and lvl < (r.endLevel or 60)
+               and not (RACE_ONLY[r.id] and startId and r.id ~= startId and r.id ~= homeId) then list[#list + 1] = r end
+        end
+        for _, r in ipairs(list) do if r.follows == homeId then table.remove(list, _); table.insert(list, 1, r); break end end
+        if #list > 0 then return { unpack(list, 1, math.min(3, #list)) } end
     end
     if #list == 0 then
         -- above every bracket's start: the last ones
@@ -67,6 +77,8 @@ function Plan.Suggested(lvl)
     table.sort(list, function(a, b)
         if (a.id == startId) ~= (b.id == startId) then return a.id == startId end
         if (a.id == homeId) ~= (b.id == homeId) then return a.id == homeId end
+        local af, bf = homeId ~= nil and a.follows == homeId, homeId ~= nil and b.follows == homeId
+        if af ~= bf then return af end
         -- alternatives, and routes planned to follow one particular route ("_from_"), after the best
         local aa = a.id:find("_alt") ~= nil or a.id:find("_from_") ~= nil
         local ba = b.id:find("_alt") ~= nil or b.id:find("_from_") ~= nil

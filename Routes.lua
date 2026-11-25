@@ -4519,7 +4519,7 @@ ns.Routes = {
 
     -- routes that aren't Alliance levelling
     {
-        id = "hall_of_thanes", title = "Hall of Thanes 13-18", faction = "Alliance", author = "RUIN+DB",
+        id = "hall_of_thanes", title = "13-18 Hall of Thanes", levels = "13-18", faction = "Alliance", author = "RUIN+DB",
         steps = {
             { act = "note",     text = "GROUP recommended, levels 13-18. Prep in Dun Morogh before entering. Bosses in order: Faldrim Anvilmar (remove his curse from the tank, interrupt Mind Blast), Magmatus (move out of Combust, interrupt the summoners' Fireballs), Plunder, Durgen Dirgehammer. Codex's Journal has the tips and loot." },
             { act = "accept",   quest = "Nip 'Em in the Bud", qid = 96390, text = "Earthseer Farsen in Dun Morogh (~64.8, 58.4).", at = at(DUNMOR, 64.8, 58.4) },
@@ -4547,7 +4547,7 @@ ns.Routes = {
         },
     },
     {
-        id = "vot", title = "Valley of Trials 1-5", faction = "Horde", author = "RUIN+DB",
+        id = "vot", title = "1-5 Valley of Trials", levels = "1-5", faction = "Horde", author = "RUIN+DB",
         steps = {
             { act = "accept",   quest = "Your Place In The World", qid = 4641, text = "Talk to Kaltunk where you start.", at = at("Durotar", 43.3, 68.5) },
             { act = "turnin",   quest = "Your Place In The World", qid = 4641, text = "Gornek, inside the Den in the middle of the valley.", at = at("Durotar", 42.1, 68.3) },
@@ -4564,7 +4564,7 @@ ns.Routes = {
         },
     },
     {
-        id = "cozy_sleeping_bag_alliance", title = "Cozy Sleeping Bag", faction = "Alliance", author = "RUIN", levels = "14-60",
+        id = "cozy_sleeping_bag_alliance", title = "14-60 Cozy Sleeping Bag", faction = "Alliance", author = "RUIN", levels = "14-60",
         steps = {
             { act = "note",     text = "Level 14 or higher. Long trip across both continents; some legs pass level 30 areas. Hearth set to Stormwind or Ironforge helps." },
             { act = "accept",   quest = "... and that note you found", qid = 79008, text = "Click the Nailed Plank in the cart wreck at the Alexston Farmstead, eastern Westfall.", at = at(WESTFALL, 37.1, 50.1) },
@@ -4587,7 +4587,7 @@ ns.Routes = {
         },
     },
     {
-        id = "cozy_sleeping_bag_horde", title = "Cozy Sleeping Bag", faction = "Horde", author = "RUIN", levels = "14-60",
+        id = "cozy_sleeping_bag_horde", title = "14-60 Cozy Sleeping Bag", faction = "Horde", author = "RUIN", levels = "14-60",
         steps = {
             { act = "note",     text = "Level 14 or higher (guides suggest 30 for the Horde run). Long trip across both continents; set your hearth to Orgrimmar or Undercity." },
             { act = "accept",   quest = "... and that note you found", qid = 79007, text = "Click the Burned-Out Remains inside the burned tower south of Camp Taurajo, the Barrens.", at = at(BARRENS, 46.1, 74.3) },

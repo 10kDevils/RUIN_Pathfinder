@@ -32,7 +32,15 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Pathfinder", { version = "0.8.10" })
+local M = R:RegisterModule("Pathfinder", { version = "0.8.11" })
+
+-- A route's title starts with its levels ("13-18 Hall of Thanes"); a single level shows once.
+-- (An M field, not a local: this file is at Lua's limit of 200 locals.)
+function M.LevelTag(levels)
+    local lo, hi = tostring(levels or ""):match("(%d+)%s*%-%s*(%d+)")
+    if not lo then return "" end
+    return (lo == hi and lo or (lo .. "-" .. hi)) .. " "
+end
 local QB = ns.QB
 
 -- What the player lets RUIN share about them (RUIN Core: Settings > Display)
@@ -129,7 +137,7 @@ local function dungeonRoute(entry)
         for i = #steps, MAX_STEPS, -1 do steps[i] = nil end
         steps[MAX_STEPS] = { act = "note", text = "The rest of this dungeon's quests didn't fit in one route." }
     end
-    local r = { id = id, title = (entry.name .. " quests"):sub(1, 40), faction = UnitFactionGroup and UnitFactionGroup("player") or "Any",
+    local r = { id = id, title = (M.LevelTag(entry.levels) .. entry.name .. " quests"):sub(1, 40), faction = UnitFactionGroup and UnitFactionGroup("player") or "Any",
                 author = "RUIN (from " .. (QB.Source() or "RUIN Quest Data") .. ")", steps = steps, dungeon = entry.name, levels = entry.levels,
                 quests = #quests }
     dqRoutes[id] = r
@@ -143,7 +151,7 @@ local function zoneStub(z)
     local several = false
     for _, o in ipairs(QB.Zones()) do if o.area == z.area and o.part ~= z.part then several = true end end
     return { id = ("zq:%d:%d"):format(z.area, z.part),
-             title = (("%s %d-%d"):format(z.name, z.lo, z.hi) .. (several and (" (" .. z.part .. ")") or "")):sub(1, 40),
+             title = (("%s%s"):format(M.LevelTag(z.lo .. "-" .. z.hi), z.name) .. (several and (" (" .. z.part .. ")") or "")):sub(1, 40),
              faction = UnitFactionGroup and UnitFactionGroup("player") or "Any", zoneArea = z.area, part = z.part,
              zoneName = z.name, levels = z.lo .. "-" .. z.hi, quests = #z.quests, qids = z.quests,
              author = "RUIN (from " .. (QB.Source() or "RUIN Quest Data") .. ")" }
@@ -2636,17 +2644,16 @@ end
 M.RouteLevels = function(_, r) return routeLevels(r) end
 
 -- A levelling route's name as shown: its level range first ("13-18 Hall of Thanes"),
--- whatever its title says. Dungeon routes keep their names. Saved titles are not changed.
+-- whatever its title says; a single level shows once ("60 Molten Core quests"). Saved titles are not changed.
 M.Title = function(r)
     if type(r) ~= "table" then return "" end
     local title = tostring(r.title or "")
-    if r.dungeon then return title end
     if r._shownFor == title and r._shown then return r._shown end
     local lo, hi = routeLevels(r)
     local shown = title
     if lo and hi then
-        local name = title:gsub("^%s*%d+%s*%-%s*%d+%s*", ""):gsub("%s*%(?%d+%s*%-%s*%d+%)?%s*$", "")
-        shown = ("%d-%d %s"):format(lo, hi, name ~= "" and name or title)
+        local name = title:gsub("^%s*%d+%s*%-%s*%d+%s+", ""):gsub("^%s*%d+%s+", ""):gsub("%s*%(?%d+%s*%-%s*%d+%)?%s*$", "")
+        shown = M.LevelTag(lo .. "-" .. hi) .. (name ~= "" and name or title)
         r._shownFor, r._shown = title, shown        -- (not kept while the levels are unknown: quest data may still load)
     end
     return shown

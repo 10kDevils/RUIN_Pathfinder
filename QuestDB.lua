@@ -137,7 +137,10 @@ function QB.Quest(qid)
     local m = db()
     if not m then return nil end
     local ok, q = pcall(m.DB.GetQuest, qid)
-    if not ok or type(q) ~= "table" then return nil end      -- not in the database
+    -- not in the database: remembered too (as false), so the reminders and
+    -- route checks that ask every few seconds don't look it up again
+    if ok and q == nil then cache.quest[qid] = false end
+    if not ok or type(q) ~= "table" then return nil end
     local function names(list, kind)
         local out = {}
         for _, id in ipairs(type(list) == "table" and list or {}) do
@@ -186,14 +189,26 @@ local function spawnsOf(m, kind, id, out, limit, drop)
 end
 
 -- All the places for a quest. which: "start", "finish" or "objective".
+-- The reminders ask this for dozens of quests every 2 seconds, so each
+-- "which:qid" key is made once and kept, and "nothing known" answers share one
+-- empty list (read only: no caller adds to what it gets back).
+do
+local spotKeys, NONE = {}, {}
 function QB.Spots(qid, which)
     qid = tonumber(qid)
-    if not qid then return {} end
-    local key = which .. ":" .. qid
+    if not qid then return NONE end
+    local byQ = spotKeys[which]
+    local key = byQ and byQ[qid]
+    if not key then
+        key = which .. ":" .. qid
+        if not byQ then byQ = {}; spotKeys[which] = byQ end
+        byQ[qid] = key
+    end
     if cache.spot[key] then return cache.spot[key] end
-    local now = GetTime and GetTime() or 0
     -- not found: don't look again for five minutes (the reminders and the arrow ask often)
-    if cache.miss[key] and now - cache.miss[key] < 300 then return {} end
+    local missAt = cache.miss[key]
+    if missAt and (GetTime and GetTime() or 0) - missAt < 300 then return NONE end
+    local now = GetTime and GetTime() or 0
     -- where RUIN members actually picked it up, did it and handed it in on
     -- WoW Forever (Pathfinder's atlas) comes first; the database fills the gaps
     -- a quest started by an item you loot: where the item drops is where you get it
@@ -209,7 +224,7 @@ function QB.Spots(qid, which)
     local m = db()
     if not m then
         if seen then cache.spot[key] = seen; return seen end
-        return {}
+        return NONE
     end
     local ok, q = pcall(m.DB.GetQuest, qid)
     local out = {}
@@ -264,6 +279,7 @@ function QB.Spots(qid, which)
     end
     if #out > 0 then cache.spot[key] = out else cache.miss[key] = now end   -- asked again in 30 seconds
     return out
+end
 end
 
 -- The atlas learned something new about a quest: ask again.

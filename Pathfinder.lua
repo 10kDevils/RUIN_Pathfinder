@@ -1152,14 +1152,23 @@ local function giverText(q)
 end
 
 -- the route's upcoming pick-ups: { qid = step index }
+-- The reminders ask every 2 seconds and the answer only changes with your
+-- route, step, level or quest log, so it's kept until one of those changes
+-- (the quest log clears it) and worked out again at least every 10 seconds.
+K.REMIND_ACCEPTS_FOR = 10
 local function routeAccepts()
+    local key = tostring(db.route) .. "|" .. tostring(db.step) .. "|" .. tostring(UnitLevel and UnitLevel("player") or 1)
+    local now = GetTime()
+    if remind.acc and remind.accKey == key and now - remind.accAt < K.REMIND_ACCEPTS_FOR then return remind.acc end
     local r = currentRoute()
     local out = {}
-    if not r then return out end
-    for i = db.step or 1, math.min(#r.steps, (db.step or 1) + K.REMIND_AHEAD) do
-        local st = r.steps[i]
-        if st and st.act == "accept" and st.qid and not haveOrDone(st.qid) and M.CanTakeNow(st.qid) then out[st.qid] = i end
+    if r then
+        for i = db.step or 1, math.min(#r.steps, (db.step or 1) + K.REMIND_AHEAD) do
+            local st = r.steps[i]
+            if st and st.act == "accept" and st.qid and not haveOrDone(st.qid) and M.CanTakeNow(st.qid) then out[st.qid] = i end
+        end
     end
+    remind.acc, remind.accKey, remind.accAt = out, key, now
     return out
 end
 
@@ -1328,6 +1337,7 @@ end
 -- The sound is the short minimap ping (a quest-log page turn if it's missing).
 M.REMIND_SOUND_GAP = 30
 local function sayReminder(msg, qid)
+    remind.quietAcc = nil                -- something was said: look again next time, even standing still
     M.Alert(msg, qid)
     local now = GetTime and GetTime() or 0
     if M.lastRemindSound and now - M.lastRemindSound < M.REMIND_SOUND_GAP then return end
@@ -1344,6 +1354,14 @@ function M.CheckReminders()
     local pm, px, py = R.Map:PlayerPos()
     if not (pm and px) then return end
     local accepts = routeAccepts()
+    -- Standing still since the last look, which found nothing to say, with
+    -- the same pick-ups and options: nothing can have changed, skip it. (The
+    -- pick-ups are worked out again at least every 10 seconds, so it does look
+    -- again then.)
+    local opts = (db.remindPickups ~= false and 1 or 0) + (db.remindArea ~= false and 2 or 0)
+    if remind.quietAcc == accepts and remind.quietMap == pm and remind.quietX == px and remind.quietY == py
+       and remind.quietOpts == opts then return end
+    remind.quietAcc, remind.quietMap, remind.quietX, remind.quietY, remind.quietOpts = accepts, pm, px, py, opts
     -- walked past a pick-up on your route
     if db.remindPickups ~= false then
         for q, idx in pairs(accepts) do
@@ -1380,9 +1398,9 @@ end
 -- forget the "came near" marks of quests you took, so a later pass is fresh
 local function remindAccepted(q)
     if q then remind.near[q], remind.past[q], remind.area[q] = nil, nil, nil end
-    remind.zoneList = nil
+    remind.zoneList, remind.acc = nil, nil
 end
-M.ResetReminders = function() remind.near, remind.past, remind.area, remind.zoneList = {}, {}, {}, nil end
+M.ResetReminders = function() remind.near, remind.past, remind.area, remind.zoneList, remind.acc = {}, {}, {}, nil, nil end
 
 -- A quest's objectives as lines with pips: filled for done, hollow for not.
 function M.ObjectiveLines(qid, max)
@@ -1490,6 +1508,17 @@ local function fitTracker()
     local maxLines = math.max(math.max(1, math.floor((K.TRACKER_H - 28 - 8) / lineH)), tracker.wantLines or 0)
     local pad = K.SIDE * 2 + 8 + 26      -- the sides, plus room for the arrow at the right
     local step = tracker.step
+    -- Measuring means laying the text out again at each width tried. The
+    -- tracker is refitted every 10 seconds and on every quest log change, but
+    -- with the same texts, fonts and size the answer is the same: skip it.
+    local function fontKey(fs)
+        if not fs.GetFont then return "" end
+        local f, size, flags = fs:GetFont()
+        return tostring(f) .. ":" .. tostring(size) .. ":" .. tostring(flags)
+    end
+    local fitKey = table.concat({ tostring(step:GetText()), tostring(tracker.title:GetText()), tostring(tracker.dist:GetText()),
+        maxLines, K.TRACKER_W, K.TRACKER_MAX_W, K.TRACKER_H, K.SIDE, fontKey(step), fontKey(tracker.title), fontKey(tracker.dist) }, "\031")
+    if tracker.fitKey == fitKey and tracker.fitW == tracker:GetWidth() and tracker.fitH == tracker:GetHeight() then return end
     if step.SetMaxLines then step:SetMaxLines(0) end   -- measure the whole text
     local function height(w)
         step:SetWidth(w - pad)
@@ -1505,6 +1534,13 @@ local function fitTracker()
     if math.abs((tracker:GetWidth() or 0) - width) > 0.5 or math.abs((tracker:GetHeight() or 0) - newH) > 0.5 then
         anchorTracker()
         tracker:SetSize(width, newH)
+    end
+    -- (a text not laid out yet measures 0: measure again next time)
+    local measured = step.GetStringHeight and step:GetStringHeight() or 0
+    if measured and measured > 0 then
+        tracker.fitKey, tracker.fitW, tracker.fitH = fitKey, tracker:GetWidth(), tracker:GetHeight()
+    else
+        tracker.fitKey = nil
     end
 end
 
@@ -3682,7 +3718,7 @@ function M:OnEnable()
     self:RegisterEvent("QUEST_ACCEPTED", onAccepted)
     self:RegisterEvent("QUEST_TURNED_IN", onTurnedIn)
     self:RegisterEvent("PLAYER_LEVEL_UP", function() remind.zoneList = nil end)
-    self:RegisterEvent("QUEST_LOG_UPDATE", function() if QB.ForgetLog then QB.ForgetLog() end; checkComplete(); atlasObjectives() end)
+    self:RegisterEvent("QUEST_LOG_UPDATE", function() if QB.ForgetLog then QB.ForgetLog() end; remind.acc = nil; checkComplete(); atlasObjectives() end)
     self:RegisterEvent("ZONE_CHANGED_NEW_AREA", function() updateStepPin() end)
     self:RegisterEvent("PLAYER_LEVEL_UP", onLevelUp)
     self:RegisterEvent("CHAT_MSG_LOOT", onLootRecord)

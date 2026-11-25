@@ -34,6 +34,10 @@ local C = W.COLORS
 
 local M = R:RegisterModule("Pathfinder", { version = "0.8.11" })
 
+-- The game frames' looks live in RUIN Core now (Settings > Customization); Pathfinder's
+-- tracker, waypoint and slash commands use them from there.
+ns.Looks, ns.Minimap, ns.Objectives, ns.WorldMap = R.Looks, R.Minimap, R.Objectives, R.WorldMap
+
 -- A route's title starts with its levels ("13-18 Hall of Thanes"); a single level shows once.
 -- (An M field, not a local: this file is at Lua's limit of 200 locals.)
 function M.LevelTag(levels)
@@ -707,59 +711,12 @@ function M.SetTrackerAlpha(a)
     return true
 end
 
--- Every look at once. Reads "mixed" when they differ.
-function M.AllStyles()
-    local list = {}
-    if ns.Minimap then list[#list + 1] = ns.Minimap.Style() end
-    if ns.Objectives then list[#list + 1] = ns.Objectives.Style() end
-    if ns.WorldMap then list[#list + 1] = ns.WorldMap.Style() end
-    local first = list[1]
-    for _, v in ipairs(list) do if v ~= first then return "mixed" end end
-    if first and (M.TrackerStyle() ~= first or M.PinStyle() ~= first) then return "mixed" end
-    return first or "mixed"
-end
--- One background opacity for everything; "mixed" when they differ.
-local function alphas()
-    local list = { M.TrackerAlpha(), db.pinAlpha or 1 }
-    if ns.Minimap then list[#list + 1] = ns.Minimap.Alpha() end
-    if ns.Objectives then list[#list + 1] = ns.Objectives.Alpha() end
-    if ns.WorldMap then list[#list + 1] = ns.WorldMap.Alpha() end
-    return list
-end
-function M.AllAlpha()
-    local list = alphas()
-    for _, v in ipairs(list) do if math.abs(v - list[1]) > 0.001 then return "mixed" end end
-    return list[1]
-end
-function M.SetAllAlpha(a)
-    if type(a) ~= "number" then return false end
-    local function try(label, f, ...)
-        local ok, err = pcall(f, ...)
-        if not ok then M:Print(("Couldn't change the %s: %s"):format(label, tostring(err))) end
-    end
-    if ns.Minimap then try("minimap", ns.Minimap.SetAlpha, a) end
-    if ns.Objectives then try("objective tracker", ns.Objectives.SetAlpha, a) end
-    if ns.WorldMap then try("world map", ns.WorldMap.SetAlpha, a) end
-    try("tracker", M.SetTrackerAlpha, a)
-    db.pinAlpha = a
-    for _, d in ipairs({ ui.mmAlpha, ui.otAlpha, ui.wmAlpha, ui.trackerAlpha, ui.pinAlpha, ui.allAlpha }) do if d and d.Refresh then d:Refresh() end end
-    return true
-end
-
-function M.SetAllStyles(v)
-    if not ns.Looks.Valid(v) then return false end
-    -- each in its own pcall: one that trips can't stop the rest
-    local function try(label, f, ...)
-        local ok, err = pcall(f, ...)
-        if not ok then M:Print(("Couldn't restyle the %s: %s"):format(label, tostring(err))) end
-    end
-    if ns.Minimap then try("minimap", ns.Minimap.SetStyle, v) end
-    if ns.Objectives then try("objective tracker", ns.Objectives.SetStyle, v) end
-    if ns.WorldMap then try("world map", ns.WorldMap.SetStyle, v) end
-    try("tracker", M.SetTrackerStyle, v); try("waypoint", M.SetPinStyle, v)
-    for _, d in ipairs({ ui.mmStyle, ui.otStyle, ui.wmStyle, ui.pinStyle, ui.trackerStyle, ui.allStyles }) do if d and d.Refresh then d:Refresh() end end
-    return true
-end
+-- Every look at once (RUIN Core's, with the tracker and waypoint added as looks
+-- below). Reads "mixed" when they differ.
+function M.AllStyles() return ns.Looks and ns.Looks.AllStyles() or M.TrackerStyle() end
+function M.AllAlpha() return ns.Looks and ns.Looks.AllAlpha() or M.TrackerAlpha() end
+function M.SetAllAlpha(a) return ns.Looks and ns.Looks.SetAllAlpha(a) or false end
+function M.SetAllStyles(v) return ns.Looks and ns.Looks.SetAllStyles(v) or false end
 
 -- The waypoint's look (its colors): one of the suite's modern looks.
 function M.PinStyle()
@@ -773,6 +730,12 @@ function M.SetPinStyle(v)
     return true
 end
 function M.SetPinSetting(key, v) if db then db[key] = v end; M.pinDirty = true end
+if ns.Looks and ns.Looks.AddLook then
+    ns.Looks.AddLook({ name = "tracker", Style = M.TrackerStyle, SetStyle = M.SetTrackerStyle, Alpha = M.TrackerAlpha, SetAlpha = M.SetTrackerAlpha })
+    ns.Looks.AddLook({ name = "waypoint", Style = M.PinStyle, SetStyle = M.SetPinStyle,
+        Alpha = function() return db and db.pinAlpha or 1 end,
+        SetAlpha = function(a) if db then db.pinAlpha = a end; if M.RefreshPin then M.RefreshPin() end end })
+end
 
 -- What the RUIN pin should call the current target, when it's Pathfinder's.
 function M.PinInfo()
@@ -2809,7 +2772,7 @@ local function buildCurrent(page)
     local arrowCheck = W.Check(page, "Waypoint", function() return db.waypoint ~= false end,
         function(v) db.waypoint = v; updateStepPin(); if M.RefreshPin then M.RefreshPin() end end)
     arrowCheck:SetPoint("LEFT", trackCheck, "RIGHT", 64, 0)
-    arrowCheck.tip = "Put a waypoint on each step (or track its quest the game's way) so the RUIN pin leads you there. More in the Customization tab."
+    arrowCheck.tip = "Put a waypoint on each step (or track its quest the game's way) so the RUIN pin leads you there. More in Settings > Customization."
     local skipCheck = W.Check(page, "Skip done quests", function() return db.skipDone end,
         function(v) db.skipDone = v; if v then M:SkipDone() end end)
     skipCheck:SetPoint("LEFT", arrowCheck, "RIGHT", 76, 0)
@@ -3483,20 +3446,14 @@ function RUIN_PathfinderBinding(cmd)
 end
 
 -- Options: the tracker, waypoints and the RUIN pin.
-local function buildOptions(page)
-    -- the page scrolls (gently) so every section has room to breathe
-    local sf = CreateFrame("ScrollFrame", nil, page, "UIPanelScrollFrameTemplate")
-    sf:SetPoint("TOPLEFT", 0, 0)
-    sf:SetPoint("BOTTOMRIGHT", -24, 0)
-    local body = CreateFrame("Frame", nil, sf)
-    body:SetSize(math.max(400, (page:GetWidth() or 900) - 24), 10)
-    sf:SetScrollChild(body)
-    sf:HookScript("OnSizeChanged", function(self, w) if w and w > 0 then body:SetWidth(w) end end)
-    if W.SmoothScroll then W.SmoothScroll(sf, 72) end
-
-    local GAP, PAD, ROW = 12, 16, 30
-    local checks = {}
-    local function check(parent, label, key, tip, after, x, y)
+-- Pathfinder's sections on RUIN's Settings > Customization page: the tracker,
+-- the waypoint and the controls (the game frames' looks are Core's).
+local function buildOptions()
+    if ui.optionsAdded or not (R.Customize and R.Customize.AddSection) then return end
+    ui.optionsAdded = true
+    local CU = R.Customize
+    local looks = ns.Looks
+    local function check(parent, kit, label, key, tip, x, y)
         local c = W.Check(parent, label, function() return db[key] ~= false end, function(v)
             db[key] = v
             updateTracker(); updateStepPin()
@@ -3504,193 +3461,85 @@ local function buildOptions(page)
         end)
         c:SetPoint("TOPLEFT", x, y)
         c.tip = tip
-        checks[#checks + 1] = c
-        return c
-    end
-    local y = 0
-    -- a section: a card with its header, the next one a gap below it
-    local function card(title, height)
-        local c = W.Card(body)
-        c:SetPoint("TOPLEFT", 0, -y)
-        c:SetPoint("RIGHT", body, "RIGHT", 0, 0)
-        c:SetHeight(height)
-        local h = W.Header(c, title)
-        h:SetPoint("TOPLEFT", PAD - 2, -10)
-        y = y + height + GAP
-        return c
-    end
-    -- a faint line between a section's parts
-    local function divider(c, at)
-        local d = c:CreateTexture(nil, "ARTWORK")
-        d:SetColorTexture(1, 1, 1, 0.06)
-        d:SetHeight(1)
-        d:SetPoint("TOPLEFT", PAD, at)
-        d:SetPoint("TOPRIGHT", -PAD, at)
-        return d
-    end
-    local COL2 = 340
-
-    local looks, mm = ns.Looks, ns.Minimap
-    local OPACITY = mm and mm.OPACITY or { 1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2 }
-    local function near(v)          -- the closest choice to a saved value
-        local best, gap = 1, 2
-        for _, o in ipairs(OPACITY) do if math.abs(o - (v or 1)) < gap then best, gap = o, math.abs(o - (v or 1)) end end
-        return best
-    end
-    -- a look row: a name on the left, then Style and Background
-    local function lookRow(c, at, name, keys, getStyle, setStyle, getAlpha, setAlpha, tipStyle, tipBack)
-        local n = W.Label(c, name, "GameFontHighlight")
-        n:SetPoint("TOPLEFT", PAD, at)
-        n:SetWidth(170)
-        local sl = W.Label(c, C.dim .. "Style|r", "GameFontHighlightSmall")
-        sl:SetPoint("TOPLEFT", PAD + 180, at - 1)
-        local st = W.Dropdown(c, 170, keys, getStyle, setStyle)
-        st.format = function(v) return v == "mixed" and "Mixed" or (looks.LABEL[v] or v) end
-        st:SetPoint("LEFT", sl, "RIGHT", 10, 0)
-        st.tipTitle = tipStyle
-        st:Refresh()
-        local bd
-        if getAlpha then
-            local bl = W.Label(c, C.dim .. "Background|r", "GameFontHighlightSmall")
-            bl:SetPoint("LEFT", st, "RIGHT", 28, 0)
-            bd = W.Dropdown(c, 84, OPACITY, function()
-                local v = getAlpha()
-                if v == "mixed" then return v end
-                return near(v)
-            end, setAlpha)
-            bd.format = function(v) return v == "mixed" and "Mixed" or ("%d%%"):format(math.floor(v * 100 + 0.5)) end
-            bd:SetPoint("LEFT", bl, "RIGHT", 10, 0)
-            bd.tipTitle = tipBack
-            bd:Refresh()
-        end
-        return st, bd
-    end
-
-    -- The game's frames: every look at once, then each frame
-    local ot, wm = ns.Objectives, ns.WorldMap
-    local g = card("Game Frames", 254)
-    local style
-    ui.allStyles, ui.allAlpha = lookRow(g, -40, C.white .. "All styles|r", looks.KEYS,
-        function() return M.AllStyles() end, function(v) M.SetAllStyles(v) end,
-        function() return M.AllAlpha() end, function(v) M.SetAllAlpha(v) end,
-        "One look for the minimap, the objective tracker, the world map, the tracker and the waypoint. Blizzard gives them all the game's own look.",
-        "One opacity for the minimap's, the objective tracker's, the world map's and the tracker's backgrounds, and the whole waypoint")
-    divider(g, -70)
-    if mm then
-        style, ui.mmAlpha = lookRow(g, -84, "Minimap", mm.STYLES,
-            function() return mm.Style() end, function(v) mm.SetStyle(v) end,
-            function() return mm.Alpha() end, function(v) mm.SetAlpha(v) end,
-            "The game's own look, or the suite's modern one: a square frame around the map, a slim ring, an N where north is, mouse-wheel zoom, and the tracking button, zone, calendar, addon list, mail, coordinates and clock in its corners",
-            "How see-through the frame around the minimap is")
-        ui.mmStyle = style
-    end
-    if ot then
-        ui.otStyle, ui.otAlpha = lookRow(g, -84 - 40, "Objective Tracker", ot.STYLES,
-            function() return ot.Style() end, function(v) ot.SetStyle(v) end,
-            function() return ot.Alpha() end, function(v) ot.SetAlpha(v) end,
-            "The game's own look, or the suite's modern one: a panel behind the tracker, headers in the look's color, quest titles and objectives in the suite's text colors",
-            "How see-through the panel behind the objective tracker is")
-    end
-    if wm then
-        ui.wmStyle, ui.wmAlpha = lookRow(g, -84 - 80, "World Map & Quest Log", wm.STYLES,
-            function() return wm.Style() end, function(v) wm.SetStyle(v) end,
-            function() return wm.Alpha() end, function(v) wm.SetAlpha(v) end,
-            "The game's own look, or the suite's modern one: the map window and quest log in the suite's look, with flat quest markers and buttons",
-            "How see-through the map window's background is")
-    end
-    -- where addons' minimap buttons sit with a modern minimap
-    if mm and mm.ICON_SPOTS then
-        local il = W.Label(g, "Minimap addon buttons", "GameFontHighlight")
-        il:SetPoint("TOPLEFT", PAD, -84 - 120)
-        il:SetWidth(170)
-        local sl = W.Label(g, C.dim .. "Place|r", "GameFontHighlightSmall")
-        sl:SetPoint("TOPLEFT", PAD + 180, -84 - 121)
-        ui.mmIcons = W.Dropdown(g, 170, mm.ICON_SPOTS, function() return mm.IconSpot() end, function(v) mm.SetIconSpot(v) end)
-        ui.mmIcons.format = function(v) return mm.ICON_LABEL[v] or v end
-        ui.mmIcons:SetPoint("LEFT", sl, "RIGHT", 10, 0)
-        ui.mmIcons.tipTitle = "With a modern minimap: addons' minimap buttons around the round map, or on the square frame around it. The game's own minimap keeps them around the map."
-        ui.mmIcons:Refresh()
+        return kit.keep(c)
     end
 
     -- Tracker
-    local t = card("Tracker", 214)
-    check(t, "Show the tracker", "tracker", "The small window with the Route and Tracked tabs: < and > on its sides, the x to clear, double-click to open Pathfinder.", nil, PAD, -38)
-    check(t, "Tracker arrow and map pin", "arrow", "The arrow on the tracker pointing to the step, and the step's pin on the world map.", nil, COL2, -38)
-    check(t, "Skip done quests", "skipDone", "Steps for quests you've already done, or already have, tick themselves off.", nil, PAD, -38 - ROW)
-    check(t, "Say each new waypoint in chat", "announce", "\"Waypoint set: ... (N yards)\" when you move to a step.", nil, COL2, -38 - ROW)
-    check(t, "Remind me of pick-ups I walk past", "remindPickups", "When you come near the giver of a quest your route picks up next and leave without taking it.", nil, PAD, -38 - ROW * 2)
-    check(t, "Remind me at a quest I don't have", "remindArea", "When you walk into the area where a quest's targets are and you could take that quest but don't have it (your route's, or this zone's for your level).", nil, COL2, -38 - ROW * 2)
-    divider(t, -38 - ROW * 3 + 2)
-    ui.trackerStyle, ui.trackerAlpha = lookRow(t, -38 - ROW * 3 - 12, "Look", looks.KEYS,
-        function() return M.TrackerStyle() end, function(v) M.SetTrackerStyle(v) end,
-        function() return M.TrackerAlpha() end, function(v) M.SetTrackerAlpha(v) end,
-        "The tracker's look: the game's own (WoW Forever's bronze and gold), RUIN's blue and gold, Ink's gold on ink, or a module's color",
-        "How see-through the tracker's background is")
-    local nl = W.Label(t, "Notifications", "GameFontHighlight")
-    nl:SetPoint("TOPLEFT", PAD, -38 - ROW * 4 - 16)
-    nl:SetWidth(170)
-    local sl = W.Label(t, C.dim .. "Stay|r", "GameFontHighlightSmall")
-    sl:SetPoint("TOPLEFT", PAD + 180, -38 - ROW * 4 - 17)
-    ui.alertTime = W.Dropdown(t, 170, M.ALERT_TIMES, function() return M.AlertTime() end, function(v) M.SetAlertTime(v) end)
-    ui.alertTime.format = function(v) return M.ALERT_TIME_LABEL[v] or tostring(v) end
-    ui.alertTime:SetPoint("LEFT", sl, "RIGHT", 10, 0)
-    ui.alertTime.tipTitle = "How long Pathfinder's notifications stay on screen: only in chat, a short while, the standard 15 seconds, longer, or until you close them. Every one goes to chat too."
-    ui.alertTime:Refresh()
+    CU.AddSection(10, "Tracker", 214, function(t, kit)
+        local PAD, ROW, COL2 = kit.PAD, kit.ROW, kit.COL2
+        check(t, kit, "Show the tracker", "tracker", "The small window with the Route and Tracked tabs: < and > on its sides, the x to clear, double-click to open Pathfinder.", PAD, -38)
+        check(t, kit, "Tracker arrow and map pin", "arrow", "The arrow on the tracker pointing to the step, and the step's pin on the world map.", COL2, -38)
+        check(t, kit, "Skip done quests", "skipDone", "Steps for quests you've already done, or already have, tick themselves off.", PAD, -38 - ROW)
+        check(t, kit, "Say each new waypoint in chat", "announce", "\"Waypoint set: ... (N yards)\" when you move to a step.", COL2, -38 - ROW)
+        check(t, kit, "Remind me of pick-ups I walk past", "remindPickups", "When you come near the giver of a quest your route picks up next and leave without taking it.", PAD, -38 - ROW * 2)
+        check(t, kit, "Remind me at a quest I don't have", "remindArea", "When you walk into the area where a quest's targets are and you could take that quest but don't have it (your route's, or this zone's for your level).", COL2, -38 - ROW * 2)
+        kit.divider(t, -38 - ROW * 3 + 2)
+        ui.trackerStyle, ui.trackerAlpha = kit.lookRow(t, -38 - ROW * 3 - 12, "Look", looks.KEYS,
+            function() return M.TrackerStyle() end, function(v) M.SetTrackerStyle(v) end,
+            function() return M.TrackerAlpha() end, function(v) M.SetTrackerAlpha(v) end,
+            "The tracker's look: the game's own (WoW Forever's bronze and gold), RUIN's blue and gold, Ink's gold on ink, or a module's color",
+            "How see-through the tracker's background is")
+        local nl = W.Label(t, "Notifications", "GameFontHighlight")
+        nl:SetPoint("TOPLEFT", PAD, -38 - ROW * 4 - 16)
+        nl:SetWidth(170)
+        local sl = W.Label(t, C.dim .. "Stay|r", "GameFontHighlightSmall")
+        sl:SetPoint("TOPLEFT", PAD + 180, -38 - ROW * 4 - 17)
+        ui.alertTime = W.Dropdown(t, 170, M.ALERT_TIMES, function() return M.AlertTime() end, function(v) M.SetAlertTime(v) end)
+        ui.alertTime.format = function(v) return M.ALERT_TIME_LABEL[v] or tostring(v) end
+        ui.alertTime:SetPoint("LEFT", sl, "RIGHT", 10, 0)
+        ui.alertTime.tipTitle = "How long Pathfinder's notifications stay on screen: only in chat, a short while, the standard 15 seconds, longer, or until you close them. Every one goes to chat too."
+        ui.alertTime:Refresh()
+        kit.keep(ui.alertTime)
+    end)
 
     -- Waypoint
-    local w = card("Waypoint", 186)
-    local pinCheck = check(w, "Show the RUIN Waypoint", "pin", "RUIN's marker over whatever the game is navigating to. Off: the game's own marker shows instead. /path pin", nil, PAD, -38)
-    if pinCheck.label.SetFontObject then pinCheck.label:SetFontObject("GameFontNormalLarge") end
-    if pinCheck.SetHitRectInsets then pinCheck:SetHitRectInsets(0, -((pinCheck.label:GetStringWidth() or 160) + 6), 0, 0) end
-    local edit = W.Button(w, "Waypoint Editor", 150, function() if M.OpenWaypointEditor then M.OpenWaypointEditor() end end)
-    edit:SetPoint("LEFT", pinCheck.label, "RIGHT", 20, 0)
-    edit.tip = "What the RUIN Waypoint shows and how it looks, where it sits over the spot, when it hides and when it moves to the screen edge, with a live preview. /path editor"
-    check(w, "Put a waypoint on each step", "waypoint", "The game's waypoint on the step's spot, so the pin (and the game's navigation) leads you there. /path waypoint", nil, PAD, -76)
-    check(w, "Track quest steps the game's way", "trackQuests", "For a quest in your log, track the quest itself (like clicking it in the objective tracker) so the pin follows its objective or turn-in.", nil, COL2, -76)
-    local navCheck = W.Check(w, "In-Game Navigation", function()
-        return db.autoNav ~= false
-    end, function(v) M.SetInGameNavigation(v) end)
-    navCheck:SetPoint("TOPLEFT", PAD, -76 - ROW)
-    navCheck.tip = "The game's In-Game Navigation option: the waypoint drawn in the world (the RUIN Waypoint rides on it). On: Pathfinder turns it on, and keeps it on when it places a waypoint. Off: it's turned off, so nothing is drawn in the world; the map pin and tracker still work."
-    checks[#checks + 1] = navCheck
-    local share = W.Check(w, "Share quest locations with RUIN", function() return adb.atlasShare ~= false end, function(v) adb.atlasShare = v end)
-    share:SetPoint("TOPLEFT", COL2, -76 - ROW)
-    share.tip = "Pathfinder's atlas: where you pick up, do and hand in quests, shared with RUIN so routes follow where things really are on WoW Forever. Only quest numbers and map spots. /path atlas"
-    checks[#checks + 1] = share
-    divider(w, -76 - ROW * 2 + 2)
-    ui.pinStyle, ui.pinAlpha = lookRow(w, -76 - ROW * 2 - 12, "Look", looks.KEYS,
-        function() return M.PinStyle() end, function(v) M.SetPinStyle(v) end,
-        function() return db.pinAlpha or 1 end, function(v) db.pinAlpha = v; if M.RefreshPin then M.RefreshPin() end end,
-        "The RUIN Waypoint's look: the game's own (WoW Forever's bronze and gold), RUIN's blue and gold, Ink's gold on ink, or a module's color",
-        "How see-through the whole RUIN Waypoint is: its marker, card, stem and distance")
+    CU.AddSection(20, "Waypoint", 186, function(w, kit)
+        local PAD, ROW, COL2 = kit.PAD, kit.ROW, kit.COL2
+        local pinCheck = check(w, kit, "Show the RUIN Waypoint", "pin", "RUIN's marker over whatever the game is navigating to. Off: the game's own marker shows instead. /path pin", PAD, -38)
+        if pinCheck.label.SetFontObject then pinCheck.label:SetFontObject("GameFontNormalLarge") end
+        if pinCheck.SetHitRectInsets then pinCheck:SetHitRectInsets(0, -((pinCheck.label:GetStringWidth() or 160) + 6), 0, 0) end
+        local edit = W.Button(w, "Waypoint Editor", 150, function() if M.OpenWaypointEditor then M.OpenWaypointEditor() end end)
+        edit:SetPoint("LEFT", pinCheck.label, "RIGHT", 20, 0)
+        edit.tip = "What the RUIN Waypoint shows and how it looks, where it sits over the spot, when it hides and when it moves to the screen edge, with a live preview. /path editor"
+        check(w, kit, "Put a waypoint on each step", "waypoint", "The game's waypoint on the step's spot, so the pin (and the game's navigation) leads you there. /path waypoint", PAD, -76)
+        check(w, kit, "Track quest steps the game's way", "trackQuests", "For a quest in your log, track the quest itself (like clicking it in the objective tracker) so the pin follows its objective or turn-in.", COL2, -76)
+        local navCheck = W.Check(w, "In-Game Navigation", function()
+            return db.autoNav ~= false
+        end, function(v) M.SetInGameNavigation(v) end)
+        navCheck:SetPoint("TOPLEFT", PAD, -76 - ROW)
+        navCheck.tip = "The game's In-Game Navigation option: the waypoint drawn in the world (the RUIN Waypoint rides on it). On: Pathfinder turns it on, and keeps it on when it places a waypoint. Off: it's turned off, so nothing is drawn in the world; the map pin and tracker still work."
+        kit.keep(navCheck)
+        local share = W.Check(w, "Share quest locations with RUIN", function() return adb.atlasShare ~= false end, function(v) adb.atlasShare = v end)
+        share:SetPoint("TOPLEFT", COL2, -76 - ROW)
+        share.tip = "Pathfinder's atlas: where you pick up, do and hand in quests, shared with RUIN so routes follow where things really are on WoW Forever. Only quest numbers and map spots. /path atlas"
+        kit.keep(share)
+        kit.divider(w, -76 - ROW * 2 + 2)
+        ui.pinStyle, ui.pinAlpha = kit.lookRow(w, -76 - ROW * 2 - 12, "Look", looks.KEYS,
+            function() return M.PinStyle() end, function(v) M.SetPinStyle(v) end,
+            function() return db.pinAlpha or 1 end, function(v) db.pinAlpha = v; if M.RefreshPin then M.RefreshPin() end end,
+            "The RUIN Waypoint's look: the game's own (WoW Forever's bronze and gold), RUIN's blue and gold, Ink's gold on ink, or a module's color",
+            "How see-through the whole RUIN Waypoint is: its marker, card, stem and distance")
+    end)
 
     -- Controls
-    local k = card("Controls", 86)
-    local kl = W.Label(k, C.white .. "Keys:|r " .. C.dim .. "Options > Keybindings > AddOns > RUIN Pathfinder|r", "GameFontHighlightSmall")
-    kl:SetPoint("TOPLEFT", PAD, -38)
-    local cl = W.Label(k, C.white .. "Chat:|r " .. C.dim .. "/path next, prev, clear, pin, editor, waypoint, nav, remind, minimap, objectives, worldmap|r", "GameFontHighlightSmall")
-    cl:SetPoint("TOPLEFT", PAD, -38 - 20)
-    cl:SetPoint("RIGHT", k, "RIGHT", -PAD, 0)
-
-    body:SetHeight(y)
-    if W.FitScrollBar then W.FitScrollBar(sf) end
-
-    page:SetScript("OnShow", function()
-        for _, c in ipairs(checks) do c:Refresh() end
-        for _, d in ipairs({ ui.mmStyle, ui.mmAlpha, ui.otStyle, ui.otAlpha, ui.wmStyle, ui.wmAlpha, ui.pinStyle, ui.pinAlpha,
-                             ui.trackerStyle, ui.trackerAlpha, ui.allStyles, ui.allAlpha }) do if d then d:Refresh() end end
+    CU.AddSection(90, "Pathfinder Controls", 86, function(k, kit)
+        local PAD = kit.PAD
+        local kl = W.Label(k, C.white .. "Keys:|r " .. C.dim .. "Options > Keybindings > AddOns > RUIN Pathfinder|r", "GameFontHighlightSmall")
+        kl:SetPoint("TOPLEFT", PAD, -38)
+        local cl = W.Label(k, C.white .. "Chat:|r " .. C.dim .. "/path next, prev, clear, pin, editor, waypoint, nav, remind, minimap, objectives, worldmap|r", "GameFontHighlightSmall")
+        cl:SetPoint("TOPLEFT", PAD, -38 - 20)
+        cl:SetPoint("RIGHT", k, "RIGHT", -PAD, 0)
     end)
-    ui.optionChecks = checks
 end
 
 local function buildPage(panel)
     ui.panel = panel
-    ui.tabs = W.SubTabs(panel, { "Quests", "Guide", "Routes", "Record", "Customization" }, function() refreshPage() end)
+    ui.tabs = W.SubTabs(panel, { "Quests", "Guide", "Routes", "Record" }, function() refreshPage() end)
     buildQuests(ui.tabs.pages[TAB_QUESTS])
     buildCurrent(ui.tabs.pages[TAB_GUIDE])
     buildLibrary(ui.tabs.pages[3])
     buildRecorder(ui.tabs.pages[4])
-    buildOptions(ui.tabs.pages[5])
+    buildOptions()
 
     refreshPage = function()
         if not ui.panel:IsVisible() then return end
@@ -3775,15 +3624,14 @@ function M:OnEnable()
     for k, v in pairs(DEFAULTS) do if db[k] == nil then db[k] = v end end
     M.CharDB = function() return db end
     if ns.Plan then ns.Plan.Init(self) end
-    if ns.Objectives then ns.Objectives.Init(db) end
-    if ns.WorldMap then ns.WorldMap.Init(db) end
+    -- (RUIN Core starts the game frames' looks, with their settings)
     if ns.Minimap then
-        ns.Minimap.Init(db)
         ns.Minimap.OnDockChanged = ns.Minimap.OnDockChanged or function() if tracker then anchorTracker(); fitTracker() end end
     end
     if type(RUIN_PathfinderDB) ~= "table" then RUIN_PathfinderDB = {} end
     adb = RUIN_PathfinderDB
     for k, v in pairs(ACCOUNT_DEFAULTS) do if adb[k] == nil then adb[k] = R.Util.DeepCopy(v) end end
+    buildOptions()      -- Pathfinder's sections on Settings > Customization
     -- a saved route that was renamed in an update: keep your place on the new one
     -- (the new route's steps differ, so start it over; Skip done quests catches it up)
     local renamed = type(db.route) == "string" and not isBuiltInRoute(db.route)
@@ -3886,7 +3734,7 @@ SlashCmdList.RUINPATH = function(input)
         local on = not (db.remindPickups ~= false or db.remindArea ~= false)
         db.remindPickups, db.remindArea = on, on
         M.ResetReminders()
-        M:Print("Pick-up reminders " .. (on and "on." or "off.") .. " (Customization > Tracker for each kind.)")
+        M:Print("Pick-up reminders " .. (on and "on." or "off.") .. " (Settings > Customization > Tracker for each kind.)")
     elseif msg == "atlas" then
         local n = M.AtlasCounts()
         M:Print(("Atlas: where %d quests are picked up, %d handed in, and the objectives of %d, from RUIN members playing WoW Forever. Sharing is %s."):format(
@@ -3915,14 +3763,14 @@ SlashCmdList.RUINPATH = function(input)
         end
         if ns.Looks.Valid(arg) then wm.SetStyle(arg)
         else return M:Print("/path worldmap " .. table.concat(ns.Looks.KEYS, " | ") .. " | debug") end
-        if ui.wmStyle then ui.wmStyle:Refresh() end
+        if R.Customize then R.Customize.Refresh() end
         M:Print(("World map: %s style."):format(wm.STYLE_LABEL[wm.Style()]))
     elseif msg:match("^objectives") and ns.Objectives then
         local arg = msg:match("^objectives%s+(%S+)")
         local ot = ns.Objectives
         if ns.Looks.Valid(arg) then ot.SetStyle(arg)
         else return M:Print("/path objectives " .. table.concat(ns.Looks.KEYS, " | ") .. "") end
-        if ui.otStyle then ui.otStyle:Refresh() end
+        if R.Customize then R.Customize.Refresh() end
         M:Print(("Objective tracker: %s style."):format(ot.STYLE_LABEL[ot.Style()]))
     elseif msg == "pin" then
         db.pin = db.pin == false

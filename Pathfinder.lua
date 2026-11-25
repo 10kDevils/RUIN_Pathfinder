@@ -1774,7 +1774,7 @@ updateTracker = function()
             .. (n > 0 and ("  " .. C.good .. "· " .. n .. " RUIN here|r") or "")
         local stop = ns.Plan and ns.Plan.BudgetStop()
         if stop then extra = extra .. "  " .. C.dim .. "· stop at " .. stop.step .. "|r"; ns.Plan.CheckBudget() end
-        tracker.title:SetText(("Pathfinder  ·  %s  %d/%d"):format(r.title, math.min(db.step, #r.steps), #r.steps) .. extra)
+        tracker.title:SetText(("Pathfinder  ·  %s  %d/%d"):format(M.Title(r), math.min(db.step, #r.steps), #r.steps) .. extra)
         tracker.step:SetText(s and stepText(s) or (C.good .. "Route complete!|r"))
         tracker.wantLines = nil
         tracker.prev.tip, tracker.next.tip = "Previous step.", "Next step."
@@ -2569,7 +2569,7 @@ function M:OpenDungeonRoute(name)
     self:StartRoute(r.id)
     self:OpenTab()
     if ui.tabs then ui.tabs:Select(TAB_GUIDE) end
-    self:Print(("Started %s: %d steps, %d quests."):format(r.title, #r.steps, r.quests or 0))
+    self:Print(("Started %s: %d steps, %d quests."):format(M.Title(r), #r.steps, r.quests or 0))
     return r
 end
 
@@ -2635,6 +2635,23 @@ local function routeLevels(r)
 end
 M.RouteLevels = function(_, r) return routeLevels(r) end
 
+-- A levelling route's name as shown: its level range first ("13-18 Hall of Thanes"),
+-- whatever its title says. Dungeon routes keep their names. Saved titles are not changed.
+M.Title = function(r)
+    if type(r) ~= "table" then return "" end
+    local title = tostring(r.title or "")
+    if r.dungeon then return title end
+    if r._shownFor == title and r._shown then return r._shown end
+    local lo, hi = routeLevels(r)
+    local shown = title
+    if lo and hi then
+        local name = title:gsub("^%s*%d+%s*%-%s*%d+%s*", ""):gsub("%s*%(?%d+%s*%-%s*%d+%)?%s*$", "")
+        shown = ("%d-%d %s"):format(lo, hi, name ~= "" and name or title)
+        r._shownFor, r._shown = title, shown        -- (not kept while the levels are unknown: quest data may still load)
+    end
+    return shown
+end
+
 -- every quest on the route done?
 local function routeDone(r)
     local any = false
@@ -2677,11 +2694,17 @@ local function routeLibrary()
         if al ~= bl then return al < bl end
         local ah, bh = a.hi or 999, b.hi or 999
         if ah ~= bh then return ah < bh end
-        return (a.title or "") < (b.title or "")
+        return M.Title(a) < M.Title(b)
     end
     table.sort(dungeons, byLevel); table.sort(zones, byLevel); table.sort(past, byLevel); table.sort(levelling, byLevel)
     local out = {}
     local sug = ns.Plan and ns.Plan.Suggested(level) or {}
+    if #sug > 0 then
+        local copy = {}
+        for i, r in ipairs(sug) do r.lo, r.hi = routeLevels(r); copy[i] = r end
+        sug = copy
+        table.sort(sug, byLevel)
+    end
     if #sug > 0 then out[#out + 1] = { header = "Suggested for you", sub = ("the best planned routes at level %d"):format(level), routes = sug } end
     if #levelling > 0 then out[#out + 1] = { header = "Levelling", sub = "planned routes: the most experience an hour, zone to zone", routes = levelling } end
     if #dungeons > 0 then out[#out + 1] = { header = "Dungeons", sub = "every quest, with the ones that unlock it", routes = dungeons } end
@@ -2718,7 +2741,7 @@ M.PickerRoutes = function() return pickerRoutes() end
 -- Page
 ---------------------------------------------------------------------------
 local function routeLabel(r)
-    return (r.official and (OFFICER_ICON .. " ") or "") .. r.title .. " (" .. (r.faction or "Any") .. ")"
+    return (r.official and (OFFICER_ICON .. " ") or "") .. M.Title(r) .. " (" .. (r.faction or "Any") .. ")"
 end
 
 -- the picker labels zone and dungeon routes without building their steps
@@ -2728,7 +2751,7 @@ local function pickerLabel(id)
     end
     if type(id) == "string" and id:sub(1, 3) == "zq:" then
         local r = zqRoutes[id]
-        return r and (r.title .. "  " .. C.dim .. "zone · " .. r.quests .. " quests|r") or id
+        return r and (M.Title(r) .. "  " .. C.dim .. "zone · " .. r.quests .. " quests|r") or id
     end
     local r = routeById(id)
     if r and r.dungeon then return r.title .. "  " .. C.dim .. "dungeon|r" end
@@ -2839,7 +2862,7 @@ local function buildCurrent(page)
         row.go:Hide()
         W.AttachMenu(row.go, { width = 260,
             items = function() local out = {}; for _, n in ipairs(ns.Plan.Next(row.route)) do out[#out + 1] = n.id end; return out end,
-            label = function(id) local n = M:GetRoute(id); return n and n.title or id end,
+            label = function(id) local n = M:GetRoute(id); return n and M.Title(n) or id end,
             current = function() return nil end, pick = function(id) M:StartRoute(id) end })
     end, function(row, s, i)
         local done, cur = i < db.step, i == db.step
@@ -2947,7 +2970,7 @@ local function buildCurrent(page)
         local same = p.route == db.route
         local common = commonQuests(p)
         row.text:SetText(("%s  %s%s|r  %sstep %d|r%s%s"):format(W.ClassName(p.name), same and C.good or C.white,
-            r and r.title or (C.dim .. "a route you don't have|r"), C.dim, p.step or 0,
+            r and M.Title(r) or (C.dim .. "a route you don't have|r"), C.dim, p.step or 0,
             common > 0 and ("  " .. C.good .. common .. (common == 1 and " quest" or " quests") .. " in common|r") or "",
             db.follow == p.guid and ("  " .. C.gold .. "following|r") or ""))
         local following = db.follow == p.guid
@@ -3278,7 +3301,7 @@ local function buildLibrary(page)
         end
         if e.route and e.route.zoneArea then
             local r = e.route
-            row.text:SetText(("%s%s|r  %s%s · %d quests · levels %s|r%s"):format(C.white, r.title, C.dim, r.faction or "Any",
+            row.text:SetText(("%s%s|r  %s%s · %d quests · levels %s|r%s"):format(C.white, M.Title(r), C.dim, r.faction or "Any",
                 r.quests or 0, r.levels or "?", db.route == r.id and ("  " .. C.good .. "current|r") or ""))
             row.add:Hide(); row.del:Hide(); row.pub:Hide()
             row.start:Show(); row.export:Show(); row.share:Show()
@@ -3286,7 +3309,7 @@ local function buildLibrary(page)
             row.export:SetScript("OnClick", function() M:ExportRoute(r.id) end)
             row.share:SetScript("OnClick", function() M:ShareRoute(r.id) end)
             row.tip = function(tip)
-                tip:AddLine(r.title, 1, 1, 1)
+                tip:AddLine(M.Title(r), 1, 1, 1)
                 tip:AddLine(("Every quest %s has for your character at levels %s, with the quests from elsewhere that unlock them, nearest first. Built from %s."):format(
                     r.zoneName or "this zone", r.levels or "?", QB.Source() or "RUIN Quest Data"), 0.8, 0.85, 0.95, true)
             end
@@ -3344,7 +3367,7 @@ local function buildLibrary(page)
         local official = r.official ~= nil
         local who = official and (C.gold .. "RUIN · " .. officialTip(r) .. "|r" .. C.dim)
             or mine and ("by " .. R.Util.ShortName(r.author or "?")) or "built in"
-        row.text:SetText(("%s%s%s|r  %s%s · %d steps · %s|r%s"):format(official and (OFFICER_ICON .. " ") or "", C.white, r.title,
+        row.text:SetText(("%s%s%s|r  %s%s · %d steps · %s|r%s"):format(official and (OFFICER_ICON .. " ") or "", C.white, M.Title(r),
             C.dim, r.faction or "Any", #r.steps, who, db.route == r.id and ("  " .. C.good .. "current|r") or "")
             .. (isSample(r.id) and ("  " .. W.TagText("Sample", "Classic sample")) or ""))
         -- how many quests WoW Forever has in the route's zone (ForeverDB, launch)

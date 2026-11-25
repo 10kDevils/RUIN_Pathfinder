@@ -167,7 +167,7 @@ function QB.Quest(qid)
 end
 
 -- Spawns of an NPC, object or item drop as { { map, x, y }, ... } (x, y 0-1).
-local function spawnsOf(m, kind, id, out, limit)
+local function spawnsOf(m, kind, id, out, limit, drop)
     local ok, rec
     if kind == "npc" then ok, rec = pcall(m.DB.GetNPC, m.DB, id)
     elseif kind == "object" then ok, rec = pcall(m.DB.GetObject, m.DB, id) end
@@ -177,7 +177,7 @@ local function spawnsOf(m, kind, id, out, limit)
         if okm and map and type(spots) == "table" then
             for _, p in ipairs(spots) do
                 if type(p) == "table" and tonumber(p[1]) and tonumber(p[2]) and p[1] >= 0 then
-                    out[#out + 1] = { map = map, x = p[1] / 100, y = p[2] / 100, name = rec.name }
+                    out[#out + 1] = { map = map, x = p[1] / 100, y = p[2] / 100, name = rec.name, drop = drop }
                     if #out >= (limit or 400) then return end
                 end
             end
@@ -196,7 +196,10 @@ function QB.Spots(qid, which)
     if cache.miss[key] and now - cache.miss[key] < 300 then return {} end
     -- where RUIN members actually picked it up, did it and handed it in on
     -- WoW Forever (Pathfinder's atlas) comes first; the database fills the gaps
-    local seen = ns.AtlasSpots and ns.AtlasSpots(qid, which)
+    -- a quest started by an item you loot: where the item drops is where you get it
+    -- (not where people happened to right-click it), so the database leads
+    local fromItem = which == "start" and QB.StartItemId(qid)
+    local seen = not fromItem and ns.AtlasSpots and ns.AtlasSpots(qid, which)
     if seen and #seen > 0 and (which ~= "objective" or #seen >= 3) then
         -- a pick-up or hand-in seen twice or more is where it is
         if which ~= "objective" and (seen[1].seen or 1) >= 2 then cache.spot[key] = seen; return seen end
@@ -216,6 +219,21 @@ function QB.Spots(qid, which)
             by = type(by) == "table" and by or {}
             for _, id in ipairs(type(by.NPC) == "table" and by.NPC or {}) do spawnsOf(m, "npc", id, out, 40) end
             for _, id in ipairs(type(by.GameObject) == "table" and by.GameObject or {}) do spawnsOf(m, "object", id, out, 40) end
+            if fromItem and #out == 0 then
+                -- what drops the item, each spot marked with the item's name
+                local oki, item = pcall(m.DB.GetItem, m.DB, fromItem)
+                if oki and type(item) == "table" then
+                    local drop = item.name or true
+                    for i, npc in ipairs(type(item.npcDrops) == "table" and item.npcDrops or {}) do
+                        if i > 12 then break end
+                        spawnsOf(m, "npc", npc, out, 400, drop)
+                    end
+                    for i, obj in ipairs(type(item.objectDrops) == "table" and item.objectDrops or {}) do
+                        if i > 12 then break end
+                        spawnsOf(m, "object", obj, out, 400, drop)
+                    end
+                end
+            end
         else
             for _, o in ipairs(type(q.ObjectiveData) == "table" and q.ObjectiveData or {}) do
                 if type(o) == "table" and o.Id then
@@ -507,6 +525,19 @@ local function giverAreas(qid, which)
     from("npc", by.NPC)
     from("object", by.GameObject)
     return out
+end
+
+-- Just the ID of the item that starts a quest, if one does.
+function QB.StartItemId(qid)
+    local m = db()
+    if not m then return nil end
+    local ok, q = pcall(m.DB.GetQuest, qid)
+    local list = ok and type(q) == "table" and type(q.Starts) == "table" and q.Starts.Item
+    if type(list) ~= "table" then
+        local by = QB.Field(qid, "startedBy")
+        list = type(by) == "table" and by[3] or nil
+    end
+    return type(list) == "table" and tonumber(list[1]) or nil
 end
 
 -- The item that starts a quest (looted, then right-clicked), if any:

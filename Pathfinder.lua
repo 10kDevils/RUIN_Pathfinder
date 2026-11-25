@@ -1132,12 +1132,19 @@ end
 
 local function haveOrDone(q) return QB.Done(q) or (QB.InLog(q)) end
 
+-- name, who gives it, where, and how you get it ("from X", or "by looting Item from X"
+-- for a quest a dropped item starts)
 local function giverText(q)
     local info = QB.Quest(q)
     local who = info and info.starts and info.starts[1]
-    local sp = QB.Spot(q, "start")
+    local map, px, py = R.Map:PlayerPos()
+    local sp = QB.Spot(q, "start", map, px, py)
     local where = sp and ("%.0f, %.0f"):format(sp.x * 100, sp.y * 100) or nil
-    return (info and info.name or ("quest " .. q)), who, where
+    local how = who and (" from " .. who) or ""
+    if sp and sp.drop then
+        how = (" by looting %s from %s"):format(type(sp.drop) == "string" and sp.drop or "its item", sp.name or "what drops it")
+    end
+    return (info and info.name or ("quest " .. q)), who, where, how
 end
 
 -- the route's upcoming pick-ups: { qid = step index }
@@ -1340,9 +1347,9 @@ function M.CheckReminders()
             if d and d <= REMIND_NEAR then remind.near[q] = true
             elseif d and d >= REMIND_FAR and remind.near[q] and not remind.past[q] then
                 remind.past[q] = true
-                local name, who, where = giverText(q)
+                local name, _, where, how = giverText(q)
                 sayReminder(("You walked past %s%s|r (route step %d): pick it up%s%s."):format(C.gold, name, idx,
-                    who and (" from " .. who) or "", where and (" at " .. where) or ""), q)
+                    how, where and (" at " .. where) or ""), q)
             end
         end
     end
@@ -1355,9 +1362,9 @@ function M.CheckReminders()
             local d = yardsTo(QB.Spots(q, "objective"), pm, px, py)
             if d and d <= AREA_YARDS then
                 remind.area[q] = true
-                local name, who, where = giverText(q)
+                local name, _, where, how = giverText(q)
                 sayReminder(("%s%s|r's targets are here, but you don't have it%s: it's picked up%s%s."):format(C.gold, name,
-                    onRoute and " (it's on your route)" or "", who and (" from " .. who) or "", where and (" at " .. where) or ""), q)
+                    onRoute and " (it's on your route)" or "", how, where and (" at " .. where) or ""), q)
                 return true
             end
         end
@@ -2558,15 +2565,25 @@ function M:ShowQuestOnMap(qid, which)
     end
     local info = QB.Quest(qid)
     local label = which == "start" and "Pick up" or which == "finish" and "Hand in" or "Do"
+    -- a quest that starts from a looted item: where it drops, and from what
+    local pinText = label .. ": " .. (spot.name or "")
+    if which == "start" and spot.drop then
+        label = "Loot " .. (type(spot.drop) == "string" and spot.drop or "the quest item")
+        pinText = label .. " from " .. (spot.name or "what drops it")
+    end
     R.Map:SetPin("Pathfinder", "quest", { map = spot.map, x = spot.x, y = spot.y, icon = "Interface\\AddOns\\RUIN_Core\\Media\\EmblemIcon", plain = true, shadow = true,
         clearable = true, qid = qid, which = which,
         color = W.MARKERS[which == "finish" and "turnin" or "quest"], title = "Pathfinder: " .. ((info and info.name) or "quest"),
-        text = label .. ": " .. (spot.name or "") })
+        text = pinText })
     local open = rawget(_G, "OpenWorldMap")
     local wmf = rawget(_G, "WorldMapFrame")
     if open then pcall(open, spot.map)
     elseif wmf and ShowUIPanel then pcall(ShowUIPanel, wmf); if wmf.SetMapID then pcall(wmf.SetMapID, wmf, spot.map) end end
-    self:Print(("Marked on your map: %s %s (%s)."):format(label:lower(), (info and info.name) or "the quest", spot.name or "?"))
+    if which == "start" and spot.drop then
+        self:Print(("Marked on your map: %s, which starts %s."):format((pinText:gsub("^L", "l")), (info and info.name) or "the quest"))
+    else
+        self:Print(("Marked on your map: %s %s (%s)."):format(label:lower(), (info and info.name) or "the quest", spot.name or "?"))
+    end
     return true
 end
 

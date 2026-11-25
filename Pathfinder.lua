@@ -50,8 +50,12 @@ local QB = ns.QB
 -- What the player lets RUIN share about them (RUIN Core: Settings > Display)
 local function shares(kind) return not (R.Shares and not R:Shares(kind)) end
 
-local SHARE_EVERY, PEER_TTL = 120, 300
-local QUEST_SHARE_MIN, QUEST_SHARE_EVERY, QUEST_TTL = 20, 300, 900
+-- Fixed numbers and strings, kept in one table (set where each part of the
+-- file uses them) so the file stays well under Lua's 200-local limit.
+local K = {}
+
+K.SHARE_EVERY, K.PEER_TTL = 120, 300
+K.QUEST_SHARE_MIN, K.QUEST_SHARE_EVERY, K.QUEST_TTL = 20, 300, 900
 local ACT_LABEL = { accept = "Accept", complete = "Do", turnin = "Turn in", go = "Go", note = "Note",
                     class = "Class quest", trainer = "Trainer" }
 local ACTS = { "go", "note", "accept", "complete", "turnin", "class", "trainer" }
@@ -71,9 +75,9 @@ local DEFAULTS = { route = nil, step = 1, tracker = true, trackerPos = nil, foll
                    remindPickups = true, remindArea = true }
 local ACCOUNT_DEFAULTS = { custom = {}, inbox = {}, official = {}, rec = { on = false, title = "", steps = {} } }
 -- Officer routes carry this badge wherever they're listed.
-local OFFICER_ICON = "|TInterface\\GroupFrame\\UI-Group-AssistantIcon:14:14|t"
-local MAX_STEPS = 200
-local TAB_QUESTS, TAB_GUIDE = 1, 2      -- Pathfinder's tabs: Quests, Guide, Routes, Record, Options
+K.OFFICER_ICON = "|TInterface\\GroupFrame\\UI-Group-AssistantIcon:14:14|t"
+K.MAX_STEPS = 200
+K.TAB_QUESTS, K.TAB_GUIDE = 1, 2      -- Pathfinder's tabs: Quests, Guide, Routes, Record, Options
 
 local db           -- per character: route, step, tracker
 local adb          -- account: custom routes, shared-route inbox, recorder
@@ -137,9 +141,9 @@ local function dungeonRoute(entry)
     if not quests or #quests == 0 then return nil end
     local steps = QB.DungeonRoute(entry, quests)
     if not steps or #steps == 0 then return nil end
-    if #steps > MAX_STEPS then
-        for i = #steps, MAX_STEPS, -1 do steps[i] = nil end
-        steps[MAX_STEPS] = { act = "note", text = "The rest of this dungeon's quests didn't fit in one route." }
+    if #steps > K.MAX_STEPS then
+        for i = #steps, K.MAX_STEPS, -1 do steps[i] = nil end
+        steps[K.MAX_STEPS] = { act = "note", text = "The rest of this dungeon's quests didn't fit in one route." }
     end
     local r = { id = id, title = (M.LevelTag(entry.levels) .. entry.name .. " quests"):sub(1, 40), faction = UnitFactionGroup and UnitFactionGroup("player") or "Any",
                 author = "RUIN (from " .. (QB.Source() or "RUIN Quest Data") .. ")", steps = steps, dungeon = entry.name, levels = entry.levels,
@@ -168,9 +172,9 @@ local function zoneRoute(id)
             local r = zqRoutes[id] or zoneStub(z)
             local steps = QB.ZoneRoute(z.quests)
             if not steps or #steps == 0 then return nil end
-            if #steps > MAX_STEPS then
-                for i = #steps, MAX_STEPS, -1 do steps[i] = nil end
-                steps[MAX_STEPS] = { act = "note", text = "The rest of this zone's quests didn't fit in one route." }
+            if #steps > K.MAX_STEPS then
+                for i = #steps, K.MAX_STEPS, -1 do steps[i] = nil end
+                steps[K.MAX_STEPS] = { act = "note", text = "The rest of this zone's quests didn't fit in one route." }
             end
             r.steps = steps
             zqRoutes[id] = r
@@ -194,19 +198,19 @@ end
 -- The quests in your log as one route (id "log"): planned when it's picked
 -- or started, and kept as planned (db.logRoute) so the steps stay put while
 -- you follow it, across reloads too.
-local LOG_ID = "log"
+K.LOG_ID = "log"
 local function logStub()
     local n = #QB.Log()
-    return { id = LOG_ID, title = "Quests in your log", faction = "Any", author = "RUIN (your quest log)",
+    return { id = K.LOG_ID, title = "Quests in your log", faction = "Any", author = "RUIN (your quest log)",
              logRoute = true, quests = n }
 end
 local function buildLogRoute()
     if not QB.Has() then return nil end
     local steps, yards, n = QB.LogRoute()
     if not steps or #steps == 0 then return nil end
-    if #steps > MAX_STEPS then
-        for i = #steps, MAX_STEPS, -1 do steps[i] = nil end
-        steps[MAX_STEPS] = { act = "note", text = "The rest of your quests didn't fit in one route." }
+    if #steps > K.MAX_STEPS then
+        for i = #steps, K.MAX_STEPS, -1 do steps[i] = nil end
+        steps[K.MAX_STEPS] = { act = "note", text = "The rest of your quests didn't fit in one route." }
     end
     db.logRoute = { steps = steps, yards = math.floor((yards or 0) + 0.5), quests = n, t = time and time() or 0 }
     return db.logRoute
@@ -255,7 +259,7 @@ end
 
 local function routeById(id, hop)
     if not id then return nil end
-    if id == LOG_ID then return logRoute() end
+    if id == K.LOG_ID then return logRoute() end
     if type(id) == "string" and id:sub(1, 3) == "zq:" then return zoneRoute(id) end
     if type(id) == "string" and id:sub(1, 3) == "dq:" then
         if dqRoutes[id] then return dqRoutes[id] end
@@ -419,7 +423,7 @@ local function cleanRoute(r)
     local out = { title = r.title:sub(1, 40), faction = type(r.faction) == "string" and r.faction:sub(1, 10) or "Any",
                   author = type(r.author) == "string" and r.author:sub(1, 40) or "?", steps = {} }
     for i, s in ipairs(r.steps) do
-        if i > MAX_STEPS then break end
+        if i > K.MAX_STEPS then break end
         if type(s) == "table" and ACT_LABEL[s.act] then
             local st = { act = s.act, quest = type(s.quest) == "string" and s.quest:sub(1, 60) or nil,
                          text = type(s.text) == "string" and s.text:sub(1, 120) or "",
@@ -814,7 +818,7 @@ end
 local function sameStepPeers()
     local list, now = {}, GetTime()
     for _, p in pairs(peers) do
-        if now - p.t <= PEER_TTL and p.route == db.route and p.step == Shop.ToBase(db.step) then list[#list + 1] = p end
+        if now - p.t <= K.PEER_TTL and p.route == db.route and p.step == Shop.ToBase(db.step) then list[#list + 1] = p end
     end
     return list
 end
@@ -822,7 +826,7 @@ end
 local function livePeers()
     local list, now = {}, GetTime()
     for g, p in pairs(peers) do
-        if now - p.t <= PEER_TTL and p.route ~= "" then p.guid = g; list[#list + 1] = p end
+        if now - p.t <= K.PEER_TTL and p.route ~= "" then p.guid = g; list[#list + 1] = p end
     end
     table.sort(list, function(a, b)
         local am, bm = a.route == db.route, b.route == db.route
@@ -869,10 +873,10 @@ end
 local function shareQuests(force)
     if not (db and db.shareQuests and shares("quests")) or not R:IsConnected() then return end
     local now = GetTime()
-    if not force and now - lastQuestShare < QUEST_SHARE_MIN then return end
+    if not force and now - lastQuestShare < K.QUEST_SHARE_MIN then return end
     local d = questPayload()
     local sig = d.l .. "|" .. d.d
-    if not force and sig == lastQuestSig and now - lastQuestShare < QUEST_SHARE_EVERY then return end
+    if not force and sig == lastQuestSig and now - lastQuestShare < K.QUEST_SHARE_EVERY then return end
     lastQuestShare, lastQuestSig = now, sig
     M:Send("QSTAT", d, "ORG", nil, R.PRIORITY.BULK)
 end
@@ -921,7 +925,7 @@ local function whoHas(qid)
     qid = tonumber(qid)
     if not qid then return have, ready, done end
     for _, p in pairs(peers) do
-        if p.qt and now - p.qt <= QUEST_TTL then
+        if p.qt and now - p.qt <= K.QUEST_TTL then
             local st = p.quests and p.quests[qid]
             local name = R.Util.ShortName(p.name or "?")
             if st then
@@ -1062,14 +1066,14 @@ local function arrowTick(nav, elapsed)
     dist:SetText(yards < 15 and (C.good .. "here|r") or ("%d yards"):format(yards))
 end
 
-local TRACKER_W, TRACKER_H, TRACKER_MAX_W = 320, 66, 640
-local SIDE = 22                 -- room for < and > on each side
+K.TRACKER_W, K.TRACKER_H, K.TRACKER_MAX_W = 320, 66, 640
+K.SIDE = 22                 -- room for < and > on each side
 
 -- Are you in a quest's objective area? Near any place its objectives are
 -- found (the database's spawn points for its mobs, objects and drops), on your
 -- map. Not for a quest that's ready to hand in: that's the turn-in NPC.
 M.QB = QB   -- for tests
-local AREA_YARDS = 60
+K.AREA_YARDS = 60
 local areaCache = { t = -1 }
 local mapScale = {}
 local function yardsPerUnit(map)
@@ -1091,7 +1095,7 @@ function M.InQuestArea(qid)
     local pm, px, py = R.Map:PlayerPos()
     local scale = pm and yardsPerUnit(pm)
     if not ready and scale then
-        local lim = AREA_YARDS * AREA_YARDS
+        local lim = K.AREA_YARDS * K.AREA_YARDS
         for _, sp in ipairs(QB.Spots(qid, "objective")) do
             if sp.map == pm then
                 local dx, dy = (sp.x - px) * scale[1], (sp.y - py) * scale[2]
@@ -1112,8 +1116,8 @@ end
 --     your level whose earlier quests you've done).
 -- Each quest is mentioned once a session (per kind). Not in instances.
 ---------------------------------------------------------------------------
-local REMIND_NEAR, REMIND_FAR = 40, 120          -- yards: came near the giver, then left
-local REMIND_AHEAD = 40                          -- route steps looked ahead
+K.REMIND_NEAR, K.REMIND_FAR = 40, 120          -- yards: came near the giver, then left
+K.REMIND_AHEAD = 40                          -- route steps looked ahead
 local remind = { near = {}, past = {}, area = {}, zoneList = nil, zoneMap = nil, zoneAt = -999 }
 
 local function yardsTo(spots, pm, px, py)
@@ -1152,7 +1156,7 @@ local function routeAccepts()
     local r = currentRoute()
     local out = {}
     if not r then return out end
-    for i = db.step or 1, math.min(#r.steps, (db.step or 1) + REMIND_AHEAD) do
+    for i = db.step or 1, math.min(#r.steps, (db.step or 1) + K.REMIND_AHEAD) do
         local st = r.steps[i]
         if st and st.act == "accept" and st.qid and not haveOrDone(st.qid) and M.CanTakeNow(st.qid) then out[st.qid] = i end
     end
@@ -1198,8 +1202,8 @@ end
 -- giver on the map. It closes itself after a while unless the mouse is on
 -- it. One copy goes to chat too, for the record.
 do
-local ALERT_KEEP, ALERT_W = 3, 360
-local ALERT_PAD = 14            -- the window's inner margin
+K.ALERT_KEEP, K.ALERT_W = 3, 360
+K.ALERT_PAD = 14            -- the window's inner margin
 local alertWin, alerts = nil, {}
 -- How long a notification stays: only in chat, a few seconds, the standard
 -- 15 seconds, longer (25), or until you close the window.
@@ -1225,7 +1229,7 @@ local function layoutAlerts()
     local f = alertWin
     local y = -(f.headH or 33) - 10
     local shown = 0
-    for i = 1, ALERT_KEEP do
+    for i = 1, K.ALERT_KEEP do
         local row, a = f.rows[i], alerts[i]
         if a then
             shown = shown + 1
@@ -1233,22 +1237,22 @@ local function layoutAlerts()
             row.mark:SetShown(a.qid ~= nil)
             row.rule:SetShown(shown > 1)          -- a hairline between alerts
             row:ClearAllPoints()
-            row:SetPoint("TOPLEFT", ALERT_PAD, y)
+            row:SetPoint("TOPLEFT", K.ALERT_PAD, y)
             local textH = math.max(16, (row.text:GetStringHeight() or 14))
             local h = textH + (a.qid and 34 or 0)
-            row:SetSize(ALERT_W - ALERT_PAD * 2, h)
+            row:SetSize(K.ALERT_W - K.ALERT_PAD * 2, h)
             row:Show()
             y = y - h - 21
         else
             row:Hide()
         end
     end
-    f:SetHeight(-y - 21 + ALERT_PAD)
+    f:SetHeight(-y - 21 + K.ALERT_PAD)
     f:SetShown(#alerts > 0)
 end
 local function buildAlertWin()
     local f = W.HudFrame("RUIN_PathfinderAlerts", "Pathfinder", db, "alertPos", { "TOP", UIParent, "TOP", 0, -170 })
-    f:SetWidth(ALERT_W)
+    f:SetWidth(K.ALERT_W)
     f:SetFrameStrata("HIGH")
     f.headH = W.HudHeader(f, "Pathfinder")
     local x = W.CloseButton(f, function() wipe(alerts); f:Hide() end, 18)
@@ -1256,16 +1260,16 @@ local function buildAlertWin()
     x.tip = "Close (the alerts stay in chat)."
     f.close = x
     f.rows = {}
-    for i = 1, ALERT_KEEP do
+    for i = 1, K.ALERT_KEEP do
         local row = CreateFrame("Frame", nil, f)
         row.rule = row:CreateTexture(nil, "ARTWORK")
         row.rule:SetColorTexture(W.PALETTE.line[1], W.PALETTE.line[2], W.PALETTE.line[3], 1)
         row.rule:SetHeight(1)
-        row.rule:SetPoint("TOPLEFT", -ALERT_PAD + 1, 11)
-        row.rule:SetPoint("TOPRIGHT", ALERT_PAD - 1, 11)
+        row.rule:SetPoint("TOPLEFT", -K.ALERT_PAD + 1, 11)
+        row.rule:SetPoint("TOPRIGHT", K.ALERT_PAD - 1, 11)
         row.text = W.Label(row, "", "GameFontHighlight")
         row.text:SetPoint("TOPLEFT", 0, 0)
-        row.text:SetWidth(ALERT_W - ALERT_PAD * 2)
+        row.text:SetWidth(K.ALERT_W - K.ALERT_PAD * 2)
         row.text:SetJustifyH("LEFT")
         if row.text.SetWordWrap then row.text:SetWordWrap(true) end
         if row.text.SetSpacing then row.text:SetSpacing(3) end
@@ -1299,7 +1303,7 @@ function M.Alert(msg, qid)
         if a.msg == msg then table.remove(alerts, i); break end
     end
     table.insert(alerts, 1, { msg = msg, qid = qid, t = GetTime() })
-    for i = #alerts, ALERT_KEEP + 1, -1 do alerts[i] = nil end
+    for i = #alerts, K.ALERT_KEEP + 1, -1 do alerts[i] = nil end
     alertWin = alertWin or buildAlertWin()
     layoutAlerts()
 end
@@ -1344,8 +1348,8 @@ function M.CheckReminders()
     if db.remindPickups ~= false then
         for q, idx in pairs(accepts) do
             local d = yardsTo(QB.Spots(q, "start"), pm, px, py)
-            if d and d <= REMIND_NEAR then remind.near[q] = true
-            elseif d and d >= REMIND_FAR and remind.near[q] and not remind.past[q] then
+            if d and d <= K.REMIND_NEAR then remind.near[q] = true
+            elseif d and d >= K.REMIND_FAR and remind.near[q] and not remind.past[q] then
                 remind.past[q] = true
                 local name, _, where, how = giverText(q)
                 sayReminder(("You walked past %s%s|r (route step %d): pick it up%s%s."):format(C.gold, name, idx,
@@ -1360,7 +1364,7 @@ function M.CheckReminders()
             if seen[q] or remind.area[q] then return end
             seen[q] = true
             local d = yardsTo(QB.Spots(q, "objective"), pm, px, py)
-            if d and d <= AREA_YARDS then
+            if d and d <= K.AREA_YARDS then
                 remind.area[q] = true
                 local name, _, where, how = giverText(q)
                 sayReminder(("%s%s|r's targets are here, but you don't have it%s: it's picked up%s%s."):format(C.gold, name,
@@ -1450,9 +1454,9 @@ local function openFromTracker()
     M:OpenTab()
     if trackerTab() == "tracked" then
         ui.qSel = userQuest()
-        if ui.tabs then ui.tabs:Select(TAB_QUESTS) end
+        if ui.tabs then ui.tabs:Select(K.TAB_QUESTS) end
     elseif ui.tabs then
-        ui.tabs:Select(TAB_GUIDE)
+        ui.tabs:Select(K.TAB_GUIDE)
     end
     refreshPage()
 end
@@ -1483,21 +1487,21 @@ end
 local function fitTracker()
     local lineH = 14
     -- two lines, or one per objective on the Tracked tab
-    local maxLines = math.max(math.max(1, math.floor((TRACKER_H - 28 - 8) / lineH)), tracker.wantLines or 0)
-    local pad = SIDE * 2 + 8 + 26      -- the sides, plus room for the arrow at the right
+    local maxLines = math.max(math.max(1, math.floor((K.TRACKER_H - 28 - 8) / lineH)), tracker.wantLines or 0)
+    local pad = K.SIDE * 2 + 8 + 26      -- the sides, plus room for the arrow at the right
     local step = tracker.step
     if step.SetMaxLines then step:SetMaxLines(0) end   -- measure the whole text
     local function height(w)
         step:SetWidth(w - pad)
         return step.GetStringHeight and step:GetStringHeight() or lineH
     end
-    local width = TRACKER_W
-    while width < TRACKER_MAX_W and height(width) > maxLines * lineH + 2 do width = width + 20 end
-    width = math.min(width, TRACKER_MAX_W)
+    local width = K.TRACKER_W
+    while width < K.TRACKER_MAX_W and height(width) > maxLines * lineH + 2 do width = width + 20 end
+    width = math.min(width, K.TRACKER_MAX_W)
     local titleW = (tracker.title.GetStringWidth and tracker.title:GetStringWidth() or 0)
                  + (tracker.dist.GetStringWidth and tracker.dist:GetStringWidth() or 0) + pad + 40
-    width = math.min(TRACKER_MAX_W, math.max(width, titleW))
-    local newH = math.max(TRACKER_H, math.ceil(26 + height(width) + 10))
+    width = math.min(K.TRACKER_MAX_W, math.max(width, titleW))
+    local newH = math.max(K.TRACKER_H, math.ceil(26 + height(width) + 10))
     if math.abs((tracker:GetWidth() or 0) - width) > 0.5 or math.abs((tracker:GetHeight() or 0) - newH) > 0.5 then
         anchorTracker()
         tracker:SetSize(width, newH)
@@ -1565,7 +1569,7 @@ end
 -- A small round button for < and >, centered on the tracker's sides: a
 -- navy disc in a thin steel ring, the arrow in Pathfinder's color; the ring
 -- takes the color under the mouse.
-local DISC = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
+K.DISC = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local function trackerAccent() return ns.Looks.Scheme(M.TrackerStyle()).accent end
 
 -- A panel in the tracker's look: the panel, edges and band in the look's
@@ -1618,11 +1622,11 @@ local function sideButton(label, onClick)
     local P = W.RUIN_PALETTE or W.PALETTE
     b:SetSize(18, 18)
     b.ring = b:CreateTexture(nil, "BACKGROUND")
-    b.ring:SetTexture(DISC)
+    b.ring:SetTexture(K.DISC)
     b.ring:SetAllPoints()
     b.ring:SetVertexColor(edge[1], edge[2], edge[3], 1)
     b.disc = b:CreateTexture(nil, "BORDER")
-    b.disc:SetTexture(DISC)
+    b.disc:SetTexture(K.DISC)
     b.disc:SetPoint("TOPLEFT", 1, -1); b.disc:SetPoint("BOTTOMRIGHT", -1, 1)
     b.disc:SetVertexColor(P.panelHi[1], P.panelHi[2], P.panelHi[3], 1)
     b.text = b:CreateFontString(nil, "ARTWORK", "GameFontNormal")
@@ -1659,15 +1663,15 @@ updateTracker = function()
     end
     if not tracker then
         tracker = W.HudFrame("RUIN_PathfinderTracker", "Pathfinder", db, "trackerPos", { "RIGHT", UIParent, "RIGHT", -40, 140 })
-        tracker:SetSize(TRACKER_W, TRACKER_H)
+        tracker:SetSize(K.TRACKER_W, K.TRACKER_H)
         tracker.title = W.Label(tracker, "", "GameFontNormalSmall")
-        tracker.title:SetPoint("TOPLEFT", SIDE + 4, -9)
+        tracker.title:SetPoint("TOPLEFT", K.SIDE + 4, -9)
         do local ac = ns.Looks.Scheme(M.TrackerStyle()).accent; tracker.title:SetTextColor(ac[1], ac[2], ac[3]) end
         tracker.title:SetWordWrap(false)
         tracker.step = W.Label(tracker, "")
-        tracker.step:SetPoint("TOPLEFT", SIDE + 4, -26)
+        tracker.step:SetPoint("TOPLEFT", K.SIDE + 4, -26)
         tracker.step:SetJustifyV("TOP")
-        tracker.step:SetWidth(TRACKER_W - SIDE * 2 - 34)
+        tracker.step:SetWidth(K.TRACKER_W - K.SIDE * 2 - 34)
         if tracker.step.SetSpacing then tracker.step:SetSpacing(2) end
         -- < and > centered on the sides
         tracker.prev = sideButton("<", function()
@@ -1799,7 +1803,7 @@ end
 -- Step-change shimmer: the tracker's edge glows and a bright spark runs
 -- once around the border, so you notice the new step at a glance.
 ---------------------------------------------------------------------------
-local FLASH_SECONDS = 1.4
+K.FLASH_SECONDS = 1.4
 
 flashTracker = function()
     if not tracker or not tracker:IsShown() then return end
@@ -1826,7 +1830,7 @@ flashTracker = function()
     end
     tracker.flashStart = GetTime()
     tracker:SetScript("OnUpdate", function(self)
-        local p = (GetTime() - self.flashStart) / FLASH_SECONDS
+        local p = (GetTime() - self.flashStart) / K.FLASH_SECONDS
         if p >= 1 then
             for _, t in pairs(self.edges) do t:Hide() end
             for _, s in ipairs(self.sparks) do s:Hide() end
@@ -1895,7 +1899,7 @@ function M:SkipDone()
     local r = currentRoute()
     if not r then return 0 end
     local n = 0
-    while db.step <= #r.steps and not (holdUntil and db.step < holdUntil) and stepDone(r.steps[db.step]) and n < MAX_STEPS do
+    while db.step <= #r.steps and not (holdUntil and db.step < holdUntil) and stepDone(r.steps[db.step]) and n < K.MAX_STEPS do
         db.step, n = db.step + 1, n + 1
     end
     if holdUntil and db.step >= holdUntil then holdUntil = nil end
@@ -1929,7 +1933,7 @@ function M:Advance(delta)
 end
 
 function M:StartRoute(id)
-    if id == LOG_ID and not logRoute(true) then
+    if id == K.LOG_ID and not logRoute(true) then
         return self:Print(QB.Has() and "No quests in your log to route." or "The log route needs Pathfinder's quest data, which didn't load: reinstall Pathfinder.")
     end
     if not routeById(id) then return end
@@ -2050,7 +2054,7 @@ end
 -- Steps carry the time they were recorded (kept on this account only), so
 -- route authors can see how long each stretch really took.
 function M:RecordStep(act, quest, text, extra)
-    if not adb.rec.on or #adb.rec.steps >= MAX_STEPS then return end
+    if not adb.rec.on or #adb.rec.steps >= K.MAX_STEPS then return end
     local st = { act = act, quest = quest, text = (text or ""):sub(1, 120), at = here(), t = GetServerTime() }
     if extra then for k, v in pairs(extra) do st[k] = v end end
     adb.rec.steps[#adb.rec.steps + 1] = st
@@ -2123,10 +2127,10 @@ end
 -- own quest map: it fills in quests the database doesn't know, corrects places
 -- WoW Forever moved, and comes first when routes are planned.
 ---------------------------------------------------------------------------
-local ATLAS_NEAR = 60           -- yards: a sighting this close to the known spot refines it
-local ATLAS_OBJ_MAX = 16        -- places kept per quest's objectives
-local ATLAS_SHARE_EVERY = 300   -- seconds between sharing new sightings
-local ATLAS_SHARE_MAX = 40      -- sightings per message
+K.ATLAS_NEAR = 60           -- yards: a sighting this close to the known spot refines it
+K.ATLAS_OBJ_MAX = 16        -- places kept per quest's objectives
+K.ATLAS_SHARE_EVERY = 300   -- seconds between sharing new sightings
+K.ATLAS_SHARE_MAX = 40      -- sightings per message
 local atlasPending, atlasLastShare = {}, 0
 
 local function atlas()
@@ -2149,7 +2153,7 @@ local function atlasNote(kind, qid, map, x, y, mine)
         for _, p in ipairs(list) do
             if p[1] == map and yd(map, p[2], p[3], x, y) < 25 then p[4] = math.min(99, (p[4] or 1) + 1); return false end
         end
-        if #list >= ATLAS_OBJ_MAX then
+        if #list >= K.ATLAS_OBJ_MAX then
             -- make room: drop the least-seen place
             local low = 1
             for i, p in ipairs(list) do if (p[4] or 1) < (list[low][4] or 1) then low = i end end
@@ -2158,7 +2162,7 @@ local function atlasNote(kind, qid, map, x, y, mine)
         list[#list + 1] = { map, x, y, 1 }
     else
         local t = A[kind][qid]
-        if t and t[1] == map and yd(map, t[2], t[3], x, y) < ATLAS_NEAR then
+        if t and t[1] == map and yd(map, t[2], t[3], x, y) < K.ATLAS_NEAR then
             local n = math.min(50, t[4] or 1)
             t[2], t[3], t[4] = (t[2] * n + x) / (n + 1), (t[3] * n + y) / (n + 1), n + 1
         elseif not t then
@@ -2167,7 +2171,7 @@ local function atlasNote(kind, qid, map, x, y, mine)
             -- somewhere else: a stray, or the place moved. It takes over once
             -- it's been seen as often as the old place.
             local alt = t[5]
-            if alt and alt[1] == map and yd(map, alt[2], alt[3], x, y) < ATLAS_NEAR then
+            if alt and alt[1] == map and yd(map, alt[2], alt[3], x, y) < K.ATLAS_NEAR then
                 local n = alt[4] or 1
                 alt[2], alt[3], alt[4] = (alt[2] * n + x) / (n + 1), (alt[3] * n + y) / (n + 1), n + 1
             else
@@ -2181,7 +2185,7 @@ local function atlasNote(kind, qid, map, x, y, mine)
     if QB.ForgetSpots then QB.ForgetSpots(qid) end
     if mine and adb.atlasShare ~= false and shares("atlas") then
         atlasPending[#atlasPending + 1] = { kind, qid, map, math.floor(x * 10000 + 0.5), math.floor(y * 10000 + 0.5) }
-        while #atlasPending > ATLAS_SHARE_MAX * 4 do table.remove(atlasPending, 1) end
+        while #atlasPending > K.ATLAS_SHARE_MAX * 4 do table.remove(atlasPending, 1) end
     end
     return true
 end
@@ -2227,10 +2231,10 @@ local function atlasObjectives()
 end
 
 local function atlasShare()
-    if #atlasPending == 0 or adb.atlasShare == false or not shares("atlas") or GetTime() - atlasLastShare < ATLAS_SHARE_EVERY then return end
+    if #atlasPending == 0 or adb.atlasShare == false or not shares("atlas") or GetTime() - atlasLastShare < K.ATLAS_SHARE_EVERY then return end
     atlasLastShare = GetTime()
     local flat = {}
-    for i = 1, math.min(#atlasPending, ATLAS_SHARE_MAX) do
+    for i = 1, math.min(#atlasPending, K.ATLAS_SHARE_MAX) do
         local e = table.remove(atlasPending, 1)
         for _, v in ipairs(e) do flat[#flat + 1] = v end
     end
@@ -2244,7 +2248,7 @@ function M:OnAtlas(d, sender)
     -- made-up one many times) can't outweigh what others saw
     adb.atlasVoters = type(adb.atlasVoters) == "table" and adb.atlasVoters or {}
     local who = (R.NormalizeName and R:NormalizeName(sender)) or tostring(sender):lower()
-    for i = 1, math.min(#l, ATLAS_SHARE_MAX * 5) - 4, 5 do
+    for i = 1, math.min(#l, K.ATLAS_SHARE_MAX * 5) - 4, 5 do
         local kind = l[i]
         if kind == "s" or kind == "f" or kind == "o" then
             local key = kind .. tostring(tonumber(l[i + 1]) or "?")
@@ -2546,7 +2550,7 @@ function M:OpenDungeonRoute(name)
     if not r then self:Print(why); return nil end
     self:StartRoute(r.id)
     self:OpenTab()
-    if ui.tabs then ui.tabs:Select(TAB_GUIDE) end
+    if ui.tabs then ui.tabs:Select(K.TAB_GUIDE) end
     self:Print(("Started %s: %d steps, %d quests."):format(M.Title(r), #r.steps, r.quests or 0))
     return r
 end
@@ -2608,7 +2612,7 @@ function M:GetRoute(id) return routeById(id) end
 -- { { header = text or nil, routes = { ... } }, ... }
 -- A route's levels: from its levels field ("13-18"), its title ("Elwynn
 -- 1-10"), or the levels of its quests; nil when nothing says.
-local OUTLEVELED = 3        -- a route whose top level is this far below you is out-leveled
+K.OUTLEVELED = 3        -- a route whose top level is this far below you is out-leveled
 local function routeLevels(r)
     local lo, hi = tostring(r.levels or ""):match("(%d+)%s*%-%s*(%d+)")
     if not lo then lo, hi = tostring(r.title or ""):match("(%d+)%s*%-%s*(%d+)") end
@@ -2662,7 +2666,7 @@ local function routeLibrary()
     local function place(r, list)
         local lo, hi = routeLevels(r)
         r.lo, r.hi = lo, hi
-        if r.id ~= db.route and ((hi and hi <= level - OUTLEVELED) or routeDone(r)) then
+        if r.id ~= db.route and ((hi and hi <= level - K.OUTLEVELED) or routeDone(r)) then
             past[#past + 1] = r
         else
             list[#list + 1] = r
@@ -2696,7 +2700,7 @@ local function routeLibrary()
     if #levelling > 0 then out[#out + 1] = { header = "Levelling", sub = "planned routes: the most experience an hour, zone to zone", routes = levelling } end
     if #dungeons > 0 then out[#out + 1] = { header = "Dungeons", sub = "every quest, with the ones that unlock it", routes = dungeons } end
     out[#out + 1] = { header = "Zones", sub = "leveling routes and every zone's quests", routes = zones }
-    if #past > 0 then out[#out + 1] = { header = "Completed / out-leveled", sub = ("done, or %d+ levels below you"):format(OUTLEVELED), routes = past } end
+    if #past > 0 then out[#out + 1] = { header = "Completed / out-leveled", sub = ("done, or %d+ levels below you"):format(K.OUTLEVELED), routes = past } end
     return out
 end
 M.RouteLibrary = function() return routeLibrary() end
@@ -2714,7 +2718,7 @@ M.SetRouteHidden = function(_, id, v) setHidden(id, v) end
 -- route always stays so it can be seen)
 local function pickerRoutes()
     local ids = {}
-    if QB.Has() and #QB.Log() > 0 then ids[1] = LOG_ID end
+    if QB.Has() and #QB.Log() > 0 then ids[1] = K.LOG_ID end
     for _, sec in ipairs(routeLibrary()) do
         for _, r in ipairs(sec.routes) do
             if not hiddenRoute(r.id) or r.id == db.route then ids[#ids + 1] = r.id end
@@ -2728,12 +2732,12 @@ M.PickerRoutes = function() return pickerRoutes() end
 -- Page
 ---------------------------------------------------------------------------
 local function routeLabel(r)
-    return (r.official and (OFFICER_ICON .. " ") or "") .. M.Title(r) .. " (" .. (r.faction or "Any") .. ")"
+    return (r.official and (K.OFFICER_ICON .. " ") or "") .. M.Title(r) .. " (" .. (r.faction or "Any") .. ")"
 end
 
 -- the picker labels zone and dungeon routes without building their steps
 local function pickerLabel(id)
-    if id == LOG_ID then
+    if id == K.LOG_ID then
         return "Quests in your log  " .. C.dim .. "(" .. #QB.Log() .. ")|r"
     end
     if type(id) == "string" and id:sub(1, 3) == "zq:" then
@@ -2778,7 +2782,7 @@ local function buildCurrent(page)
         label = function(id) return pickerLabel(id) end,
         current = function() return ui.pickId end, pick = function(id)
             ui.pickId = id
-            if id == LOG_ID and db.route ~= LOG_ID then logRoute(true) end
+            if id == K.LOG_ID and db.route ~= K.LOG_ID then logRoute(true) end
             refreshPage()
         end })
     local start = W.Button(page, "Start this route", 130, function() if ui.pickId then M:StartRoute(ui.pickId) end end)
@@ -3111,7 +3115,7 @@ local function buildQuests(page)
         local me = UnitName("player")
         for _, p in pairs(peers) do
             local st = p.qt and p.quests and p.quests[ui.qSel]
-            if st and R.Util.ShortName(p.name or "") ~= me and GetTime() - p.qt <= QUEST_TTL then pcall(invite, p.name) end
+            if st and R.Util.ShortName(p.name or "") ~= me and GetTime() - p.qt <= K.QUEST_TTL then pcall(invite, p.name) end
         end
         M:Print("Invited " .. nameList(have, 6) .. ".")
     end)
@@ -3141,7 +3145,7 @@ local function refreshQuests()
     ui.qList:SetItems(rows)
     ui.qShare:Refresh()
     local members, now = 0, GetTime()
-    for _, p in pairs(peers) do if p.qt and now - p.qt <= QUEST_TTL then members = members + 1 end end
+    for _, p in pairs(peers) do if p.qt and now - p.qt <= K.QUEST_TTL then members = members + 1 end end
     ui.qInfo:SetText(C.dim .. ("%d in your log  ·  %d RUIN member%s sharing quests"):format(#rows, members, members == 1 and "" or "s") .. "|r")
     local qid = ui.qSel
     local sel
@@ -3259,7 +3263,7 @@ local function buildLibrary(page)
         row.start:SetPoint("RIGHT", row.export, "LEFT", -2, 0)
         row.add = W.Button(row, "Add", 46)
         row.add:SetPoint("RIGHT", row.start, "LEFT", -2, 0)
-        row.pub = W.Button(row, OFFICER_ICON .. " Publish", 84)
+        row.pub = W.Button(row, K.OFFICER_ICON .. " Publish", 84)
         row.pub:SetPoint("RIGHT", row.add, "LEFT", -2, 0)
     end, fitAfter(function(row, e)
         local officer = R:IsOfficer()
@@ -3292,7 +3296,7 @@ local function buildLibrary(page)
                 r.quests or 0, r.levels or "?", db.route == r.id and ("  " .. C.good .. "current|r") or ""))
             row.add:Hide(); row.del:Hide(); row.pub:Hide()
             row.start:Show(); row.export:Show(); row.share:Show()
-            row.start:SetScript("OnClick", function() M:StartRoute(r.id); ui.tabs:Select(TAB_GUIDE) end)
+            row.start:SetScript("OnClick", function() M:StartRoute(r.id); ui.tabs:Select(K.TAB_GUIDE) end)
             row.export:SetScript("OnClick", function() M:ExportRoute(r.id) end)
             row.share:SetScript("OnClick", function() M:ShareRoute(r.id) end)
             row.tip = function(tip)
@@ -3308,7 +3312,7 @@ local function buildLibrary(page)
                 r.quests or 0, #r.steps, r.levels or "?", db.route == r.id and ("  " .. C.good .. "current|r") or ""))
             row.add:Hide(); row.del:Hide(); row.pub:Hide()
             row.start:Show(); row.export:Show(); row.share:Show()
-            row.start:SetScript("OnClick", function() M:StartRoute(r.id); ui.tabs:Select(TAB_GUIDE) end)
+            row.start:SetScript("OnClick", function() M:StartRoute(r.id); ui.tabs:Select(K.TAB_GUIDE) end)
             row.export:SetScript("OnClick", function() M:ExportRoute(r.id) end)
             row.share:SetScript("OnClick", function() M:ShareRoute(r.id) end)
             row.tip = function(tip)
@@ -3330,7 +3334,7 @@ local function buildLibrary(page)
             row.start:Hide(); row.export:Hide(); row.share:Hide()
             -- officers can approve a member's route for all of RUIN
             row.pub:SetShown(officer)
-            row.pub:SetText(OFFICER_ICON .. " Approve")
+            row.pub:SetText(K.OFFICER_ICON .. " Approve")
             row.pub:ClearAllPoints()
             row.pub:SetPoint("RIGHT", row.add, "LEFT", -2, 0)
             row.pub:SetScript("OnClick", function()
@@ -3354,14 +3358,14 @@ local function buildLibrary(page)
         local official = r.official ~= nil
         local who = official and (C.gold .. "RUIN · " .. officialTip(r) .. "|r" .. C.dim)
             or mine and ("by " .. R.Util.ShortName(r.author or "?")) or "built in"
-        row.text:SetText(("%s%s%s|r  %s%s · %d steps · %s|r%s"):format(official and (OFFICER_ICON .. " ") or "", C.white, M.Title(r),
+        row.text:SetText(("%s%s%s|r  %s%s · %d steps · %s|r%s"):format(official and (K.OFFICER_ICON .. " ") or "", C.white, M.Title(r),
             C.dim, r.faction or "Any", #r.steps, who, db.route == r.id and ("  " .. C.good .. "current|r") or "")
             .. (isSample(r.id) and ("  " .. W.TagText("Sample", "Classic sample")) or ""))
         -- how many quests WoW Forever has in the route's zone (ForeverDB, launch)
         local zq = r.zone and ns.ZoneQuests and ns.ZoneQuests[r.zone]
         row.tip = (official or zq) and function(tip)
             if official then
-                tip:AddLine(OFFICER_ICON .. " RUIN route", 1, 0.82, 0)
+                tip:AddLine(K.OFFICER_ICON .. " RUIN route", 1, 0.82, 0)
                 tip:AddLine(officialTip(r), 1, 1, 1, true)
             end
             if zq then
@@ -3372,12 +3376,12 @@ local function buildLibrary(page)
         row.add:Hide()
         -- officers publish their routes (or the built-in ones) to everyone, and withdraw RUIN routes
         row.pub:SetShown(officer and not official and officerMade(r))
-        row.pub:SetText(OFFICER_ICON .. " Publish")
+        row.pub:SetText(K.OFFICER_ICON .. " Publish")
         row.pub:ClearAllPoints()
         row.pub:SetPoint("RIGHT", row.start, "LEFT", -2, 0)
         row.pub:SetScript("OnClick", function() M:PublishRoute(r.id) end)
         row.start:Show(); row.export:Show(); row.share:Show()
-        row.start:SetScript("OnClick", function() M:StartRoute(r.id); ui.tabs:Select(TAB_GUIDE) end)
+        row.start:SetScript("OnClick", function() M:StartRoute(r.id); ui.tabs:Select(K.TAB_GUIDE) end)
         row.export:SetScript("OnClick", function() M:ExportRoute(r.id) end)
         row.share:SetScript("OnClick", function() M:ShareRoute(r.id) end)
         row.del:SetText(official and "Withdraw" or "Delete")
@@ -3458,7 +3462,7 @@ end
 BINDING_NAME_RUIN_PATH_CLEAR = "Pathfinder: clear the route"
 BINDING_NAME_RUIN_PATH_PIN = "Pathfinder: show or hide the RUIN pin"
 function RUIN_PathfinderBinding(cmd)
-    if cmd == "open" then M:OpenTab(); if ui.tabs then ui.tabs:Select(TAB_GUIDE) end; return end
+    if cmd == "open" then M:OpenTab(); if ui.tabs then ui.tabs:Select(K.TAB_GUIDE) end; return end
     if SlashCmdList and SlashCmdList.RUINPATH then SlashCmdList.RUINPATH(cmd) end
 end
 
@@ -3552,8 +3556,8 @@ end
 local function buildPage(panel)
     ui.panel = panel
     ui.tabs = W.SubTabs(panel, { "Quests", "Guide", "Routes", "Record" }, function() refreshPage() end)
-    buildQuests(ui.tabs.pages[TAB_QUESTS])
-    buildCurrent(ui.tabs.pages[TAB_GUIDE])
+    buildQuests(ui.tabs.pages[K.TAB_QUESTS])
+    buildCurrent(ui.tabs.pages[K.TAB_GUIDE])
     buildLibrary(ui.tabs.pages[3])
     buildRecorder(ui.tabs.pages[4])
     buildOptions()
@@ -3563,10 +3567,10 @@ local function buildPage(panel)
         ui.tabs:SetLabel(3, #adb.inbox > 0 and ("Routes " .. C.good .. "(" .. #adb.inbox .. " new)|r") or "Routes")
         ui.tabs:SetLabel(4, adb.rec.on and ("Record " .. C.bad .. "(on)|r") or "Record")
         local tab = ui.tabs.selected
-        if tab == TAB_GUIDE then
+        if tab == K.TAB_GUIDE then
             if not ui.pickId or not routeById(ui.pickId) then
                 local list = pickerRoutes()
-                ui.pickId = db.route or (list[1] == LOG_ID and list[2]) or list[1]
+                ui.pickId = db.route or (list[1] == K.LOG_ID and list[2]) or list[1]
             end
             local pr = routeById(ui.pickId)
             ui.pick:SetText(pr and pickerLabel(ui.pickId) or "No routes")    -- as it reads in the list
@@ -3595,7 +3599,7 @@ local function buildPage(panel)
             if r then ui.clearBtn:Show() else ui.clearBtn:Hide() end
             refreshClassTrack()
             ui.peers:SetItems(livePeers())
-        elseif tab == TAB_QUESTS then
+        elseif tab == K.TAB_QUESTS then
             refreshQuests()
         elseif tab == 3 then
             ui.draftBtn:SetShown(QB.Has())
@@ -3622,7 +3626,7 @@ local function buildPage(panel)
         end
     end
     panel:SetScript("OnShow", function() refreshPage() end)
-    ui.tabs:Select(db.route and TAB_GUIDE or TAB_QUESTS)
+    ui.tabs:Select(db.route and K.TAB_GUIDE or K.TAB_QUESTS)
 end
 
 ---------------------------------------------------------------------------
@@ -3691,7 +3695,7 @@ function M:OnEnable()
     end)
     C_Timer.NewTicker(2, function() pcall(M.CheckReminders) end)
     C_Timer.NewTicker(10, function()
-        if db.route and GetTime() - lastShare >= SHARE_EVERY then share() end
+        if db.route and GetTime() - lastShare >= K.SHARE_EVERY then share() end
         shareQuests()
         atlasShare()
         updateTracker()
@@ -3724,7 +3728,7 @@ SlashCmdList.RUINPATH = function(input)
         db.trainer = not db.trainer
         return M:Print("Trainer reminders " .. (db.trainer and "on." or "off."))
     end
-    if msg == "quests" then M:OpenTab(); if ui.tabs then ui.tabs:Select(TAB_QUESTS) end; return end
+    if msg == "quests" then M:OpenTab(); if ui.tabs then ui.tabs:Select(K.TAB_QUESTS) end; return end
     if msg == "draft" then return M:DraftFromData() end
     if msg == "skip" then
         db.skipDone = not db.skipDone

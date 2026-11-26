@@ -2,7 +2,7 @@
 
 Versioning: the third number counts the meaningful changes made since the second number last went up.
 
-## Unreleased
+## 0.9.0
 
 - **Quests from dropped items point to the drop.** For a quest started by an item you loot, Mark on Map (in reminders and on the Quests page) marks where that item drops, "Loot Torn Map from Dark Iron Lookout", nearest you first, and the reminders say which item to loot from what.
 - **Customization moved to Settings.** The minimap, objective tracker and world map looks now live in RUIN Core (Settings > Customization), and Pathfinder's Tracker and Waypoint options are on that page too. Pathfinder's tabs are Quests, Guide, Routes and Record. Your settings carry over, and the /path minimap, objectives and worldmap commands still work.
@@ -13,7 +13,6 @@ Versioning: the third number counts the meaningful changes made since the second
 - **The low levels stay at home.** Each starting area has one route to about level 6 and one that stays in your race's own zone (Elwynn Forest, Dun Morogh, Teldrassil or Zephras Isle) until its quests run out, around 10-11, with no grinding. Its last step tells you where to move on to and starts your next route from there, so the levelling keeps flowing. Each starting route offers only its home route next, and Suggested for you never offers another race's zone.
 - **Follow-on routes only where they belong.** A route planned to carry on from one particular route is suggested only after you've played that route.
 - **Renamed routes start over cleanly.** If an update renames the route you're on, you move to the new one at its first step, and Skip done quests catches you up (before, you could land past its end).
-- **Renamed routes keep your place.** If an update renames the route you're on (57-60 Winterspring became 57-60 Azshara), Pathfinder moves you to the new one at the same step instead of leaving the tracker empty.
 - **Suggested for you.** The Routes page opens with the best planned routes for your level (at level 1, your race's starting area), then all planned routes under Levelling.
 - **Session time.** Pick how long you'll play on the Guide page (30 minutes to 4 hours): it shows the step to stop at and the level you'll be about then, the tracker shows the stop step, and you're told once when you reach it. Without a session it shows the time left on the route.
 - **Class quests.** The Guide's Class track card names the next class quest for your class and level, and who gives it. Planned routes remind you to visit your trainer at even levels.

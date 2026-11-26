@@ -32,7 +32,7 @@ end
 local W = R.Widgets
 local C = W.COLORS
 
-local M = R:RegisterModule("Pathfinder", { version = "0.8.11" })
+local M = R:RegisterModule("Pathfinder", { version = "0.9.0" })
 
 -- The game frames' looks live in RUIN Core now (Settings > Customization); Pathfinder's
 -- tracker, waypoint and slash commands use them from there.
